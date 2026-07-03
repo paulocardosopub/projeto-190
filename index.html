@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#070707">
+  <meta name="description" content="Projeto 190 - Idle Crime RPG em pixel art">
+  <link rel="stylesheet" href="./styles.css?v=rest-8">
+  <title>Projeto 190</title>
+  <script>
+    const bootParams = new URLSearchParams(window.location.search);
+    if (
+      bootParams.get("preview") === "1" ||
+      bootParams.get("weaponIcons") === "1" ||
+      bootParams.get("weapon-icons") === "1" ||
+      bootParams.get("armorIcons") === "1" ||
+      bootParams.get("armor-icons") === "1" ||
+      bootParams.get("gloveIcons") === "1" ||
+      bootParams.get("glove-icons") === "1" ||
+      bootParams.get("glovesIcons") === "1" ||
+      bootParams.get("gloves-icons") === "1"
+    ) {
+      document.documentElement.classList.add("preview-mode");
+    }
+  </script>
+</head>
+<body>
+  <div class="orientation-lock" aria-live="assertive">
+    <div>
+      <strong>Vire o celular</strong>
+      <span>O modo mobile funciona na horizontal.</span>
+    </div>
+  </div>
+
+  <div class="animation-test-bar hidden" id="animation-test-bar">
+    <strong>Teste combate</strong>
+    <button type="button" data-test-player="iris">Iris</button>
+    <button type="button" data-test-player="bruno">Bruno</button>
+    <button type="button" data-test-action="attack">Atacar</button>
+    <button type="button" data-test-action="hurt">Dano</button>
+    <button type="button" data-test-action="loop">Loop</button>
+    <button type="button" data-test-action="city">Cidade</button>
+  </div>
+
+  <div class="app-shell" id="app">
+    <header class="topbar">
+      <span class="visually-hidden" id="scene-label">Cidade</span>
+      <div class="resource-strip">
+        <div><span>Dinheiro</span><strong id="money-label">R$ 0</strong></div>
+        <div><span>Nivel / XP</span><strong><b id="level-label">1</b> / <b id="xp-label">0 / 100</b></strong></div>
+        <div><span>Stamina</span><strong id="stamina-label">120 / 120</strong></div>
+      </div>
+    </header>
+
+    <main class="game-layout">
+      <section class="stage-shell" aria-label="Cena principal">
+        <canvas id="game-canvas" width="960" height="300"></canvas>
+        <div class="stage-hud">
+          <div class="status-card">
+            <span id="mode-label">Cidade inicial</span>
+            <strong id="action-label">Escolha um assalto para comecar</strong>
+          </div>
+          <div class="raid-timer hidden" id="raid-timer">
+            <span>Tempo</span>
+            <strong id="raid-timer-label">01:00</strong>
+            <small id="raid-count-label">0 / 0 alvos</small>
+          </div>
+          <div class="combat-card" id="combat-card">
+            <span id="enemy-label">Sem alvo</span>
+            <div class="hp-bar"><i id="player-hp-fill"></i></div>
+            <div class="player-hp-row">
+              <small id="player-hp-label">HP 0 / 0</small>
+              <button class="save-icon-button" id="save-button" type="button" aria-label="Salvar jogo" title="Salvar jogo">S</button>
+            </div>
+          </div>
+        </div>
+        <div class="survival-warning hidden" id="survival-warning"></div>
+        <div class="toast-region" id="toast-region" aria-live="polite"></div>
+        <div class="raid-summary hidden" id="raid-summary">
+          <span class="eyebrow">Assalto encerrado</span>
+          <h2 id="raid-summary-title">Resumo do roubo</h2>
+          <div class="raid-summary-grid">
+            <div><span>Dinheiro</span><strong id="raid-summary-money">R$ 0</strong></div>
+            <div><span>XP</span><strong id="raid-summary-xp">0</strong></div>
+            <div><span>Alvos</span><strong id="raid-summary-targets">0 / 0</strong></div>
+            <div><span>Retorno</span><strong id="raid-summary-countdown">5s</strong></div>
+          </div>
+          <p id="raid-summary-items">Nenhum item obtido.</p>
+          <label class="auto-repeat-toggle">
+            <input type="checkbox" id="auto-repeat-toggle">
+            <span>Auto repetir</span>
+          </label>
+          <div class="raid-summary-actions">
+            <button type="button" class="secondary-action" id="raid-return-button">Retornar</button>
+            <button type="button" class="primary-action" id="raid-repeat-button">Repetir</button>
+          </div>
+        </div>
+        <button class="master-toggle" id="master-toggle" aria-label="Abrir Equipamento e Mochila" aria-expanded="false">
+          <span aria-hidden="true">v</span>
+        </button>
+        <div class="modal-backdrop character-stage-backdrop hidden" id="character-modal" role="dialog" aria-modal="true" aria-labelledby="character-title">
+          <section class="modal large-modal character-stage-panel">
+            <div class="character-stage-copy">
+              <span class="eyebrow">Criacao de personagem</span>
+              <h1 id="character-title">Escolha seu visual</h1>
+              <p>Todos comecam com os mesmos atributos. A escolha muda apenas a aparencia.</p>
+            </div>
+            <div class="character-grid" id="character-grid"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="window-layer" id="window-layer" aria-live="polite">
+        <aside class="game-window side-window left hidden" id="left-window"></aside>
+        <section class="game-window center-window hidden" id="inventory-window"></section>
+        <aside class="game-window side-window right hidden" id="right-window"></aside>
+        <section class="game-window config-window hidden" id="config-window"></section>
+      </section>
+    </main>
+
+  </div>
+
+  <div class="modal-backdrop hidden" id="choice-modal" role="dialog" aria-modal="true" aria-labelledby="choice-title">
+    <section class="modal choice-modal">
+      <span class="eyebrow">Roubo falhou</span>
+      <h2 id="choice-title">"O que pensa que esta fazendo?"</h2>
+      <p id="choice-text">O alvo percebeu a tentativa.</p>
+      <p class="choice-warning hidden" id="choice-warning">Caso você seja pego novamente poderá ir preso, tem certeza?</p>
+      <div class="modal-actions">
+        <button class="secondary-action" id="flee-button">Fugir</button>
+        <button class="primary-action" id="fight-button">Brigar</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="scene-transition hidden" id="scene-transition">
+    <strong id="scene-transition-text">Roube o maximo que conseguir!</strong>
+  </div>
+
+  <script type="module" src="./src/main.js?v=vehicle-alpha-3"></script>
+</body>
+</html>

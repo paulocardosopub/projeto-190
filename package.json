@@ -1,0 +1,42 @@
+{
+  "name": "projeto-190-idle-crime-rpg",
+  "version": "0.1.0",
+  "description": "Idle Crime RPG 2D em pixel art, com modo navegador e publicacao web.",
+  "author": "Projeto 190",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx http-server . -p 4190 -c-1",
+    "server": "node server/index.mjs",
+    "electron": "electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win portable"
+  },
+  "main": "electron-main.cjs",
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^26.15.3",
+    "http-server": "^14.1.1",
+    "ws": "^8.18.0"
+  },
+  "build": {
+    "appId": "com.projeto190.idlecrimerpg",
+    "productName": "Projeto 190",
+    "artifactName": "Projeto-190-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "styles.css",
+      "src/**/*",
+      "assets/**/*",
+      "player.png",
+      "paginas.png",
+      "electron-main.cjs"
+    ],
+    "win": {
+      "target": "portable"
+    }
+  }
+}
