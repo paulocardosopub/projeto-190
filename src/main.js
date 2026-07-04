@@ -4,7 +4,7 @@ import { NPC_TYPES } from "./data/enemies/index.js";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=phase1-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS } from "./data/cityPortals/index.js?v=rest-3";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem } from "./systems/CombatSystem/index.js?v=stamina-entry-1";
+import { CombatSystem } from "./systems/CombatSystem/index.js?v=hospital-fee-1";
 import { calculateStats, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   createItem,
@@ -154,6 +154,11 @@ const elements = {
   choiceWarning: document.querySelector("#choice-warning"),
   fleeButton: document.querySelector("#flee-button"),
   fightButton: document.querySelector("#fight-button"),
+  hospitalModal: document.querySelector("#hospital-modal"),
+  hospitalTitle: document.querySelector("#hospital-title"),
+  hospitalText: document.querySelector("#hospital-text"),
+  hospitalFee: document.querySelector("#hospital-fee"),
+  hospitalClose: document.querySelector("#hospital-close"),
   saveButton: document.querySelector("#save-button"),
   masterToggle: document.querySelector("#master-toggle"),
   bottomDock: document.querySelector(".bottom-dock"),
@@ -577,6 +582,7 @@ function setupCombat() {
       hideChoice();
       showToast(message);
     },
+    onHospitalBill: (bill) => showHospitalBill(bill),
     onChoiceTimeout: () => hideChoice(),
     onToast: (message) => showToast(message),
     onChange: () => renderAll(),
@@ -3680,6 +3686,18 @@ function showToast(message) {
   }, 2800);
 }
 
+function showHospitalBill(bill) {
+  if (!bill || !elements.hospitalModal) return;
+  elements.hospitalTitle.textContent = bill.title || "Você foi apagado!";
+  elements.hospitalText.textContent = bill.message || "Atendimento feito. Conta cobrada.";
+  elements.hospitalFee.textContent = `Taxa hospitalar: ${formatMoney(bill.charged || 0)}`;
+  elements.hospitalModal.classList.remove("hidden");
+}
+
+function hideHospitalBill() {
+  elements.hospitalModal?.classList.add("hidden");
+}
+
 function showSceneMessage(message, duration = 1200) {
   elements.sceneTransitionText.textContent = message;
   elements.sceneTransition.classList.remove("hidden");
@@ -4005,6 +4023,11 @@ elements.fleeButton.addEventListener("click", () => {
 elements.fightButton.addEventListener("click", () => {
   hideChoice();
   combat.chooseFight();
+});
+
+elements.hospitalClose?.addEventListener("click", hideHospitalBill);
+elements.hospitalModal?.addEventListener("click", (event) => {
+  if (event.target === elements.hospitalModal) hideHospitalBill();
 });
 
 elements.raidRepeatButton?.addEventListener("click", () => {

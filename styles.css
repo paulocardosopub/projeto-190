@@ -2458,6 +2458,40 @@ body.auth-pending .window-layer {
     #171513;
 }
 
+.hospital-modal {
+  width: min(430px, 92vw);
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d58c2b;
+  background:
+    linear-gradient(180deg, rgba(185, 47, 32, 0.18), transparent 44%),
+    #151312;
+}
+
+.hospital-modal h2 {
+  margin: 0;
+  color: #ffd45f;
+  font-size: 24px;
+  text-transform: uppercase;
+  text-shadow: 2px 2px 0 #230908;
+}
+
+.hospital-modal p {
+  margin: 0;
+  color: #e8d8b8;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.hospital-fee {
+  display: block;
+  padding: 10px;
+  color: #fff2c4;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 212, 95, 0.42);
+  font-size: 16px;
+}
+
 .auth-backdrop {
   position: absolute;
   inset: 0;

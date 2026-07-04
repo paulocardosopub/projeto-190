@@ -5,6 +5,7 @@ import { calculateStats } from "../EquipmentSystem/index.js";
 import { createNpcWave, createEnemyStats } from "../EnemySystem/index.js";
 import { rollLoot, applyLoot } from "../LootSystem/index.js?v=phase1-1";
 import { gainXp, addLog } from "../PlayerSystem/index.js";
+import { applyHospitalFee, applyPrisonFee } from "../PenaltySystem/index.js?v=hospital-fee-1";
 import { canStartRaid, consumeStaminaForMap, staminaRaidBlockedMessage } from "../StaminaSystem/index.js?v=phase1-1";
 import { theftConfig } from "../../data/balance/index.js?v=phase1-1";
 
@@ -668,9 +669,12 @@ export class CombatSystem {
     if (player.hp <= 0) {
       player.hp = 0;
       player.needsHideoutRest = true;
+      const hospitalBill = applyHospitalFee(player);
       addLog(this.state, "Voce caiu na briga e voltou para o esconderijo.");
+      addLog(this.state, `Taxa hospitalar: R$ ${hospitalBill.charged}.`);
       this.hooks.onToast?.("Briga perdida. Repouse perto da casa no esconderijo.");
       this.enterHideout();
+      this.hooks.onHospitalBill?.(hospitalBill);
     }
   }
 
@@ -766,6 +770,8 @@ export class CombatSystem {
     }
 
     const confiscated = this.confiscateRaidLoot();
+    const prisonFee = applyPrisonFee(this.state.player);
+    const prisonFeeLine = `Taxa da prisao: R$ ${prisonFee.charged}.`;
     const playerX = run.playerX || 120;
     run.mode = "police";
     run.targetId = null;
@@ -780,9 +786,11 @@ export class CombatSystem {
         { x: playerX + 62, direction: "left" }
       ]
     };
+    run.policeMessage = `${message} ${prisonFeeLine}`;
     addLog(this.state, `Policia no local: ${message}`);
     addLog(this.state, `Loot confiscado: R$ ${confiscated.money}, ${confiscated.items} item(ns), ${confiscated.xp} XP.`);
-    this.hooks.onPolice?.(message);
+    addLog(this.state, prisonFeeLine);
+    this.hooks.onPolice?.(`${message} ${prisonFeeLine}`);
   }
 
   confiscateRaidLoot() {

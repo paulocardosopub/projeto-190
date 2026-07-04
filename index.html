@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#070707">
   <meta name="description" content="Projeto 190 - Idle Crime RPG em pixel art">
-  <link rel="stylesheet" href="./styles.css?v=login-save-2">
+  <link rel="stylesheet" href="./styles.css?v=hospital-fee-1">
   <title>Projeto 190</title>
   <script>
     const bootParams = new URLSearchParams(window.location.search);
@@ -160,11 +160,23 @@
     </section>
   </div>
 
+  <div class="modal-backdrop hidden" id="hospital-modal" role="dialog" aria-modal="true" aria-labelledby="hospital-title">
+    <section class="modal hospital-modal">
+      <span class="eyebrow">Atendimento hospitalar</span>
+      <h2 id="hospital-title">Você foi apagado!</h2>
+      <p id="hospital-text">Atendimento feito. Conta cobrada.</p>
+      <strong id="hospital-fee" class="hospital-fee">Taxa hospitalar: R$ 0</strong>
+      <div class="modal-actions">
+        <button class="primary-action" id="hospital-close" type="button">Entendi</button>
+      </div>
+    </section>
+  </div>
+
   <div class="scene-transition hidden" id="scene-transition">
     <strong id="scene-transition-text">Roube o maximo que conseguir!</strong>
   </div>
 
   <script src="./src/config/publicOnlineConfig.js?v=login-save-2"></script>
-  <script type="module" src="./src/main.js?v=tutorial-combat-2"></script>
+  <script type="module" src="./src/main.js?v=hospital-fee-1"></script>
 </body>
 </html>
