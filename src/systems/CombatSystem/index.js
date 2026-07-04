@@ -5,7 +5,7 @@ import { CITY_NPCS } from "../../data/cityNpcs/index.js?v=petshop-portal-1";
 import { decorativeNpcsForIdleMap } from "../../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { calculateStats } from "../EquipmentSystem/index.js";
 import { createNpcWave, createEnemyStats } from "../EnemySystem/index.js?v=npc-crops-1";
-import { rollLoot, applyLoot } from "../LootSystem/index.js?v=phase1-1";
+import { rollLoot, applyLoot } from "../LootSystem/index.js?v=icons-3";
 import { gainXp, addLog } from "../PlayerSystem/index.js";
 import { applyHospitalFee, applyPrisonFee } from "../PenaltySystem/index.js?v=hospital-fee-1";
 import { canStartRaid, consumeStaminaForMap, staminaRaidBlockedMessage } from "../StaminaSystem/index.js?v=phase1-1";
@@ -20,6 +20,7 @@ const GROUND_LOOT_PICKUP_DISTANCE = 22;
 const GROUND_LOOT_PICKUP_DELAY = 0.4;
 const FLEE_SPEED = 520;
 const FLEE_MAX_SECONDS = 2.2;
+const POLICE_SIREN_SECONDS = 3.2;
 const CITY_SPAWN_X = 190;
 const HIDEOUT_SPAWN_X = 260;
 
@@ -1028,8 +1029,22 @@ export class CombatSystem {
     const prisonFee = applyPrisonFee(this.state.player);
     const prisonFeeLine = `Taxa da prisao: R$ ${prisonFee.charged}.`;
     const drugLine = confiscatedDrugs ? ` Drogas confiscadas: ${confiscatedDrugs}.` : "";
-    this.enterPrison();
-    this.state.run.policeMessage = `${message} ${prisonFeeLine}${drugLine}`;
+    const run = this.state.run;
+    const playerX = Number(run.playerX || target?.x || 220);
+    run.mode = "police";
+    run.choiceTimer = 0;
+    run.targetId = null;
+    run.enemy = null;
+    run.enemyHp = 0;
+    run.enemyMaxHp = 0;
+    run.policeTimer = POLICE_SIREN_SECONDS;
+    run.policeMessage = `${message} ${prisonFeeLine}${drugLine}`;
+    run.policeScene = {
+      officers: [
+        { x: Math.max(80, playerX - 74), direction: "right" },
+        { x: playerX + 78, direction: "left" }
+      ]
+    };
     addLog(this.state, `Policia no local: ${message}`);
     addLog(this.state, `Loot confiscado: R$ ${confiscated.money}, ${confiscated.items} item(ns), ${confiscated.xp} XP.`);
     if (confiscatedDrugs) addLog(this.state, `Drogas confiscadas: ${confiscatedDrugs} unidade(s).`);
@@ -1092,7 +1107,7 @@ export class CombatSystem {
     run.policeTimer = Math.max(0, (run.policeTimer || 0) - dt);
     if (run.policeTimer > 0) return;
     const message = run.policeMessage || randomPoliceWarning();
-    this.enterCity();
+    this.enterPrison();
     addLog(this.state, message);
     this.hooks.onToast?.(message);
     this.emit();

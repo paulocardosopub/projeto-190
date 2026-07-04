@@ -4,7 +4,7 @@ import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem } from "./systems/CombatSystem/index.js?v=flee-pets-1";
+import { CombatSystem } from "./systems/CombatSystem/index.js?v=police-choice-1";
 import { calculateStats, calculateStealChancePercent, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -35,7 +35,7 @@ import {
   sellInventoryItems,
   sellNonFavoriteInventoryItems,
   unequipToInventory
-} from "./systems/InventorySystem/index.js?v=drugs-2";
+} from "./systems/InventorySystem/index.js?v=icons-3";
 import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=phase1-1";
 import {
   applyProfileToState,
@@ -119,7 +119,7 @@ import {
   staminaState,
   updatePassiveIncome
 } from "./systems/StaminaSystem/index.js?v=phase1-1";
-import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=phase1-1";
+import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=icons-3";
 import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=pets-manual-1";
 import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=flee-pets-1";
 import {
@@ -170,6 +170,7 @@ const elements = {
   choiceWarning: document.querySelector("#choice-warning"),
   fleeButton: document.querySelector("#flee-button"),
   fightButton: document.querySelector("#fight-button"),
+  fightAutoTimer: document.querySelector("#fight-auto-timer"),
   hospitalModal: document.querySelector("#hospital-modal"),
   hospitalTitle: document.querySelector("#hospital-title"),
   hospitalText: document.querySelector("#hospital-text"),
@@ -719,6 +720,7 @@ function runGameClock(now, options = {}) {
     if (options.render !== false) {
       renderer.draw(state, playerRow());
       syncHud();
+      syncChoiceTimer();
       renderTutorial();
     }
   }
@@ -4453,15 +4455,23 @@ function cityNpcHeight() {
 }
 
 function showChoice(target) {
-  elements.choiceText.textContent = `${target.name}: "${target.alertLine || "O que pensa que esta fazendo?"}" Se nao escolher em 5s, voce briga automaticamente.`;
+  elements.choiceText.textContent = `${target.name}: "${target.alertLine || "O que pensa que esta fazendo?"}"`;
   const nextFightNumber = (state.run?.battlesStarted || 0) + 1;
   elements.choiceWarning?.classList.toggle("hidden", nextFightNumber < 2);
   elements.choiceModal.classList.remove("hidden");
+  syncChoiceTimer();
 }
 
 function hideChoice() {
   elements.choiceWarning?.classList.add("hidden");
   elements.choiceModal.classList.add("hidden");
+}
+
+function syncChoiceTimer() {
+  if (!elements.fightAutoTimer || !elements.choiceModal || elements.choiceModal.classList.contains("hidden")) return;
+  const seconds = Math.max(0, Math.ceil(Number(state?.run?.choiceTimer || 0)));
+  elements.fightAutoTimer.textContent = `Auto em ${seconds}s`;
+  elements.fightButton?.classList.toggle("auto-soon", seconds <= 2);
 }
 
 function handleResult(result) {

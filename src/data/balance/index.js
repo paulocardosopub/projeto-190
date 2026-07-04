@@ -668,7 +668,7 @@ function createItemConfig(slot, rarity, tier, name, bonus) {
 }
 
 function equipmentIconPath(slot, id) {
-  if (slot === "weapon") return `src/inventory/icons/weapon/generated/${id}.png?v=icons-2`;
+  if (slot === "weapon") return `src/inventory/icons/weapon/generated/${id}.png?v=icons-3`;
   if (slot === "body") return `src/inventory/icons/armor/generated/${id}.png?v=armor-1`;
   if (slot === "hands") return `src/inventory/icons/gloves/generated/${id}.png?v=gloves-1`;
   return null;

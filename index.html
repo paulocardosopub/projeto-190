@@ -117,7 +117,7 @@
       return checkVersion();
     })();
   </script>
-  <link rel="stylesheet" href="./styles.css?v=cache-check-2">
+  <link rel="stylesheet" href="./styles.css?v=cache-check-3">
   <title>Projeto 190</title>
   <script>
     const bootParams = new URLSearchParams(window.location.search);
@@ -269,7 +269,10 @@
       <p class="choice-warning hidden" id="choice-warning">Caso você seja pego novamente poderá ir preso, tem certeza?</p>
       <div class="modal-actions">
         <button class="secondary-action" id="flee-button">Fugir</button>
-        <button class="primary-action" id="fight-button">Brigar</button>
+        <button class="primary-action choice-fight-button" id="fight-button">
+          <span class="fight-auto-timer" id="fight-auto-timer">Auto em 5s</span>
+          <span>Brigar</span>
+        </button>
       </div>
     </section>
   </div>
@@ -292,6 +295,6 @@
   <div class="death-flash hidden" id="death-flash" aria-hidden="true"></div>
 
   <script src="./src/config/publicOnlineConfig.js?v=cache-check-1"></script>
-  <script type="module" src="./src/main.js?v=cache-check-3"></script>
+  <script type="module" src="./src/main.js?v=cache-check-4"></script>
 </body>
 </html>

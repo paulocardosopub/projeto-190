@@ -4,7 +4,7 @@ import {
   itemsConfig,
   rarityConfig,
   resolveEquipmentId
-} from "../balance/index.js?v=gloves-1";
+} from "../balance/index.js?v=icons-3";
 
 export const EQUIPMENT = itemsConfig;
 

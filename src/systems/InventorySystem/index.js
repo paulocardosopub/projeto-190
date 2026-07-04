@@ -1,10 +1,10 @@
-import { getEquipmentById, EQUIPMENT_SLOTS } from "../../data/equipment/index.js?v=gloves-1";
+import { getEquipmentById, EQUIPMENT_SLOTS } from "../../data/equipment/index.js?v=icons-3";
 import {
   RARITY_ORDER,
   craftConfig,
   getCraftCostForResult,
   getCraftResultConfig
-} from "../../data/balance/index.js?v=vault-1";
+} from "../../data/balance/index.js?v=icons-3";
 import { itemPower } from "../EquipmentSystem/index.js";
 
 let uidCounter = 1;
