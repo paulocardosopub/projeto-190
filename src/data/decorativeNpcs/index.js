@@ -3,31 +3,35 @@ export const CITY_DECORATIVE_NPCS = [];
 export function decorativeNpcsForIdleMap(mapId) {
   const sets = {
     prisao: [
-      oldNpc("prisao-policial-extra-1", "Policial", 3, 350, "front"),
-      oldNpc("prisao-policial-extra-2", "Policial", 3, 620, "left"),
-      oldNpc("prisao-detento-1", "Detento", 7, 980, "front"),
-      oldNpc("prisao-detento-2", "Detento", 7, 1270, "right")
+      newNpc("prisao-policial-extra-1", "Policial", 4, 0, 300, "right"),
+      newNpc("prisao-policial-extra-2", "Policial", 4, 0, 650, "front"),
+      newNpc("prisao-detento-1", "Detento", 6, 0, 1130, "front"),
+      newNpc("prisao-detento-2", "Detento", 3, 4, 1320, "right"),
+      newNpc("prisao-seguranca-1", "Seguranca", 8, 4, 1640, "left")
     ],
     hospital: [
-      oldNpc("hospital-paciente-1", "Paciente", 6, 520, "front"),
-      oldNpc("hospital-funcionario-1", "Funcionario", 5, 930, "front"),
-      oldNpc("hospital-paciente-2", "Paciente", 1, 1320, "front")
+      newNpc("hospital-medico-extra-1", "Medico", 1, 0, 520, "right"),
+      newNpc("hospital-enfermeira-extra-1", "Enfermeira", 5, 4, 900, "left"),
+      newNpc("hospital-medico-extra-2", "Medico", 1, 0, 1180, "left"),
+      newNpc("hospital-paciente-extra-1", "Paciente", 7, 4, 1440, "front", 0.94),
+      newNpc("hospital-seguranca-1", "Seguranca", 8, 4, 1660, "front")
     ],
     petshop: []
   };
   return (sets[mapId] || []).map((npc) => ({ ...npc }));
 }
 
-function oldNpc(id, name, row, x, direction = "front") {
+function newNpc(id, name, row, columnOffset, x, direction = "front", heightScale = 0.96) {
   return {
     id,
     name,
     decorative: true,
     passive: true,
-    sheet: "enemies2",
+    sheet: "enemies3",
     row,
+    columnOffset,
     direction,
     x,
-    heightScale: 1
+    heightScale
   };
 }

@@ -1,5 +1,5 @@
 import { PLAYERS } from "./data/players/index.js";
-import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=idle-maps-1";
+import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=idle-npcs-1";
 import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=drugs-2";
 import { CITY_PORTALS, HIDEOUT_PORTALS } from "./data/cityPortals/index.js?v=npc-crops-1";

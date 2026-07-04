@@ -1,8 +1,8 @@
-import { IDLE_MAPS, MAPS } from "../../data/maps/index.js?v=idle-maps-1";
+import { IDLE_MAPS, MAPS } from "../../data/maps/index.js?v=idle-npcs-1";
 import { SPRITES } from "../../data/assets.js?v=npc-crops-1";
 import { NPC_ALERT_LINES } from "../../data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "../../data/cityNpcs/index.js?v=drugs-2";
-import { decorativeNpcsForIdleMap } from "../../data/decorativeNpcs/index.js?v=npc-crops-1";
+import { decorativeNpcsForIdleMap } from "../../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { calculateStats } from "../EquipmentSystem/index.js";
 import { createNpcWave, createEnemyStats } from "../EnemySystem/index.js?v=npc-crops-1";
 import { rollLoot, applyLoot } from "../LootSystem/index.js?v=phase1-1";

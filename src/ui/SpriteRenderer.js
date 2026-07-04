@@ -1,8 +1,8 @@
 import { ASSETS, SPRITES } from "../data/assets.js?v=npc-crops-1";
-import { CITY, HIDEOUTS, IDLE_MAPS, MAPS } from "../data/maps/index.js?v=idle-maps-1";
+import { CITY, HIDEOUTS, IDLE_MAPS, MAPS } from "../data/maps/index.js?v=idle-npcs-1";
 import { PLAYERS } from "../data/players/index.js";
 import { CITY_NPCS } from "../data/cityNpcs/index.js?v=drugs-2";
-import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=npc-crops-1";
+import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS } from "../data/cityPortals/index.js?v=npc-crops-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-7";
 

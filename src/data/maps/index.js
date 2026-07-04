@@ -28,9 +28,9 @@ export const IDLE_MAPS = [
     backgroundRow: 0,
     description: "Area de retencao temporaria.",
     npcs: [
-      { id: "prisao-policial-1", name: "Policial", sheet: "enemies2", row: 3, x: 420, direction: "front" },
-      { id: "prisao-policial-2", name: "Policial", sheet: "enemies2", row: 3, x: 900, direction: "left" },
-      { id: "prisao-policial-3", name: "Policial", sheet: "enemies2", row: 3, x: 1450, direction: "right" }
+      idleNpc("prisao-policial-1", "Policial", 4, 0, 420, "front"),
+      idleNpc("prisao-policial-2", "Policial", 4, 0, 920, "left"),
+      idleNpc("prisao-policial-3", "Policial", 4, 0, 1450, "right")
     ]
   },
   {
@@ -39,7 +39,12 @@ export const IDLE_MAPS = [
     name: "Hospital",
     backgroundSheet: "backgroundIdle1",
     backgroundRow: 1,
-    description: "Tratamento e recuperacao do jogador."
+    description: "Tratamento e recuperacao do jogador.",
+    npcs: [
+      idleNpc("hospital-medico-1", "Medico", 1, 0, 760, "front"),
+      idleNpc("hospital-enfermeira-1", "Enfermeira", 5, 4, 1040, "front"),
+      idleNpc("hospital-paciente-1", "Paciente", 7, 4, 1280, "left", 0.94)
+    ]
   },
   {
     id: "petshop",
@@ -52,3 +57,16 @@ export const IDLE_MAPS = [
 ];
 
 export const MAP_TIERS = [...new Set(MAPS.map((map) => map.tier))];
+
+function idleNpc(id, name, row, columnOffset, x, direction = "front", heightScale = 0.96) {
+  return {
+    id,
+    name,
+    sheet: "enemies3",
+    row,
+    columnOffset,
+    x,
+    direction,
+    heightScale
+  };
+}
