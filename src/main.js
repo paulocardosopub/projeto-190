@@ -3499,10 +3499,17 @@ function normalizeState() {
   state.settings.visual.players ||= {};
   state.settings.visual.npcs ||= {};
   state.settings.visual.hideoutItems ||= {};
-  state.settings.onlineProvider ||= "supabase";
   state.settings.onlineUrl ||= "ws://localhost:4191";
-  state.settings.supabaseUrl ||= "";
-  state.settings.supabaseKey ||= "";
+  const publicSupabaseConfig = window.PROJETO190_SUPABASE || {};
+  if (publicSupabaseConfig.url && publicSupabaseConfig.key) {
+    state.settings.onlineProvider = "supabase";
+    state.settings.supabaseUrl = publicSupabaseConfig.url;
+    state.settings.supabaseKey = publicSupabaseConfig.key;
+  } else {
+    state.settings.onlineProvider ||= "supabase";
+    state.settings.supabaseUrl ||= "";
+    state.settings.supabaseKey ||= "";
+  }
   state.settings.autoRepeatRaid = Boolean(state.settings.autoRepeatRaid);
   state.settings.npcTestDirection ||= "right";
   state.settings.hideoutEditor ||= {};

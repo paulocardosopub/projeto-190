@@ -2,16 +2,17 @@
 
 Este projeto esta preparado para publicar a versao web pelo GitHub Pages.
 
-## Checklist antes do upload
+## Checklist antes do deploy
 
 1. Confirmar que o jogo abre localmente.
-2. Enviar o projeto para um repositorio publico no GitHub.
-3. Publicar os arquivos estaticos na branch `gh-pages`.
-4. Ativar o GitHub Pages usando a branch `gh-pages` como origem.
+2. No GitHub, abrir **Settings > Pages** e deixar a origem como **GitHub Actions**.
+3. Em **Settings > Secrets and variables > Actions > Variables**, criar `SUPABASE_URL`.
+4. Criar `SUPABASE_KEY` com a chave publica/publishable do Supabase.
+5. Enviar um push para `main` ou rodar manualmente o workflow **Deploy web**.
 
 ## Arquivos publicados
 
-A publicacao web envia apenas os arquivos que o navegador precisa:
+O workflow `.github/workflows/pages.yml` publica os arquivos que o navegador precisa:
 
 - `index.html`
 - `styles.css`
@@ -20,4 +21,6 @@ A publicacao web envia apenas os arquivos que o navegador precisa:
 - `player.png`
 - `paginas.png`
 
-A pasta `server/` continua no repositorio, mas nao roda no GitHub Pages. A versao web publica funciona com o progresso offline; recursos online precisam de um servidor separado.
+Durante o deploy, o arquivo `src/config/publicOnlineConfig.js` e gerado com as variaveis `SUPABASE_URL` e `SUPABASE_KEY`. Assim, todo jogador que abrir o link publico entra no mesmo online do Supabase.
+
+A pasta `server/` continua no repositorio, mas nao roda no GitHub Pages. Ela fica apenas como fallback local de desenvolvimento.

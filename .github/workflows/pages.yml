@@ -1,0 +1,60 @@
+name: Deploy web
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Write public online config
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL || secrets.SUPABASE_URL || '' }}
+          SUPABASE_KEY: ${{ vars.SUPABASE_KEY || secrets.SUPABASE_KEY || '' }}
+        run: |
+          node - <<'NODE'
+          const fs = require("fs");
+          const config = {
+            url: process.env.SUPABASE_URL || "",
+            key: process.env.SUPABASE_KEY || ""
+          };
+          fs.mkdirSync("src/config", { recursive: true });
+          fs.writeFileSync(
+            "src/config/publicOnlineConfig.js",
+            `window.PROJETO190_SUPABASE = ${JSON.stringify(config, null, 2)};\ndocument.documentElement.dataset.onlineConfig = "loaded";\n`
+          );
+          NODE
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
