@@ -118,7 +118,7 @@ import {
   updatePassiveIncome
 } from "./systems/StaminaSystem/index.js?v=phase1-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=phase1-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=bruno-yellow-1";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=viewport-width-1";
 import {
   renderCharacterSelect,
   renderConfigWindow,

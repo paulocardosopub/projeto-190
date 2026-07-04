@@ -42,6 +42,7 @@ export class SpriteRenderer {
   }
 
   draw(state, playerRow) {
+    this.syncCanvasSize();
     const ctx = this.ctx;
     const { width, height } = this.canvas;
     ctx.clearRect(0, 0, width, height);
@@ -121,6 +122,17 @@ export class SpriteRenderer {
     }
 
     this.drawDamageNumbers(state, cameraWorld, visual);
+  }
+
+  syncCanvasSize() {
+    const rect = this.canvas.getBoundingClientRect();
+    const width = Math.max(1, Math.round(rect.width || this.canvas.width));
+    const height = Math.max(1, Math.round(rect.height || this.canvas.height));
+    if (this.canvas.width === width && this.canvas.height === height) return;
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.ctx = this.canvas.getContext("2d");
+    this.ctx.imageSmoothingEnabled = false;
   }
 
   drawBackground(sheetKey, row, cameraWorld = 0) {
