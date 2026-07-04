@@ -5,14 +5,14 @@ Este projeto esta preparado para publicar a versao web pelo GitHub Pages.
 ## Checklist antes do deploy
 
 1. Confirmar que o jogo abre localmente.
-2. No GitHub, abrir **Settings > Pages** e deixar a origem como **GitHub Actions**.
+2. No GitHub, abrir **Settings > Pages** e deixar a origem como branch `gh-pages` na pasta raiz.
 3. Em **Settings > Secrets and variables > Actions > Variables**, criar `SUPABASE_URL`.
 4. Criar `SUPABASE_KEY` com a chave publica/publishable do Supabase.
 5. Enviar um push para `main` ou rodar manualmente o workflow **Deploy web**.
 
 ## Arquivos publicados
 
-O workflow `.github/workflows/pages.yml` publica os arquivos que o navegador precisa:
+O workflow `.github/workflows/pages.yml` publica na branch `gh-pages` os arquivos que o navegador precisa:
 
 - `index.html`
 - `styles.css`

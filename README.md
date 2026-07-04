@@ -63,6 +63,8 @@ Antes do deploy, configure no GitHub:
 - `SUPABASE_URL`: Project URL do Supabase.
 - `SUPABASE_KEY`: chave publica/publishable ou anon key.
 
+Em **Settings > Pages**, deixe a origem como branch `gh-pages` na pasta raiz. O workflow atualiza essa branch automaticamente a cada push na `main`.
+
 O site final fica no formato `https://usuario.github.io/repositorio/`.
 
 Mais detalhes estao em `docs/RELEASE.md`.
