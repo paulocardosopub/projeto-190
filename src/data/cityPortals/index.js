@@ -2,10 +2,11 @@ export const CITY_PORTALS = [
   {
     id: "assaults",
     label: "Assaltos",
-    x: 35,
-    width: 46,
-    height: 56,
-    action: "assaults"
+    x: 82,
+    width: 108,
+    height: 82,
+    action: "assaults",
+    type: "assailant"
   },
   {
     id: "hideout-door",

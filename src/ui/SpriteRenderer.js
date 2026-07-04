@@ -1,8 +1,9 @@
-import { ASSETS, SPRITES } from "../data/assets.js?v=vehicle-alpha-3";
-import { CITY, HIDEOUTS, MAPS } from "../data/maps/index.js?v=vault-1";
+import { ASSETS, SPRITES } from "../data/assets.js?v=portal-assailant-1";
+import { CITY, HIDEOUTS, IDLE_MAPS, MAPS } from "../data/maps/index.js?v=idle-maps-1";
 import { PLAYERS } from "../data/players/index.js";
 import { CITY_NPCS } from "../data/cityNpcs/index.js?v=drugs-2";
-import { CITY_PORTALS, HIDEOUT_PORTALS } from "../data/cityPortals/index.js?v=rest-3";
+import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=idle-npcs-1";
+import { CITY_PORTALS, HIDEOUT_PORTALS } from "../data/cityPortals/index.js?v=portal-assailant-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-7";
 
 export class SpriteRenderer {
@@ -25,6 +26,7 @@ export class SpriteRenderer {
     this.actorBounds.players = buildActorBounds(this.images.players, actorSheet("players"));
     this.actorBounds.enemies = buildActorBounds(this.images.enemies, actorSheet("enemies"));
     this.actorBounds.enemies2 = buildActorBounds(this.images.enemies2, actorSheet("enemies2"));
+    this.actorBounds.enemies3 = buildActorBounds(this.images.enemies3, actorSheet("enemies3"));
     HIDEOUT_ITEM_TYPES.forEach((item) => {
       const config = SPRITES.hideoutItems[item.id];
       this.hideoutItemBounds[item.id] = buildGridBounds(this.images[config.sheet], config);
@@ -60,6 +62,8 @@ export class SpriteRenderer {
       : state.scene === "city"
         ? CITY_NPCS
         : state.run.npcs || [];
+
+    this.drawDecorativeNpcs(state, cameraWorld, visual);
 
     for (const npc of npcs) {
       if (npc.done) continue;
@@ -108,7 +112,7 @@ export class SpriteRenderer {
   }
 
   drawBackground(sheetKey, row, cameraWorld = 0) {
-    const source = SPRITES.background;
+    const source = backgroundSheet(sheetKey);
     const image = this.images[sheetKey] || this.images.backgrounds;
     const sourceHeight = Math.min(source.height, this.canvas.height);
     const sourceY = row * source.height + Math.max(0, source.height - sourceHeight);
@@ -275,6 +279,29 @@ export class SpriteRenderer {
       });
   }
 
+  drawDecorativeNpcs(state, cameraWorld, visual) {
+    const npcs = state.scene === "city"
+      ? CITY_DECORATIVE_NPCS
+      : state.run?.decorativeNpcs || [];
+    if (!npcs.length) return;
+
+    const feetY = visual.groundY + visual.npcYOffset;
+    for (const npc of npcs) {
+      if (npc.done) continue;
+      const screenX = this.worldToScreen(npc.x, cameraWorld);
+      if (screenX < -110 || screenX > this.canvas.width + 110) continue;
+      this.drawActor(
+        npc.sheet || "enemies3",
+        npc.row || 0,
+        npc.direction || "front",
+        screenX,
+        feetY,
+        visual.npcHeight * Number(npc.heightScale || 0.92),
+        1
+      );
+    }
+  }
+
   drawHideoutItems(state, cameraWorld) {
     this.lastHideoutItemBounds = [];
     if (state.scene !== "hideout") return;
@@ -322,7 +349,9 @@ export class SpriteRenderer {
       const x = this.worldToScreen(portal.x, cameraWorld);
       if (x < -portal.width || x > this.canvas.width + portal.width) return;
       const feetY = visual.groundY + visual.npcYOffset + Number(portal.yOffset || 0);
-      if (portal.type === "smoke" || portal.action === "hideout") {
+      if (portal.type === "assailant") {
+        this.drawAssailantPortal(portal, x, feetY);
+      } else if (portal.type === "smoke" || portal.action === "hideout") {
         this.drawHideoutSmokePortal(portal, x, feetY);
       } else if (portal.type === "door") {
         this.drawHideoutDoor(portal, x, feetY);
@@ -330,6 +359,35 @@ export class SpriteRenderer {
         this.drawAssaultPortal(portal, x, feetY);
       }
     });
+  }
+
+  drawAssailantPortal(portal, x, feetY) {
+    const image = this.images.assaultPortal;
+    if (!image) {
+      this.drawAssaultPortal(portal, x, feetY);
+      return;
+    }
+
+    const ctx = this.ctx;
+    const time = performance.now() / 1000;
+    const pulse = (Math.sin(time * 2.2) + 1) / 2;
+    const height = Number(portal.height || 82) * (1 + pulse * 0.025);
+    const width = height * (image.width / image.height);
+    const drawX = Math.round(x - width / 2);
+    const drawY = Math.round(feetY - height);
+
+    ctx.save();
+    this.drawContactShadow(x, feetY + 3, width * 0.46);
+
+    const glow = ctx.createRadialGradient(x, feetY - height * 0.38, 8, x, feetY - height * 0.38, width * 0.72);
+    glow.addColorStop(0, `rgba(255, 204, 84, ${0.18 + pulse * 0.07})`);
+    glow.addColorStop(0.58, "rgba(187, 50, 38, 0.1)");
+    glow.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.fillStyle = glow;
+    ctx.fillRect(drawX - 18, drawY - 12, width + 36, height + 28);
+
+    ctx.drawImage(image, drawX, drawY, width, height);
+    ctx.restore();
   }
 
   drawHideoutPortals(state, cameraWorld, visual) {
@@ -888,8 +946,8 @@ export class SpriteRenderer {
 
   drawMapThumb(canvas, mapOrRow, sheetKey = "backgrounds") {
     const ctx = canvas.getContext("2d");
-    const source = SPRITES.background;
     const map = typeof mapOrRow === "object" ? mapOrRow : null;
+    const source = backgroundSheet(map?.backgroundSheet || sheetKey);
     const row = map ? map.backgroundRow : mapOrRow;
     const image = this.images[map?.backgroundSheet || sheetKey] || this.images.backgrounds;
     ctx.imageSmoothingEnabled = false;
@@ -1383,11 +1441,18 @@ function currentSceneMap(state) {
   if (state.scene === "map") {
     return MAPS.find((candidate) => candidate.id === state.currentMapId) || MAPS[0];
   }
+  if (state.scene === "idle") {
+    return IDLE_MAPS.find((candidate) => candidate.id === state.currentMapId) || IDLE_MAPS[0];
+  }
   if (state.scene === "hideout") {
     const tier = Math.max(1, Math.min(HIDEOUTS.length, state.player?.hideoutTier || 1));
     return HIDEOUTS[tier - 1] || HIDEOUTS[0];
   }
   return CITY;
+}
+
+function backgroundSheet(sheetKey) {
+  return SPRITES.backgroundSheets?.[sheetKey] || SPRITES.background;
 }
 
 function playerAction(state) {
@@ -1422,7 +1487,7 @@ function playerFrameIndex(action, length, state, animationState) {
 
 function isPlayerWalking(state) {
   const run = state.run || {};
-  if (state.scene === "city" || state.scene === "hideout") {
+  if (state.scene === "city" || state.scene === "hideout" || state.scene === "idle") {
     return Number.isFinite(run.cityTargetX) && Math.abs(run.cityTargetX - (run.playerX || 0)) > 2;
   }
   return run.mode === "approaching" || run.mode === "seeking" || run.mode === "collectingLoot";
@@ -1445,7 +1510,7 @@ function clamp(value, min, max) {
 
 function cameraWorldForState(state, visual, viewportWidth) {
   const playerX = state.run?.playerX || 0;
-  if (state.scene === "city") {
+  if (state.scene === "city" || state.scene === "idle") {
     return Math.round(clamp(playerX - viewportWidth * 0.5, 0, SPRITES.background.width - viewportWidth));
   }
   return Math.round(Math.max(0, playerX - visual.cameraLead));
@@ -1453,7 +1518,7 @@ function cameraWorldForState(state, visual, viewportWidth) {
 
 function getVisualSettings(state) {
   const visual = state.settings?.visual || {};
-  const mapKey = state.scene === "map"
+  const mapKey = state.scene === "map" || state.scene === "idle"
     ? state.currentMapId
     : state.scene === "hideout"
       ? `esconderijo-${state.player?.hideoutTier || 1}`

@@ -3,6 +3,8 @@ export const ASSETS = {
   backgrounds2: "./assets/backgrounds2.png",
   backgrounds3: "./assets/backgrounds3.png",
   backgrounds4: "./assets/backgrounds4.png",
+  backgroundIdle1: "./assets/backgroundidle1.png",
+  assaultPortal: "./assets/assaltante.png",
   hideouts: "./assets/esconderijos.png",
   hideoutHouses: "./src/hideout/casas.png",
   hideoutVehicles: "./src/hideout/veiculos.png?v=vehicle-alpha-3",
@@ -12,6 +14,7 @@ export const ASSETS = {
   playerStealAnimation: "./src/animations/roubos.png",
   enemies: "./src/enemy/inimigos1.png",
   enemies2: "./src/enemy/inimigos2.png",
+  enemies3: "./src/enemy/inimigos3.png",
   pages: "./paginas.png"
 };
 
@@ -119,6 +122,45 @@ export const SPRITES = {
           { x: 27, y: 32, width: 118, height: 160 }
         ]
       ]
+    },
+    enemies3: {
+      cols: 4,
+      rows: 5,
+      cellWidth: 280,
+      cellHeight: 280,
+      direction: {
+        right: 0,
+        front: 1,
+        back: 2,
+        left: 3
+      }
+    }
+  },
+  backgroundSheets: {
+    backgrounds: {
+      width: 1920,
+      height: 320,
+      rows: 6
+    },
+    backgrounds2: {
+      width: 1920,
+      height: 320,
+      rows: 6
+    },
+    backgrounds3: {
+      width: 1920,
+      height: 320,
+      rows: 6
+    },
+    backgrounds4: {
+      width: 1920,
+      height: 320,
+      rows: 6
+    },
+    backgroundIdle1: {
+      width: 1920,
+      height: 940 / 3,
+      rows: 3
     }
   },
   playerAnimation: {

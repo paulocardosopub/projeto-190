@@ -1,8 +1,10 @@
-import { MAPS } from "../../data/maps/index.js?v=phase1-1";
-import { SPRITES } from "../../data/assets.js";
-import { NPC_ALERT_LINES } from "../../data/enemies/index.js";
+import { IDLE_MAPS, MAPS } from "../../data/maps/index.js?v=idle-maps-1";
+import { SPRITES } from "../../data/assets.js?v=idle-maps-1";
+import { NPC_ALERT_LINES } from "../../data/enemies/index.js?v=idle-npcs-1";
+import { CITY_NPCS } from "../../data/cityNpcs/index.js?v=drugs-2";
+import { decorativeNpcsForIdleMap } from "../../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { calculateStats } from "../EquipmentSystem/index.js";
-import { createNpcWave, createEnemyStats } from "../EnemySystem/index.js";
+import { createNpcWave, createEnemyStats } from "../EnemySystem/index.js?v=idle-npcs-1";
 import { rollLoot, applyLoot } from "../LootSystem/index.js?v=phase1-1";
 import { gainXp, addLog } from "../PlayerSystem/index.js";
 import { applyHospitalFee, applyPrisonFee } from "../PenaltySystem/index.js?v=hospital-fee-1";
@@ -15,6 +17,7 @@ const ITEM_THEFT_CHAT_SECONDS = 5.5;
 const POLICE_RISK_STARTS_AFTER_FIGHTS = 2;
 const GROUND_LOOT_PICKUP_DISTANCE = 22;
 const GROUND_LOOT_PICKUP_DELAY = 0.4;
+const CITY_SPAWN_X = 190;
 
 const POLICE_WARNINGS = [
   "Dessa vez ficou so no prejuizo. Na proxima, voce vai junto.",
@@ -93,13 +96,14 @@ export class CombatSystem {
     this.hooks = hooks;
   }
 
-  enterCity() {
+  enterCity(options = {}) {
+    const playerX = clampWorldX(options.playerX ?? CITY_SPAWN_X);
     this.state.scene = "city";
     this.state.currentMapId = null;
     this.state.run = {
       mode: "city",
-      playerX: 120,
-      playerDirection: "right",
+      playerX,
+      playerDirection: options.playerDirection || "right",
       npcs: [],
       targetId: null,
       timer: 0,
@@ -123,12 +127,116 @@ export class CombatSystem {
       damageNumbers: [],
       itemTheftChats: [],
       groundLoots: [],
+      decorativeNpcs: [],
       summary: null,
       summaryTimer: 0
     };
     this.syncHpToStats();
-    addLog(this.state, "Voce voltou para a cidade.");
+    if (options.logMessage !== false) addLog(this.state, options.logMessage || "Voce voltou para a cidade.");
     this.emit();
+  }
+
+  enterIdleMap(mapId, options = {}) {
+    const map = IDLE_MAPS.find((candidate) => candidate.id === mapId);
+    if (!map) return;
+    const temporaryStay = options.temporaryStay
+      ? {
+          duration: Number(options.temporaryStay.duration || 0),
+          remaining: Number(options.temporaryStay.duration || 0),
+          label: options.temporaryStay.label || "",
+          returnScene: options.temporaryStay.returnScene || "city",
+          returnX: options.temporaryStay.returnX ?? 120,
+          returnDirection: options.temporaryStay.returnDirection || "right",
+          returnLog: options.temporaryStay.returnLog || "",
+          completionToast: options.temporaryStay.completionToast || "",
+          healOnReturn: Boolean(options.temporaryStay.healOnReturn)
+        }
+      : null;
+
+    this.state.scene = "idle";
+    this.state.currentMapId = map.id;
+    this.state.run = {
+      mode: temporaryStay ? "temporary" : "idle",
+      playerX: clampWorldX(options.playerX ?? 120),
+      playerDirection: options.playerDirection || "right",
+      npcs: cloneIdleNpcs(map.npcs),
+      targetId: null,
+      timer: 0,
+      raidDuration: 0,
+      raidTimeLeft: 0,
+      enemyHp: 0,
+      enemyMaxHp: 0,
+      playerAttackTimer: 0,
+      enemyAttackTimer: 0,
+      playerAction: null,
+      playerActionTimer: 0,
+      playerActionDuration: 0,
+      cityTargetX: null,
+      attempts: 0,
+      caughtInFlagrante: 0,
+      battlesStarted: 0,
+      choiceTimer: 0,
+      pendingCityPortalId: null,
+      pendingHideoutPortalId: null,
+      pendingHideoutItemId: null,
+      damageNumbers: [],
+      itemTheftChats: [],
+      groundLoots: [],
+      decorativeNpcs: decorativeNpcsForIdleMap(map.id),
+      policeTimer: 0,
+      policeMessage: null,
+      policeScene: null,
+      temporaryStay,
+      summary: null,
+      summaryTimer: 0
+    };
+    this.syncHpToStats();
+    if (options.logMessage) addLog(this.state, options.logMessage);
+    this.emit();
+  }
+
+  enterTemporaryStay({ mapId, duration, label, returnX, returnDirection = "right", logMessage, completionToast, healOnReturn = false, playerX = 120 }) {
+    this.enterIdleMap(mapId, {
+      playerX,
+      temporaryStay: {
+        duration,
+        label,
+        returnScene: "city",
+        returnX,
+        returnDirection,
+        completionToast,
+        healOnReturn
+      },
+      logMessage
+    });
+  }
+
+  enterPrison() {
+    const police = CITY_NPCS.find((npc) => npc.id === "npc-seguranca");
+    this.enterTemporaryStay({
+      mapId: "prisao",
+      duration: 30,
+      label: "cumprindo pena",
+      playerX: 260,
+      returnX: (police?.x ?? 1500) - 58,
+      returnDirection: "right",
+      logMessage: "Voce foi levado para a prisao.",
+      completionToast: "Pena cumprida. Voce voltou para a cidade."
+    });
+  }
+
+  enterHospital() {
+    this.enterTemporaryStay({
+      mapId: "hospital",
+      duration: 30,
+      label: "Aguarde o tratamento finalizar",
+      playerX: 260,
+      returnX: CITY_SPAWN_X,
+      returnDirection: "right",
+      logMessage: "Voce foi levado para o hospital.",
+      completionToast: "Tratamento finalizado. Voce voltou para a cidade.",
+      healOnReturn: true
+    });
   }
 
   enterHideout(tier = this.state.player.terrenoAtual || this.state.player.hideoutTier || 1) {
@@ -162,6 +270,7 @@ export class CombatSystem {
       damageNumbers: [],
       itemTheftChats: [],
       groundLoots: [],
+      decorativeNpcs: [],
       summary: null,
       summaryTimer: 0
     };
@@ -225,6 +334,7 @@ export class CombatSystem {
       damageNumbers: [],
       itemTheftChats: [],
       groundLoots: [],
+      decorativeNpcs: [],
       targetDropId: null,
       policeTimer: 0,
       policeMessage: null,
@@ -247,6 +357,15 @@ export class CombatSystem {
     this.updateGroundLoots(dt);
     if (run.mode === "police") {
       this.updatePoliceConfiscation(dt);
+      return;
+    }
+    if (run.mode === "temporary") {
+      this.updateFreeMovement(dt);
+      this.updateTemporaryStay(dt);
+      return;
+    }
+    if (run.mode === "idle") {
+      this.updateFreeMovement(dt);
       return;
     }
     if (run.mode === "summary") {
@@ -278,7 +397,7 @@ export class CombatSystem {
       if (npc.done || npc.alerted) continue;
       npc.walkPhase += dt;
       npc.x += Math.sin(npc.walkPhase * 0.75) * dt * 6;
-      npc.direction = Math.sin(npc.walkPhase * 0.75) > 0.35 ? "right" : "back";
+      setNpcDirection(npc, Math.sin(npc.walkPhase * 0.75) > 0.35 ? "right" : "back");
     }
 
     if (run.mode === "seeking") {
@@ -313,7 +432,7 @@ export class CombatSystem {
         run.playerDirection = target.x >= run.playerX ? "right" : "left";
         run.mode = "stealing";
         run.timer = 1.05;
-        target.direction = "back";
+        setNpcDirection(target, "back");
         addLog(this.state, `Tentando roubar ${target.name}...`);
       }
     }
@@ -343,7 +462,7 @@ export class CombatSystem {
     if (target) {
       target.done = true;
       target.alerted = false;
-      target.direction = "right";
+      setNpcDirection(target, "right");
     }
     this.state.run.choiceTimer = 0;
     this.state.run.targetId = null;
@@ -367,7 +486,7 @@ export class CombatSystem {
     const enemy = createEnemyStats(target, map);
     this.state.run.battlesStarted = (this.state.run.battlesStarted || 0) + 1;
     target.alerted = true;
-    target.direction = "left";
+    setNpcDirection(target, "left");
     this.state.run.mode = "combat";
     this.state.run.choiceTimer = 0;
     this.faceTarget();
@@ -381,6 +500,9 @@ export class CombatSystem {
   }
 
   currentMap() {
+    if (this.state.scene === "idle") {
+      return IDLE_MAPS.find((map) => map.id === this.state.currentMapId);
+    }
     return MAPS.find((map) => map.id === this.state.currentMapId);
   }
 
@@ -391,6 +513,11 @@ export class CombatSystem {
 
   moveHideoutTo(worldX) {
     if (this.state.scene !== "hideout" || this.state.run.mode !== "hideout") return;
+    this.moveFreeSceneTo(worldX);
+  }
+
+  moveIdleTo(worldX) {
+    if (this.state.scene !== "idle" || !["idle", "temporary"].includes(this.state.run.mode)) return;
     this.moveFreeSceneTo(worldX);
   }
 
@@ -450,7 +577,7 @@ export class CombatSystem {
       this.state.run.caughtInFlagrante = (this.state.run.caughtInFlagrante || 0) + 1;
       const alertLine = randomAlertLine();
       target.alerted = true;
-      target.direction = "left";
+      setNpcDirection(target, "left");
       target.alertLine = alertLine;
       this.state.run.mode = "choice";
       this.state.run.choiceTimer = CHOICE_AUTO_FIGHT_SECONDS;
@@ -584,7 +711,7 @@ export class CombatSystem {
       x: target.x,
       sheet: target.sheet || "enemies",
       row: target.row,
-      direction: "left",
+      direction: target.fixedFrame ? target.direction : "left",
       age: 0,
       duration: ITEM_THEFT_CHAT_SECONDS
     });
@@ -671,10 +798,10 @@ export class CombatSystem {
       player.hp = 0;
       player.needsHideoutRest = true;
       const hospitalBill = applyHospitalFee(player);
-      addLog(this.state, "Voce caiu na briga e voltou para o esconderijo.");
+      addLog(this.state, "Voce caiu na briga e foi levado para o hospital.");
       addLog(this.state, `Taxa hospitalar: R$ ${hospitalBill.charged}.`);
-      this.hooks.onToast?.("Briga perdida. Repouse perto da casa no esconderijo.");
-      this.enterHideout();
+      this.hooks.onToast?.("Briga perdida. Tratamento iniciado no hospital.");
+      this.enterHospital();
       this.hooks.onHospitalBill?.(hospitalBill);
     }
   }
@@ -762,12 +889,11 @@ export class CombatSystem {
   }
 
   triggerPoliceConfiscation() {
-    const run = this.state.run;
     const message = randomPoliceWarning();
     const target = this.targetNpc();
     if (target) {
       target.alerted = false;
-      target.direction = "left";
+      setNpcDirection(target, "left");
     }
 
     const confiscated = this.confiscateRaidLoot();
@@ -775,26 +901,14 @@ export class CombatSystem {
     const prisonFee = applyPrisonFee(this.state.player);
     const prisonFeeLine = `Taxa da prisao: R$ ${prisonFee.charged}.`;
     const drugLine = confiscatedDrugs ? ` Drogas confiscadas: ${confiscatedDrugs}.` : "";
-    const playerX = run.playerX || 120;
-    run.mode = "police";
-    run.targetId = null;
-    run.enemy = null;
-    run.enemyHp = 0;
-    run.enemyMaxHp = 0;
-    run.policeTimer = 3.1;
-    run.policeMessage = message;
-    run.policeScene = {
-      officers: [
-        { x: playerX - 62, direction: "right" },
-        { x: playerX + 62, direction: "left" }
-      ]
-    };
-    run.policeMessage = `${message} ${prisonFeeLine}${drugLine}`;
+    this.enterPrison();
+    this.state.run.policeMessage = `${message} ${prisonFeeLine}${drugLine}`;
     addLog(this.state, `Policia no local: ${message}`);
     addLog(this.state, `Loot confiscado: R$ ${confiscated.money}, ${confiscated.items} item(ns), ${confiscated.xp} XP.`);
     if (confiscatedDrugs) addLog(this.state, `Drogas confiscadas: ${confiscatedDrugs} unidade(s).`);
     addLog(this.state, prisonFeeLine);
     this.hooks.onPolice?.(`${message} ${prisonFeeLine}${drugLine}`);
+    this.emit();
   }
 
   confiscateRaidLoot() {
@@ -855,6 +969,30 @@ export class CombatSystem {
     addLog(this.state, message);
     this.hooks.onToast?.(message);
     this.emit();
+  }
+
+  updateTemporaryStay(dt) {
+    const run = this.state.run;
+    const stay = run.temporaryStay;
+    if (!stay) return;
+    stay.remaining = Math.max(0, Number(stay.remaining || 0) - dt);
+    if (stay.remaining > 0) return;
+
+    if (stay.healOnReturn) {
+      const stats = calculateStats(this.state.player);
+      this.state.player.hp = stats.maxHp;
+      this.state.player.needsHideoutRest = false;
+    }
+
+    if (stay.returnScene === "city") {
+      const toast = stay.completionToast;
+      this.enterCity({
+        playerX: stay.returnX,
+        playerDirection: stay.returnDirection,
+        logMessage: stay.returnLog || toast || "Voce voltou para a cidade."
+      });
+      if (toast) this.hooks.onToast?.(toast);
+    }
   }
 
   pushDamageNumber(value, worldX, type) {
@@ -995,4 +1133,18 @@ function calculateStealChanceForMap(map, stats) {
     Math.max(theftConfig.minChance, 100 - caughtChance * Number(theftConfig.caughtChanceMultiplier || 1))
   );
   return percent / 100;
+}
+
+function clampWorldX(value) {
+  const number = Math.round(Number(value || 120));
+  return Math.max(64, Math.min(SPRITES.background.width - 64, number));
+}
+
+function cloneIdleNpcs(npcs = []) {
+  return (npcs || []).map((npc) => ({ ...npc }));
+}
+
+function setNpcDirection(npc, direction) {
+  if (!npc || npc.fixedFrame) return;
+  npc.direction = direction;
 }

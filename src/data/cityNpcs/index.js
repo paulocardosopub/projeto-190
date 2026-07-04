@@ -62,14 +62,14 @@ export const CITY_NPCS = [
   },
   {
     id: "npc-seguranca",
-    name: "Seguranca",
-    shopName: "Portaria",
+    name: "Policial",
+    shopName: "Policial da Cidade",
     role: "future",
     sheet: "enemies2",
     row: 3,
     x: 1500,
     direction: "front",
-    greeting: "Area em preparacao."
+    greeting: "Fica esperto por aqui."
   },
   {
     id: "npc-feirante",

@@ -1,10 +1,18 @@
-import { NPC_TYPES } from "../../data/enemies/index.js";
+import { npcTypesForMap } from "../../data/enemies/index.js?v=idle-npcs-1";
 
 export function createNpcWave(map) {
   const count = randomInt(5, 10);
   const spacing = Math.max(190, Math.floor(1780 / count));
+  const npcTypes = npcTypesForMap(map);
+  const firstBaseIndex = npcTypes.findIndex((type) => !type.contexts);
+  const prioritizedCount = firstBaseIndex > 0 ? firstBaseIndex : npcTypes.length;
+  const baseStart = firstBaseIndex > 0 ? firstBaseIndex : npcTypes.length;
+  const startIndex = (((Number(map?.index) || 1) - 1) * 3) % prioritizedCount;
   return Array.from({ length: count }, (_, index) => {
-    const type = NPC_TYPES[randomInt(0, NPC_TYPES.length - 1)] || NPC_TYPES[0];
+    const shouldUseBase = baseStart < npcTypes.length && index % 4 === 3;
+    const type = shouldUseBase
+      ? npcTypes[baseStart + randomInt(0, npcTypes.length - baseStart - 1)]
+      : npcTypes[(startIndex + index) % prioritizedCount] || npcTypes[0];
     return {
       id: `${map.id}-npc-${index}-${Date.now().toString(36)}`,
       typeId: type.id,
@@ -13,7 +21,8 @@ export function createNpcWave(map) {
       row: type.row,
       x: 380 + index * spacing + randomInt(20, 120),
       y: 235,
-      direction: index % 2 === 0 ? "back" : "right",
+      direction: type.direction || (index % 2 === 0 ? "back" : "right"),
+      fixedFrame: Boolean(type.fixedFrame),
       walkPhase: Math.random() * 10,
       done: false,
       alerted: false,

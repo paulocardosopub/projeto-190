@@ -1,10 +1,10 @@
 import { PLAYERS } from "./data/players/index.js";
-import { HIDEOUTS, MAPS } from "./data/maps/index.js?v=phase1-1";
-import { NPC_TYPES } from "./data/enemies/index.js";
+import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=idle-maps-1";
+import { NPC_TYPES } from "./data/enemies/index.js?v=idle-npcs-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=drugs-2";
-import { CITY_PORTALS, HIDEOUT_PORTALS } from "./data/cityPortals/index.js?v=rest-3";
+import { CITY_PORTALS, HIDEOUT_PORTALS } from "./data/cityPortals/index.js?v=portal-assailant-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem } from "./systems/CombatSystem/index.js?v=drugs-2";
+import { CombatSystem } from "./systems/CombatSystem/index.js?v=portal-assailant-1";
 import { calculateStats, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -118,14 +118,14 @@ import {
   updatePassiveIncome
 } from "./systems/StaminaSystem/index.js?v=phase1-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=phase1-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=drugs-2";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=portal-assailant-1";
 import {
   renderCharacterSelect,
   renderConfigWindow,
   renderInventoryWindow,
   renderVaultWindow,
   renderPanel
-} from "./ui/WindowSystem.js?v=drugs-2";
+} from "./ui/WindowSystem.js?v=idle-maps-1";
 
 const elements = {
   canvas: document.querySelector("#game-canvas"),
@@ -1272,6 +1272,7 @@ function syncHud() {
   if (!state) return;
   const stats = calculateStats(state.player);
   const map = combat?.currentMap();
+  const temporaryStay = state.run?.temporaryStay;
   normalizeProgressionSystems(state.player);
   const hpPercent = stats.maxHp ? Math.max(0, state.player.hp / stats.maxHp) : 0;
 
@@ -1284,6 +1285,8 @@ function syncHud() {
   syncSurvivalWarning(stats, hpPercent);
   elements.scene.textContent = state.scene === "map" && map
     ? map.name
+    : state.scene === "idle" && map
+      ? map.name
     : state.scene === "hideout"
       ? "Esconderijo"
       : "Cidade";
@@ -1293,8 +1296,12 @@ function syncHud() {
     ? `${state.run.enemy.name} NV ${state.run.enemy.level} | ${state.run.enemyHp}/${state.run.enemyMaxHp}`
     : "Sem alvo em combate";
   const isRaid = state.scene === "map" && state.run.raidTimeLeft > 0 && state.run.mode !== "returning" && !state.run.animationTest;
-  elements.raidTimer.classList.toggle("hidden", !isRaid);
-  if (isRaid) {
+  const isTemporary = state.run.mode === "temporary" && temporaryStay;
+  elements.raidTimer.classList.toggle("hidden", !isRaid && !isTemporary);
+  if (isTemporary) {
+    elements.raidTimerLabel.textContent = `${temporaryStay.label}: ${formatTime(temporaryStay.remaining)}`;
+    elements.raidCountLabel.textContent = "Saida bloqueada";
+  } else if (isRaid) {
     elements.raidTimerLabel.textContent = formatTime(state.run.raidTimeLeft);
     elements.raidCountLabel.textContent = `${remainingTargets(state)} / ${totalTargets(state)} alvos`;
   }
@@ -1311,6 +1318,11 @@ function syncSurvivalWarning(stats, hpPercent) {
   const danger = hpPercent < 0.3 || staminaPercentValue < 0.3 || Boolean(state.player.needsHideoutRest);
   elements.survivalWarning.classList.toggle("hidden", !danger);
   if (!danger) return;
+
+  if (state.scene === "idle" && state.run?.mode === "temporary") {
+    elements.survivalWarning.textContent = temporaryStayText();
+    return;
+  }
 
   if (state.scene === "hideout") {
     elements.survivalWarning.textContent = state.run?.nearHideoutHouse
@@ -1344,6 +1356,11 @@ function handleStagePointer(event) {
     state.run.pendingHideoutPortalId = null;
     state.run.pendingHideoutItemId = null;
     combat.moveHideoutTo(renderer.screenToWorld(point.x, state));
+    return;
+  }
+  if (state.scene === "idle" && ["idle", "temporary"].includes(state.run.mode)) {
+    const point = canvasPoint(event);
+    combat.moveIdleTo(renderer.screenToWorld(point.x, state));
     return;
   }
   if (state.scene !== "city" || state.run.mode !== "city") return;
@@ -1545,12 +1562,14 @@ function applyKeyboardMovement() {
     state.run.pendingHideoutPortalId = null;
     state.run.pendingHideoutItemId = null;
     combat.moveHideoutTo(targetX);
+  } else if (state.scene === "idle" && ["idle", "temporary"].includes(state.run.mode)) {
+    combat.moveIdleTo(targetX);
   }
 }
 
 function stopKeyboardMovement() {
   if (!state?.run) return;
-  if (state.scene !== "city" && state.scene !== "hideout") return;
+  if (state.scene !== "city" && state.scene !== "hideout" && state.scene !== "idle") return;
   state.run.cityTargetX = null;
   state.run.pendingHideoutPortalId = null;
   state.run.pendingHideoutItemId = null;
@@ -1857,12 +1876,31 @@ function panelCallbacks(close) {
       renderAll();
     },
     enterMap: (mapId) => startRaid(mapId),
+    enterIdleMap: (mapId) => {
+      if (state.run?.mode === "temporary") {
+        showToast(temporaryStayText());
+        return;
+      }
+      closeCityShopPanel({ render: false });
+      closeCityPortalPanel({ render: false });
+      closeMaster({ render: false, force: true });
+      combat.enterIdleMap(mapId, { playerX: 120, logMessage: `Voce entrou em ${idleMapName(mapId)}.` });
+      renderAll();
+    },
     enterCity: () => {
+      if (state.run?.mode === "temporary") {
+        showToast(temporaryStayText());
+        return;
+      }
       combat.enterCity();
       online?.sayHello();
       renderAll();
     },
     enterHideout: () => {
+      if (state.run?.mode === "temporary") {
+        showToast(temporaryStayText());
+        return;
+      }
       if (!canUseHideout()) return;
       closeCityShopPanel({ render: false });
       combat.enterHideout();
@@ -1974,6 +2012,11 @@ function toggleMaster() {
 
 function openMasterTab(type) {
   if (!activeCenter) activeCenter = true;
+  if (state.run?.mode === "temporary" && (type === "city" || type === "hideout" || type === "assaults")) {
+    showToast(temporaryStayText());
+    renderAll();
+    return;
+  }
   if (type === "city") {
     hideChoice();
     closeCityShopPanel({ render: false });
@@ -2443,7 +2486,8 @@ function createNpcTestRun(direction) {
       row: type.row,
       x: 112 + index * 78,
       y: 235,
-      direction,
+      direction: type.fixedFrame ? type.direction : direction,
+      fixedFrame: Boolean(type.fixedFrame),
       walkPhase: 0,
       done: false,
       alerted: false,
@@ -2920,6 +2964,11 @@ function defaultWindowLayout() {
 
 function startRaid(mapId, options = {}) {
   const map = MAPS.find((candidate) => candidate.id === mapId);
+  if (state.run?.mode === "temporary") {
+    showToast(temporaryStayText());
+    renderAll();
+    return;
+  }
   if (map && blockWrongTutorialTarget("assault", `map-${map.index}`)) return;
   if (!canStartRaid(state.player, map)) {
     const message = staminaRaidBlockedMessage(state.player, map);
@@ -3342,11 +3391,11 @@ function handleDrugDeath(result) {
   const bill = applyHospitalFee(state.player);
   state.player.hp = 0;
   state.player.needsHideoutRest = true;
-  addLog(state, `${result.drug.name}: você apagou e voltou para o esconderijo.`);
+  addLog(state, `${result.drug.name}: voce apagou e foi levado para o hospital.`);
   addLog(state, `Taxa hospitalar: ${formatMoney(bill.charged || 0)}.`);
   closeCityShopPanel({ render: false });
   closeMaster({ render: false, force: true });
-  combat.enterHideout();
+  combat.enterHospital();
   showHospitalBill(bill);
   persistGame();
   renderAll();
@@ -3953,6 +4002,13 @@ function normalizeState() {
   state.settings.hideoutEditor ||= {};
   state.settings.hideoutEditor.selectedType ||= "house";
   state.settings.hideoutEditor.previewTiers ||= {};
+  if (!state.settings.citySpawnAdjustedForAssailant) {
+    if (state.scene === "city" && state.run?.mode === "city" && Number(state.run.playerX || 0) < 170) {
+      state.run.playerX = 190;
+      state.run.cityTargetX = null;
+    }
+    state.settings.citySpawnAdjustedForAssailant = true;
+  }
   state.activeAssaultTier ||= 1;
   state.player.highestMapUnlocked ||= 1;
   state.player.playerId ||= activeProfile?.id || null;
@@ -4020,9 +4076,12 @@ function normalizeState() {
   state.run.choiceTimer ||= 0;
   state.run.damageNumbers ||= [];
   state.run.itemTheftChats ||= [];
+  state.run.groundLoots ||= [];
+  state.run.decorativeNpcs ||= [];
   state.run.policeTimer ||= 0;
   state.run.policeMessage ??= null;
   state.run.policeScene ??= null;
+  state.run.temporaryStay ??= null;
   state.run.summary ??= null;
   state.run.summaryTimer ||= 0;
 }
@@ -4058,6 +4117,8 @@ function updateVisualSetting(key, value) {
   if (key === "groundY") {
     const mapKey = state.scene === "map"
       ? state.currentMapId
+      : state.scene === "idle"
+        ? state.currentMapId
       : state.scene === "hideout"
         ? `esconderijo-${state.player.hideoutTier || 1}`
         : "cidade";
@@ -4103,10 +4164,22 @@ function formatTime(seconds) {
   return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
 }
 
+function temporaryStayText() {
+  const stay = state?.run?.temporaryStay;
+  if (!stay) return "Saida bloqueada temporariamente.";
+  return `${stay.label}: ${formatTime(stay.remaining)}`;
+}
+
+function idleMapName(mapId) {
+  return IDLE_MAPS.find((map) => map.id === mapId)?.name || "mapa";
+}
+
 function modeLabel(mode) {
   return {
     city: "Cidade inicial",
     hideout: "Esconderijo",
+    idle: "Mapa livre",
+    temporary: "Retencao temporaria",
     seeking: "Procurando alvo",
     approaching: "Aproximando por tras",
     stealing: "Tentativa de roubo",
@@ -4121,6 +4194,8 @@ function modeLabel(mode) {
 function actionLabel(mode, map) {
   if (mode === "city") return "Clique na cidade para caminhar ou abra Assaltos";
   if (mode === "hideout") return "Clique no chao para andar pelo esconderijo";
+  if (mode === "idle") return `Caminhe pelo mapa ${map?.name || ""}`;
+  if (mode === "temporary") return temporaryStayText();
   if (mode === "seeking") return "Caminhando pelo cenario em busca de NPCs";
   if (mode === "approaching") return "Seguindo o alvo sem chamar atencao";
   if (mode === "stealing") return "Chance base de roubo com bonus de equipamentos";

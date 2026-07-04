@@ -58,7 +58,7 @@ export function createNewGame(playerId) {
     },
     run: {
       mode: "city",
-      playerX: 120,
+      playerX: 190,
       playerDirection: "right",
       npcs: [],
       targetId: null,

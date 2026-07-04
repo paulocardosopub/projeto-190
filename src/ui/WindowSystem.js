@@ -1,4 +1,4 @@
-import { MAPS, MAP_TIERS } from "../data/maps/index.js?v=phase1-1";
+import { IDLE_MAPS, MAPS, MAP_TIERS } from "../data/maps/index.js?v=idle-maps-1";
 import { PLAYERS } from "../data/players/index.js";
 import { EQUIPMENT_SLOTS, SLOT_LABELS } from "../data/equipment/index.js?v=gloves-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemCost } from "../data/hideoutItems/index.js";
@@ -291,8 +291,14 @@ export function renderPanel(container, type, state, renderer, callbacks) {
       renderer.drawMapThumb(canvas, MAPS.find((map) => map.id === canvas.dataset.mapId));
     });
   }
+  container.querySelectorAll("[data-idle-map-thumb]").forEach((canvas) => {
+    renderer.drawMapThumb(canvas, IDLE_MAPS.find((map) => map.id === canvas.dataset.idleMapThumb));
+  });
 
   container.querySelector("[data-return-city]")?.addEventListener("click", callbacks.enterCity);
+  container.querySelectorAll("[data-enter-idle-map]").forEach((button) => {
+    button.addEventListener("click", () => callbacks.enterIdleMap(button.dataset.enterIdleMap));
+  });
   container.querySelector("[data-online-connect]")?.addEventListener("click", callbacks.onlineConnect);
   container.querySelector("[data-online-disconnect]")?.addEventListener("click", callbacks.onlineDisconnect);
   container.querySelectorAll("[data-shop-visit]").forEach((button) => {
@@ -452,8 +458,19 @@ function panelBody(type, state, online, faction) {
   }
 
   if (type === "city") {
+    const petshop = IDLE_MAPS.find((map) => map.id === "petshop");
     return `
       ${onlineCityPanel(online)}
+      <div class="map-list">
+        <article class="map-row">
+          <canvas class="map-thumb" width="108" height="84" data-idle-map-thumb="${petshop?.id || "petshop"}"></canvas>
+          <div>
+            <h3>${petshop?.name || "Petshop"}</h3>
+            <p>${petshop?.description || "Area reservada para pets."}</p>
+          </div>
+          <button class="panel-action" data-enter-idle-map="petshop">Entrar</button>
+        </article>
+      </div>
       <div class="future-grid">
         ${futureCard("Comercio", "Compra e venda geral em breve.")}
         ${futureCard("Veiculos", "Transporte e rotas futuras.")}
@@ -923,7 +940,9 @@ function formatPercentless(value) {
 }
 
 function previewVisualValues(state, visual) {
-  const currentMap = MAPS.find((map) => map.id === state.currentMapId) || MAPS[0];
+  const currentMap = state.scene === "idle"
+    ? IDLE_MAPS.find((map) => map.id === state.currentMapId) || IDLE_MAPS[0]
+    : MAPS.find((map) => map.id === state.currentMapId) || MAPS[0];
   const mapVisual = visual.maps?.[currentMap.id] || {};
   const playerVisual = visual.players?.[state.selectedPlayerId] || {};
   return {
