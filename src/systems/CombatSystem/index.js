@@ -190,6 +190,10 @@ export class CombatSystem {
       this.emit();
       return;
     }
+    if (!this.state.settings?.visualPreview) {
+      const staminaSpent = consumeStaminaForMap(this.state.player, map);
+      addLog(this.state, `Stamina consumida: -${staminaSpent}.`);
+    }
     this.state.scene = "map";
     this.state.currentMapId = map.id;
     const npcs = createNpcWave(map);
@@ -684,10 +688,6 @@ export class CombatSystem {
     this.state.run.enemy = null;
     this.state.run.enemyHp = 0;
     this.state.run.enemyMaxHp = 0;
-    if (map) {
-      const staminaSpent = consumeStaminaForMap(this.state.player, map);
-      addLog(this.state, `Stamina consumida: -${staminaSpent}.`);
-    }
     if (reason !== "time" && map?.index) {
       const previousUnlocked = this.state.player.highestMapUnlocked || 1;
       if (map.index >= previousUnlocked && previousUnlocked < MAPS.length) {

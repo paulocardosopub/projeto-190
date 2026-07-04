@@ -843,11 +843,6 @@ export class SpriteRenderer {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.imageSmoothingEnabled = false;
 
-    if (sheetName === "players" && this.playerAnimations[row]) {
-      this.drawAnimatedPreview(canvas, this.playerAnimations[row]);
-      return;
-    }
-
     const directionIndex = actor.direction[direction] ?? actor.direction.front;
     const trim = this.actorBounds[sheetName]?.[row]?.[directionIndex] || {
       x: 0,

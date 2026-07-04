@@ -4,7 +4,7 @@ import { NPC_TYPES } from "./data/enemies/index.js";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=phase1-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS } from "./data/cityPortals/index.js?v=rest-3";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem } from "./systems/CombatSystem/index.js?v=phase1-1";
+import { CombatSystem } from "./systems/CombatSystem/index.js?v=stamina-entry-1";
 import { calculateStats, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   createItem,
@@ -80,7 +80,7 @@ import {
   skipTutorial,
   tutorialNudgeLine,
   tutorialStep
-} from "./systems/TutorialSystem/index.js?v=tutorial-flow-1";
+} from "./systems/TutorialSystem/index.js?v=tutorial-flow-2";
 import {
   activateCar,
   activateHouse,
@@ -107,7 +107,7 @@ import {
   updatePassiveIncome
 } from "./systems/StaminaSystem/index.js?v=phase1-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=phase1-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=phase1-1";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=front-select-1";
 import {
   renderCharacterSelect,
   renderConfigWindow,

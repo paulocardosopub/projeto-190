@@ -37,7 +37,7 @@ export const TUTORIAL_STEPS = [
   {
     id: "almeida_intro",
     message: "Esse e o Sr. Almeida. Ele compra tua tralha quando a mochila virar bagunca.",
-    buttonLabel: "Passar por ele",
+    buttonLabel: "Ir",
     target: "npc_almeida",
     actionRequired: "visit_npc_almeida",
     passiveButton: true,
@@ -47,7 +47,7 @@ export const TUTORIAL_STEPS = [
   {
     id: "vendedor_intro",
     message: "Ali fica o Vendedor. Item surpresa e fusao de equipamento passam por ele.",
-    buttonLabel: "Passar por ele",
+    buttonLabel: "Ir",
     target: "npc_vendedor",
     actionRequired: "visit_npc_vendedor",
     passiveButton: true,
@@ -57,7 +57,7 @@ export const TUTORIAL_STEPS = [
   {
     id: "zeca_intro",
     message: "Esse e o Seu Zeca. Ele resolve teu esconderijo, e isso muda o comeco do jogo.",
-    buttonLabel: "Passar pelo Zeca",
+    buttonLabel: "Ir",
     target: "npc_zeca",
     actionRequired: "click_npc_zeca",
     passiveButton: true,
