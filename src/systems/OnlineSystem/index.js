@@ -7,6 +7,7 @@ const RECONNECT_BASE_DELAY_MS = 3200;
 const RECONNECT_MAX_DELAY_MS = 18000;
 const PRESENCE_GRACE_MS = 6500;
 const PLAYER_REMOVE_AFTER_MS = 35000;
+const RECENT_LEAVE_KEEP_MS = 30000;
 const REMOTE_LERP_SPEED = 12;
 const REMOTE_SNAP_DISTANCE = 2200;
 const OFFLINE_MESSAGE = "Xii, caiu a luz na favela! Segura ai";
@@ -42,6 +43,7 @@ export class OnlineSystem {
     this.reconnectTimer = null;
     this.reconnectAttempts = 0;
     this.offlineToastShown = false;
+    this.recentCityLeaves = new Map();
   }
 
   connect(options = null) {
@@ -97,6 +99,7 @@ export class OnlineSystem {
         })
         .on("broadcast", { event: "city:player_moved" }, ({ payload }) => this.upsertCityPlayer(payload?.player || payload))
         .on("broadcast", { event: "city:player_stopped" }, ({ payload }) => this.upsertCityPlayer(payload?.player || payload))
+        .on("broadcast", { event: "city:player_left" }, ({ payload }) => this.handleCityPlayerLeft(payload?.player || payload))
         .on("broadcast", { event: "city:chat" }, ({ payload }) => this.receiveChat(payload))
         .on("broadcast", { event: "city:shop:activity" }, ({ payload }) => this.receiveShopActivity(payload))
         .subscribe((status) => this.handleSupabaseStatus(status, channel));
@@ -325,7 +328,7 @@ export class OnlineSystem {
     }
 
     if (message.type === "city:player_left") {
-      this.removeCityPlayer(message.playerId || message.socketId);
+      this.handleCityPlayerLeft(message);
     }
 
     if (message.type === "city:chat") {
@@ -371,6 +374,13 @@ export class OnlineSystem {
     if (!this.joinedCity) return;
 
     if (this.provider === "supabase") {
+      const player = {
+        playerId: this.localPlayerId(),
+        clientId: this.clientId,
+        socketId: this.clientId,
+        timestamp: Date.now()
+      };
+      this.channel?.send?.({ type: "broadcast", event: "city:player_left", payload: { player } });
       this.channel?.untrack?.();
     } else {
       this.sendLocal({ type: "player:leave_city", playerId: this.localPlayerId() });
@@ -483,6 +493,7 @@ export class OnlineSystem {
     const targetX = Number(raw.x || 120);
     const targetY = Number(raw.y || 0);
     const timestamp = Number(raw.timestamp || Date.now());
+    if (this.wasRecentlyLeft(raw, timestamp)) return;
     if (existing?.lastRemoteTimestamp && timestamp < existing.lastRemoteTimestamp - 120) return;
 
     this.cityPlayers.set(key, {
@@ -505,6 +516,17 @@ export class OnlineSystem {
     });
   }
 
+  handleCityPlayerLeft(raw) {
+    if (!raw) return;
+    this.rememberCityLeave(raw);
+    [
+      raw.clientId,
+      raw.socketId,
+      raw.playerId
+    ].filter(Boolean).forEach((identifier) => this.removeCityPlayer(identifier));
+    this.emit();
+  }
+
   removeCityPlayer(identifier) {
     const id = String(identifier || "");
     for (const [key, player] of this.cityPlayers.entries()) {
@@ -513,6 +535,39 @@ export class OnlineSystem {
       }
     }
     this.syncStatePlayers();
+  }
+
+  rememberCityLeave(raw) {
+    const now = Date.now();
+    this.pruneRecentCityLeaves(now);
+    const leftAt = Number(raw?.timestamp || now);
+    [
+      raw?.clientId,
+      raw?.socketId,
+      raw?.playerId
+    ].filter(Boolean).forEach((identifier) => {
+      this.recentCityLeaves.set(String(identifier), { leftAt, observedAt: now });
+    });
+  }
+
+  wasRecentlyLeft(raw, timestamp) {
+    this.pruneRecentCityLeaves();
+    const identifiers = [
+      raw?.clientId,
+      raw?.socketId,
+      raw?.playerId
+    ].filter(Boolean).map(String);
+    const lastLeftAt = Math.max(
+      0,
+      ...identifiers.map((identifier) => Number(this.recentCityLeaves.get(identifier)?.leftAt || 0))
+    );
+    return Boolean(lastLeftAt && Number(timestamp || 0) <= lastLeftAt + 80);
+  }
+
+  pruneRecentCityLeaves(now = Date.now()) {
+    for (const [identifier, leave] of this.recentCityLeaves.entries()) {
+      if (now - Number(leave?.observedAt || 0) > RECENT_LEAVE_KEEP_MS) this.recentCityLeaves.delete(identifier);
+    }
   }
 
   markCityPlayerMissing(identifier) {
