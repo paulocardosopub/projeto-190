@@ -495,6 +495,7 @@ export class OnlineSystem {
     const timestamp = Number(raw.timestamp || Date.now());
     if (this.wasRecentlyLeft(raw, timestamp)) return;
     if (existing?.lastRemoteTimestamp && timestamp < existing.lastRemoteTimestamp - 120) return;
+    if (!this.removeOlderPlayerDuplicates(key, playerId, timestamp)) return;
 
     this.cityPlayers.set(key, {
       provider: raw.provider || this.provider,
@@ -514,6 +515,16 @@ export class OnlineSystem {
       missingSince: null,
       lastSeen: Date.now()
     });
+  }
+
+  removeOlderPlayerDuplicates(currentKey, playerId, timestamp) {
+    if (!playerId) return true;
+    for (const [key, player] of this.cityPlayers.entries()) {
+      if (key === currentKey || player.playerId !== playerId) continue;
+      if (Number(player.lastRemoteTimestamp || 0) > Number(timestamp || 0) + 120) return false;
+      this.cityPlayers.delete(key);
+    }
+    return true;
   }
 
   handleCityPlayerLeft(raw) {
