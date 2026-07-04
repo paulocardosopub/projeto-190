@@ -71,10 +71,10 @@ button:disabled {
 }
 
 .app-shell {
-  width: min(1120px, 100vw);
+  width: 100vw;
   min-height: 100vh;
-  margin: 0 auto;
-  padding: 4px clamp(8px, 2vw, 18px) 12px;
+  margin: 0;
+  padding: 0;
   display: grid;
   grid-template-rows: auto 1fr;
   gap: 0;

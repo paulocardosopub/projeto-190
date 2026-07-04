@@ -1,6 +1,6 @@
 import { ASSETS, SPRITES } from "../data/assets.js?v=petshop-portal-1";
 import { CITY, HIDEOUTS, IDLE_MAPS, MAPS } from "../data/maps/index.js?v=petshop-portal-1";
-import { PLAYERS } from "../data/players/index.js";
+import { PLAYERS } from "../data/players/index.js?v=bruno-yellow-1";
 import { CITY_NPCS } from "../data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "../data/cityPortals/index.js?v=petshop-portal-1";
@@ -89,7 +89,9 @@ export class SpriteRenderer {
 
     const playerScreenX = this.worldToScreen(state.run.playerX || 120, cameraWorld);
     const playerFeetY = visual.groundY + visual.playerYOffset;
-    const playerAnimation = this.playerAnimations[playerRow];
+    const playerConfig = PLAYERS.find((player) => player.id === state.selectedPlayerId);
+    const animationIndex = Number.isInteger(playerConfig?.animationIndex) ? playerConfig.animationIndex : playerRow;
+    const playerAnimation = this.playerAnimations[animationIndex];
     if (playerAnimation) {
       this.drawAnimatedPlayer(playerAnimation, state, playerScreenX, playerFeetY, visual.playerHeight, state.run.mode === "combat" ? 1.04 : 1);
     } else {

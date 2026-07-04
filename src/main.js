@@ -1,4 +1,4 @@
-import { PLAYERS } from "./data/players/index.js";
+import { PLAYERS } from "./data/players/index.js?v=bruno-yellow-1";
 import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=petshop-portal-1";
 import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=petshop-portal-1";
@@ -118,7 +118,7 @@ import {
   updatePassiveIncome
 } from "./systems/StaminaSystem/index.js?v=phase1-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=phase1-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=petshop-portal-1";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=bruno-yellow-1";
 import {
   renderCharacterSelect,
   renderConfigWindow,
@@ -1104,7 +1104,7 @@ function tutorialNeedsAssaultPanelOpen() {
 }
 
 function resolveTutorialTargetRect(target) {
-  const fallback = stageRect();
+  const fallback = stageTutorialRect();
   if (!target) return fallback;
 
   const selectorTargets = {
@@ -1168,6 +1168,17 @@ function stageRect() {
     top: window.innerHeight / 2 - 80,
     width: 240,
     height: 160
+  };
+}
+
+function stageTutorialRect() {
+  const rect = stageRect();
+  return {
+    left: rect.left,
+    top: rect.top,
+    width: rect.width,
+    height: rect.height,
+    hideTutorialMark: true
   };
 }
 
