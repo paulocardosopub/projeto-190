@@ -27,9 +27,13 @@ jobs:
         run: |
           node - <<'NODE'
           const fs = require("fs");
+          const fallback = {
+            url: "https://gvmlydtkqatqhdsgyjqn.supabase.co",
+            key: "sb_publishable_ylUc7xy4c-ajeJN5qpy61Q_KCh0vMJK"
+          };
           const config = {
-            url: process.env.SUPABASE_URL || "",
-            key: process.env.SUPABASE_KEY || ""
+            url: process.env.SUPABASE_URL || fallback.url,
+            key: process.env.SUPABASE_KEY || fallback.key
           };
           fs.mkdirSync("src/config", { recursive: true });
           fs.writeFileSync(

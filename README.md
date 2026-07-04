@@ -30,10 +30,10 @@ Nesse modo, arraste cada janela pelo titulo, redimensione pelo canto e use `Salv
 
 A camada online fica em `src/systems/OnlineSystem` e usa Supabase Realtime para a cidade inicial.
 
-No jogo publicado, a configuracao deve vir embutida pelo arquivo `src/config/publicOnlineConfig.js`.
-O deploy do GitHub Pages gera esse arquivo usando as variaveis do repositorio `SUPABASE_URL` e `SUPABASE_KEY`.
+No jogo publicado, a configuracao vem embutida pelo arquivo `src/config/publicOnlineConfig.js`.
+O projeto Supabase atual e `projeto-190`, na regiao Sao Paulo.
 
-Com essas variaveis preenchidas, os jogadores entram pelo mesmo link publico e ja se veem na cidade.
+Com essa configuracao preenchida, os jogadores entram pelo mesmo link publico e ja se veem na cidade.
 
 No modo local, tambem da para configurar manualmente pelo jogo em `Mochila > Configs > Servidor online`.
 
@@ -58,7 +58,7 @@ O combate e o progresso funcionam offline. Cidade, lojas, chat, faccao e interac
 
 O projeto publica a versao web pelo GitHub Pages via `.github/workflows/pages.yml`.
 
-Antes do deploy, configure no GitHub:
+O deploy usa a configuracao embutida. Se precisar trocar de projeto Supabase depois, configure no GitHub:
 
 - `SUPABASE_URL`: Project URL do Supabase.
 - `SUPABASE_KEY`: chave publica/publishable ou anon key.
