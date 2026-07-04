@@ -11,15 +11,17 @@ export const CITY_NPCS = [
     greeting: "Tenho interesse nos seus achados. Quer vender alguma coisa?"
   },
   {
-    id: "npc-praia",
-    name: "Surfista",
-    shopName: "Contato da Praia",
-    role: "future",
-    sheet: "enemies2",
-    row: 0,
+    id: "npc-petshop",
+    name: "Dr. Rubens",
+    shopName: "Petshop",
+    role: "petshop",
+    sheet: "enemies3",
+    row: 5,
+    columnOffset: 0,
+    heightScale: 0.96,
     x: 1840,
     direction: "front",
-    greeting: "Volta depois que eu vou ter algo pra voce."
+    greeting: "Cuido dos bichos da area. Quer conhecer o petshop?"
   },
   {
     id: "npc-turista",

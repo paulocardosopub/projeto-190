@@ -52,7 +52,10 @@ export const IDLE_MAPS = [
     name: "Petshop",
     backgroundSheet: "backgroundIdle1",
     backgroundRow: 2,
-    description: "Area reservada para o futuro sistema de pets."
+    description: "Area reservada para o futuro sistema de pets.",
+    npcs: [
+      idleNpc("petshop-responsavel", "Dr. Rubens", 5, 0, 620, "front")
+    ]
   }
 ];
 

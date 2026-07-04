@@ -1,10 +1,10 @@
 import { PLAYERS } from "./data/players/index.js";
-import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=idle-npcs-1";
+import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=petshop-portal-1";
 import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
-import { CITY_NPCS } from "./data/cityNpcs/index.js?v=drugs-2";
-import { CITY_PORTALS, HIDEOUT_PORTALS } from "./data/cityPortals/index.js?v=npc-crops-1";
+import { CITY_NPCS } from "./data/cityNpcs/index.js?v=petshop-portal-1";
+import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem } from "./systems/CombatSystem/index.js?v=npc-crops-1";
+import { CombatSystem } from "./systems/CombatSystem/index.js?v=petshop-portal-1";
 import { calculateStats, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -118,14 +118,14 @@ import {
   updatePassiveIncome
 } from "./systems/StaminaSystem/index.js?v=phase1-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=phase1-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=npc-crops-1";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=petshop-portal-1";
 import {
   renderCharacterSelect,
   renderConfigWindow,
   renderInventoryWindow,
   renderVaultWindow,
   renderPanel
-} from "./ui/WindowSystem.js?v=idle-maps-1";
+} from "./ui/WindowSystem.js?v=petshop-portal-1";
 
 const elements = {
   canvas: document.querySelector("#game-canvas"),
@@ -658,6 +658,7 @@ function tick(now) {
     updatePendingCityNpcArrival();
     updatePendingCityPortalArrival();
     updatePendingHideoutPortalArrival();
+    updatePendingIdlePortalArrival();
     updatePendingHideoutHouseArrival();
     renderer.draw(state, playerRow());
     syncHud();
@@ -1360,6 +1361,12 @@ function handleStagePointer(event) {
   }
   if (state.scene === "idle" && ["idle", "temporary"].includes(state.run.mode)) {
     const point = canvasPoint(event);
+    const portal = findClickedIdlePortal(point.x, point.y);
+    if (portal) {
+      walkToIdlePortal(portal);
+      return;
+    }
+    state.run.pendingIdlePortalId = null;
     combat.moveIdleTo(renderer.screenToWorld(point.x, state));
     return;
   }
@@ -1563,6 +1570,7 @@ function applyKeyboardMovement() {
     state.run.pendingHideoutItemId = null;
     combat.moveHideoutTo(targetX);
   } else if (state.scene === "idle" && ["idle", "temporary"].includes(state.run.mode)) {
+    state.run.pendingIdlePortalId = null;
     combat.moveIdleTo(targetX);
   }
 }
@@ -1572,6 +1580,7 @@ function stopKeyboardMovement() {
   if (state.scene !== "city" && state.scene !== "hideout" && state.scene !== "idle") return;
   state.run.cityTargetX = null;
   state.run.pendingHideoutPortalId = null;
+  state.run.pendingIdlePortalId = null;
   state.run.pendingHideoutItemId = null;
   state.run.playerAction = null;
   renderAll();
@@ -3034,10 +3043,29 @@ function hideoutGroundY() {
   return Number(visual.maps?.[mapKey]?.groundY ?? visual.groundY ?? 274) + Number(visual.npcYOffset ?? 0);
 }
 
+function idleGroundY() {
+  const visual = state.settings.visual || {};
+  const mapKey = state.currentMapId || "idle";
+  return Number(visual.maps?.[mapKey]?.groundY ?? visual.groundY ?? 274) + Number(visual.npcYOffset ?? 0);
+}
+
 function findClickedHideoutPortal(screenX, screenY) {
   const worldX = renderer.screenToWorld(screenX, state);
   const groundY = hideoutGroundY();
   return HIDEOUT_PORTALS.find((portal) => (
+    worldX >= portal.x - portal.width / 2 &&
+    worldX <= portal.x + portal.width / 2 &&
+    screenY >= groundY + Number(portal.yOffset || 0) - portal.height - 18 &&
+    screenY <= groundY + Number(portal.yOffset || 0) + 18
+  )) || null;
+}
+
+function findClickedIdlePortal(screenX, screenY) {
+  if (state.scene !== "idle") return null;
+  const worldX = renderer.screenToWorld(screenX, state);
+  const groundY = idleGroundY();
+  return IDLE_PORTALS.find((portal) => (
+    portal.mapId === state.currentMapId &&
     worldX >= portal.x - portal.width / 2 &&
     worldX <= portal.x + portal.width / 2 &&
     screenY >= groundY + Number(portal.yOffset || 0) - portal.height - 18 &&
@@ -3062,6 +3090,17 @@ function walkToHideoutPortal(portal) {
   const defaultOffset = portal.x < 90 ? portal.width / 2 + 8 : -portal.width / 2 - 12;
   const approachX = Math.max(64, Math.round(portal.x + Number(portal.approachOffset ?? defaultOffset)));
   combat.moveHideoutTo(approachX);
+  showToast("Indo até a cidade.");
+}
+
+function walkToIdlePortal(portal) {
+  if (!state?.run || state.scene !== "idle") return;
+  state.run.pendingIdlePortalId = portal.id;
+  state.run.pendingHideoutPortalId = null;
+  state.run.pendingHideoutItemId = null;
+  const defaultOffset = portal.x < 90 ? portal.width / 2 + 8 : -portal.width / 2 - 12;
+  const approachX = Math.max(64, Math.round(portal.x + Number(portal.approachOffset ?? defaultOffset)));
+  combat.moveIdleTo(approachX);
   showToast("Indo até a cidade.");
 }
 
@@ -3112,6 +3151,25 @@ function updatePendingHideoutPortalArrival() {
   fadeThen("Voltando para a cidade.", () => {
     combat.enterCity();
     dispatchTutorialEvent("scene_entered", { scene: "city", from: "hideout" }, { render: false });
+  });
+}
+
+function updatePendingIdlePortalArrival() {
+  if (state.scene !== "idle" || !["idle", "temporary"].includes(state.run.mode) || !state.run.pendingIdlePortalId) return;
+  if (Number.isFinite(state.run.cityTargetX)) return;
+  const portal = IDLE_PORTALS.find((candidate) => (
+    candidate.id === state.run.pendingIdlePortalId &&
+    candidate.mapId === state.currentMapId
+  ));
+  state.run.pendingIdlePortalId = null;
+  if (!portal || portal.action !== "city") return;
+  closeMaster({ render: false, force: true });
+  state.run.cityTargetX = null;
+  const fromMap = state.currentMapId || "idle";
+  fadeThen("Voltando para a cidade.", () => {
+    combat.enterCity();
+    online?.sayHello();
+    dispatchTutorialEvent("scene_entered", { scene: "city", from: fromMap }, { render: false });
   });
 }
 
@@ -3302,7 +3360,11 @@ function renderCityShopPanel() {
       ${activeCityNpc.role === "drugs" ? `
         <button type="button" class="primary-action" data-shop-mode="drugs">Comprar</button>
       ` : ""}
-      ${activeCityNpc.role !== "oldman" && activeCityNpc.role !== "vendor" && activeCityNpc.role !== "buyer" && activeCityNpc.role !== "drugs" ? `<button type="button" class="secondary-action" disabled>Em breve</button>` : ""}
+      ${activeCityNpc.role === "petshop" ? `
+        <button type="button" class="primary-action" data-enter-petshop>Entrar no Petshop</button>
+        <button type="button" class="secondary-action" data-shop-close>Agora não</button>
+      ` : ""}
+      ${activeCityNpc.role !== "oldman" && activeCityNpc.role !== "vendor" && activeCityNpc.role !== "buyer" && activeCityNpc.role !== "drugs" && activeCityNpc.role !== "petshop" ? `<button type="button" class="secondary-action" disabled>Em breve</button>` : ""}
     </div>
   `;
   bindShopPanel(panel);
@@ -3610,7 +3672,9 @@ function renderSellAllConfirm(panel, npc) {
 }
 
 function bindShopPanel(panel) {
-  panel.querySelector("[data-shop-close]")?.addEventListener("click", () => closeCityShopPanel());
+  panel.querySelectorAll("[data-shop-close]").forEach((button) => {
+    button.addEventListener("click", () => closeCityShopPanel());
+  });
   panel.querySelectorAll("[data-shop-mode]").forEach((button) => {
     button.addEventListener("click", () => {
       if (blockWrongTutorialTarget("shop_mode", button.dataset.shopMode)) return;
@@ -3621,6 +3685,17 @@ function bindShopPanel(panel) {
       renderCityShopPanel();
       renderTutorial();
     });
+  });
+  panel.querySelector("[data-enter-petshop]")?.addEventListener("click", () => {
+    if (state.run?.mode === "temporary") {
+      showToast(temporaryStayText());
+      return;
+    }
+    closeCityShopPanel({ render: false });
+    closeCityPortalPanel({ render: false });
+    closeMaster({ render: false, force: true });
+    combat.enterIdleMap("petshop", { playerX: 620, logMessage: `Voce entrou em ${idleMapName("petshop")}.` });
+    renderAll();
   });
 }
 
@@ -4067,6 +4142,7 @@ function normalizeState() {
   state.run.pendingCityNpcId ??= null;
   state.run.pendingCityPortalId ??= null;
   state.run.pendingHideoutPortalId ??= null;
+  state.run.pendingIdlePortalId ??= null;
   state.run.pendingHideoutItemId ??= null;
   state.run.playerAction ??= null;
   state.run.playerActionTimer ||= 0;

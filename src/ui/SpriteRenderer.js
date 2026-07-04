@@ -1,9 +1,9 @@
-import { ASSETS, SPRITES } from "../data/assets.js?v=npc-crops-1";
-import { CITY, HIDEOUTS, IDLE_MAPS, MAPS } from "../data/maps/index.js?v=idle-npcs-1";
+import { ASSETS, SPRITES } from "../data/assets.js?v=petshop-portal-1";
+import { CITY, HIDEOUTS, IDLE_MAPS, MAPS } from "../data/maps/index.js?v=petshop-portal-1";
 import { PLAYERS } from "../data/players/index.js";
-import { CITY_NPCS } from "../data/cityNpcs/index.js?v=drugs-2";
+import { CITY_NPCS } from "../data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=idle-npcs-1";
-import { CITY_PORTALS, HIDEOUT_PORTALS } from "../data/cityPortals/index.js?v=npc-crops-1";
+import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "../data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-7";
 
 export class SpriteRenderer {
@@ -55,6 +55,7 @@ export class SpriteRenderer {
     this.drawGroundShade();
     this.drawHideoutItems(state, cameraWorld);
     this.drawHideoutPortals(state, cameraWorld, visual);
+    this.drawIdlePortals(state, cameraWorld, visual);
     this.drawCityPortals(state, cameraWorld, visual);
 
     const npcs = state.run.npcTest
@@ -430,8 +431,29 @@ export class SpriteRenderer {
       const x = this.worldToScreen(portal.x, cameraWorld);
       if (x < -portal.width || x > this.canvas.width + portal.width) return;
       const feetY = visual.groundY + visual.npcYOffset + Number(portal.yOffset || 0);
-      this.drawAssaultPortal(portal, x, feetY);
+      if (portal.type === "assailant") {
+        this.drawAssailantPortal(portal, x, feetY);
+      } else {
+        this.drawAssaultPortal(portal, x, feetY);
+      }
     });
+  }
+
+  drawIdlePortals(state, cameraWorld, visual) {
+    if (state.scene !== "idle") return;
+
+    IDLE_PORTALS
+      .filter((portal) => portal.mapId === state.currentMapId)
+      .forEach((portal) => {
+        const x = this.worldToScreen(portal.x, cameraWorld);
+        if (x < -portal.width || x > this.canvas.width + portal.width) return;
+        const feetY = visual.groundY + visual.npcYOffset + Number(portal.yOffset || 0);
+        if (portal.type === "assailant") {
+          this.drawAssailantPortal(portal, x, feetY);
+        } else {
+          this.drawAssaultPortal(portal, x, feetY);
+        }
+      });
   }
 
   drawHideoutSmokePortal(portal, x, feetY) {

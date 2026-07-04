@@ -151,10 +151,10 @@ export const SPRITES = {
       cellWidth: 140,
       cellHeight: 140,
       direction: {
-        left: 0,
+        right: 0,
         front: 1,
         back: 2,
-        right: 3
+        left: 3
       },
       manualBounds: frameBounds(enemies3FrameBounds)
     }

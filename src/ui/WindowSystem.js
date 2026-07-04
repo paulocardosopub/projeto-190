@@ -1,4 +1,4 @@
-import { IDLE_MAPS, MAPS, MAP_TIERS } from "../data/maps/index.js?v=idle-npcs-1";
+import { IDLE_MAPS, MAPS, MAP_TIERS } from "../data/maps/index.js?v=petshop-portal-1";
 import { PLAYERS } from "../data/players/index.js";
 import { EQUIPMENT_SLOTS, SLOT_LABELS } from "../data/equipment/index.js?v=gloves-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemCost } from "../data/hideoutItems/index.js";
