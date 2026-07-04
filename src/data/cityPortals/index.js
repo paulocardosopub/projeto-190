@@ -31,9 +31,12 @@ export const HIDEOUT_PORTALS = [
     id: "city-return",
     label: "Cidade",
     x: 82,
+    width: 52,
+    height: 60,
+    yOffset: -8,
     action: "city",
-    approachOffset: 71,
-    ...motorcyclePortal
+    type: "smoke",
+    approachOffset: 0
   }
 ];
 

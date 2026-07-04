@@ -373,6 +373,19 @@ export function advanceTutorialStep(state) {
   return setTutorialStep(state, next || FINAL_STEP);
 }
 
+export function rewindTutorialStep(state) {
+  const current = tutorialStep(state);
+  if (!current) return { changed: false, previous: null, step: null };
+  const previousStep = previousStepId(current.id);
+  if (!previousStep) return { changed: false, previous: current, step: current };
+  return setTutorialStep(state, previousStep);
+}
+
+export function canRewindTutorialStep(state) {
+  const current = tutorialStep(state);
+  return Boolean(current && previousStepId(current.id));
+}
+
 export function completeTutorial(state) {
   const previous = tutorialStep(state);
   state.tutorial = {
@@ -506,6 +519,7 @@ export class TutorialOverlay {
     this.resolveTargetRect = options.resolveTargetRect;
     this.resolveFrameRect = options.resolveFrameRect;
     this.onAdvance = options.onAdvance;
+    this.onBack = options.onBack;
     this.onSkip = options.onSkip;
     this.onPassive = options.onPassive;
     this.node = null;
@@ -513,15 +527,17 @@ export class TutorialOverlay {
     this.arrow = null;
     this.bubble = null;
     this.primaryButton = null;
+    this.backButton = null;
     this.skipButton = null;
   }
 
-  render(step) {
+  render(step, options = {}) {
     if (!step) {
       this.hide();
       return;
     }
 
+    this.canGoBack = Boolean(options.canGoBack);
     this.ensure();
     const targetRect = this.resolveTargetRect?.(step.target) || centeredRect();
     const viewportRect = clampRect(targetRect);
@@ -546,7 +562,8 @@ export class TutorialOverlay {
         <p></p>
         <div class="tutorial-actions">
           <button type="button" class="tutorial-primary"></button>
-          <button type="button" class="tutorial-skip" title="Ja nasceu sabendo, e?">Pular tutorial</button>
+          <button type="button" class="tutorial-back" title="Voltar um passo" aria-label="Voltar um passo">&#8592;</button>
+          <button type="button" class="tutorial-skip" title="Pular tutorial" aria-label="Pular tutorial">X</button>
         </div>
       </section>
     `;
@@ -554,6 +571,7 @@ export class TutorialOverlay {
     this.arrow = this.node.querySelector(".tutorial-arrow");
     this.bubble = this.node.querySelector(".tutorial-bubble");
     this.primaryButton = this.node.querySelector(".tutorial-primary");
+    this.backButton = this.node.querySelector(".tutorial-back");
     this.skipButton = this.node.querySelector(".tutorial-skip");
     this.primaryButton.addEventListener("click", () => {
       if (this.currentStep?.passiveButton) {
@@ -561,6 +579,9 @@ export class TutorialOverlay {
         return;
       }
       this.onAdvance?.(this.currentStep);
+    });
+    this.backButton.addEventListener("click", () => {
+      this.onBack?.(this.currentStep);
     });
     this.skipButton.addEventListener("click", () => {
       const confirmed = window.confirm("Vai pular a aula da malandragem?");
@@ -584,6 +605,7 @@ export class TutorialOverlay {
     this.currentStep = step;
     this.bubble.querySelector("p").textContent = step.message;
     this.primaryButton.textContent = step.buttonLabel || "Bora";
+    this.backButton.classList.toggle("hidden", !this.canGoBack);
     this.skipButton.classList.toggle("hidden", !step.allowSkip);
 
     const frame = this.resolveFrameRect?.() || {
@@ -629,6 +651,12 @@ function nextStepId(stepId) {
   const index = STEP_INDEX.get(stepId);
   if (!Number.isInteger(index)) return FINAL_STEP;
   return TUTORIAL_STEPS[index + 1]?.id || FINAL_STEP;
+}
+
+function previousStepId(stepId) {
+  const index = STEP_INDEX.get(stepId);
+  if (!Number.isInteger(index) || index <= 0) return null;
+  return TUTORIAL_STEPS[index - 1]?.id || null;
 }
 
 function tutorialActionMatches(action, event) {

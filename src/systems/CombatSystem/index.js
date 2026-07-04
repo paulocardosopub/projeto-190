@@ -11,6 +11,7 @@ import { applyHospitalFee, applyPrisonFee } from "../PenaltySystem/index.js?v=ho
 import { canStartRaid, consumeStaminaForMap, staminaRaidBlockedMessage } from "../StaminaSystem/index.js?v=phase1-1";
 import { confiscateDrugItems } from "../DrugSystem/index.js?v=drugs-2";
 import { theftConfig } from "../../data/balance/index.js?v=phase1-1";
+import { getEquippedPet, normalizePets, petDamageForAttack } from "../../data/pets/index.js?v=pets-1";
 
 const CHOICE_AUTO_FIGHT_SECONDS = 5;
 const ITEM_THEFT_CHAT_SECONDS = 5.5;
@@ -91,6 +92,7 @@ export class CombatSystem {
     this.state = state;
     this.hooks = hooks;
     this.syncHpToStats();
+    normalizePets(this.state.player, { silent: true });
   }
 
   setHooks(hooks) {
@@ -122,10 +124,13 @@ export class CombatSystem {
       caughtInFlagrante: 0,
       battlesStarted: 0,
       choiceTimer: 0,
+      pendingCityNpcId: null,
       pendingCityPortalId: null,
       pendingHideoutPortalId: null,
       pendingIdlePortalId: null,
+      pendingIdleNpcId: null,
       pendingHideoutItemId: null,
+      returnToCity: null,
       damageNumbers: [],
       itemTheftChats: [],
       groundLoots: [],
@@ -178,10 +183,13 @@ export class CombatSystem {
       caughtInFlagrante: 0,
       battlesStarted: 0,
       choiceTimer: 0,
+      pendingCityNpcId: null,
       pendingCityPortalId: null,
       pendingHideoutPortalId: null,
       pendingIdlePortalId: null,
+      pendingIdleNpcId: null,
       pendingHideoutItemId: null,
+      returnToCity: options.returnToCity || null,
       damageNumbers: [],
       itemTheftChats: [],
       groundLoots: [],
@@ -267,10 +275,13 @@ export class CombatSystem {
       caughtInFlagrante: 0,
       battlesStarted: 0,
       choiceTimer: 0,
+      pendingCityNpcId: null,
       pendingCityPortalId: null,
       pendingHideoutPortalId: null,
       pendingIdlePortalId: null,
+      pendingIdleNpcId: null,
       pendingHideoutItemId: null,
+      returnToCity: null,
       damageNumbers: [],
       itemTheftChats: [],
       groundLoots: [],
@@ -333,9 +344,12 @@ export class CombatSystem {
       caughtInFlagrante: 0,
       battlesStarted: 0,
       choiceTimer: 0,
+      pendingCityNpcId: null,
       pendingHideoutPortalId: null,
       pendingIdlePortalId: null,
+      pendingIdleNpcId: null,
       pendingHideoutItemId: null,
+      returnToCity: null,
       damageNumbers: [],
       itemTheftChats: [],
       groundLoots: [],
@@ -357,6 +371,7 @@ export class CombatSystem {
   update(dt) {
     const run = this.state.run;
     this.updatePlayerAction(dt);
+    this.updatePet(dt);
     this.updateDamageNumbers(dt);
     this.updateItemTheftChats(dt);
     this.updateGroundLoots(dt);
@@ -701,6 +716,7 @@ export class CombatSystem {
   finishTargetAfterSteal(target) {
     if (target) {
       target.done = true;
+      target.robbed = true;
       target.alerted = false;
       target.alertLine = null;
     }
@@ -719,6 +735,7 @@ export class CombatSystem {
       columnOffset: Number(target.columnOffset || 0),
       direction: target.fixedFrame ? target.direction : "left",
       heightScale: Number(target.heightScale || 1),
+      actorHidden: false,
       age: 0,
       duration: ITEM_THEFT_CHAT_SECONDS
     });
@@ -811,6 +828,96 @@ export class CombatSystem {
       this.enterHospital();
       this.hooks.onHospitalBill?.(hospitalBill);
     }
+  }
+
+  updatePet(dt) {
+    const run = this.state.run;
+    const player = this.state.player;
+    if (!run || !player) return;
+
+    const messages = normalizePets(player);
+    messages.forEach((message) => {
+      addLog(this.state, message);
+      this.hooks.onToast?.(message);
+    });
+
+    run.pet ||= {};
+    const pet = getEquippedPet(player);
+    if (!pet || petHiddenInScene(this.state)) {
+      run.pet.visible = false;
+      run.pet.action = null;
+      return;
+    }
+
+    run.pet.visible = true;
+    const followDirection = run.playerDirection === "left" ? "left" : "right";
+    player.lastPetFollowDirection = followDirection;
+    run.pet.attackCooldownTimer = Math.max(0, Number(run.pet.attackCooldownTimer || 0) - dt);
+
+    if (run.pet.actionTimer) {
+      run.pet.actionTimer = Math.max(0, Number(run.pet.actionTimer || 0) - dt);
+      if (run.pet.actionTimer <= 0 && run.pet.action === "attack") {
+        run.pet.action = "returnToPlayer";
+      }
+    }
+
+    if (run.mode === "combat") this.updatePetCombat(pet);
+
+    const targetX = this.petFollowTargetX();
+    if (!Number.isFinite(run.pet.x)) run.pet.x = targetX;
+    const lerpSpeed = run.pet.action === "attack" ? 18 : 11;
+    run.pet.x += (targetX - run.pet.x) * Math.min(1, dt * lerpSpeed);
+
+    const maxLag = run.pet.action === "attack" ? 12 : 8;
+    if (Math.abs(run.pet.x - targetX) > maxLag) {
+      run.pet.x = targetX + Math.sign(run.pet.x - targetX) * maxLag;
+    }
+
+    if (run.pet.action === "returnToPlayer" && Math.abs(run.pet.x - targetX) <= 3) {
+      run.pet.action = null;
+    }
+
+    if (run.pet.action !== "attack") run.pet.direction = followDirection;
+  }
+
+  updatePetCombat(pet) {
+    const run = this.state.run;
+    const target = this.targetNpc();
+    const enemy = run.enemy;
+    if (!target || !enemy || run.enemyHp <= 0) return;
+
+    const side = target.x >= (run.playerX || 0) ? 1 : -1;
+    if (run.pet.action !== "attack" && run.pet.attackCooldownTimer <= 0) {
+      run.pet.action = "attack";
+      run.pet.actionTimer = 0.48;
+      run.pet.actionDuration = 0.48;
+      run.pet.damageApplied = false;
+      run.pet.direction = side < 0 ? "left" : "right";
+      run.pet.attackCooldownTimer = Number(pet.cooldown || 1.5);
+    }
+
+    if (run.pet.action !== "attack" || run.pet.damageApplied) return;
+    const duration = Number(run.pet.actionDuration || 0.48);
+    const progress = Math.max(0, Math.min(1, (duration - Number(run.pet.actionTimer || 0)) / duration));
+    if (progress < 0.48) return;
+
+    const stats = calculateStats(this.state.player);
+    const damage = petDamageForAttack(stats, enemy, pet);
+    run.enemyHp = Math.max(0, Number(run.enemyHp || 0) - damage);
+    run.pet.damageApplied = true;
+    this.pushDamageNumber(damage, target.x, "enemy");
+    addLog(this.state, `${pet.name} causou ${damage} de dano.`);
+  }
+
+  petFollowTargetX() {
+    const run = this.state.run;
+    const playerX = Number(run.playerX || 120);
+    if (run.pet?.action === "attack") {
+      const side = run.pet.direction === "left" ? -1 : 1;
+      return playerX + side * 42;
+    }
+    const direction = run.playerDirection === "left" ? "left" : "right";
+    return playerX + (direction === "left" ? 36 : -36);
   }
 
   finishMap(reason = "clear") {
@@ -1154,4 +1261,8 @@ function cloneIdleNpcs(npcs = []) {
 function setNpcDirection(npc, direction) {
   if (!npc || npc.fixedFrame) return;
   npc.direction = direction;
+}
+
+function petHiddenInScene(state) {
+  return state?.scene === "idle" && state?.currentMapId === "prisao";
 }

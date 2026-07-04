@@ -5,7 +5,7 @@ import { CITY_NPCS } from "./data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
 import { CombatSystem } from "./systems/CombatSystem/index.js?v=spawn-height-1";
-import { calculateStats, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
+import { calculateStats, calculateStealChancePercent, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
   DRUG_ITEMS,
@@ -83,11 +83,13 @@ import {
   CHARACTER_SELECT_TUTORIAL,
   TutorialOverlay,
   advanceTutorialStep,
+  canRewindTutorialStep,
   completeTutorial,
   expectedTutorialAssetPurchase,
   handleTutorialEvent,
   isTutorialTargetAllowed,
   normalizeTutorialState,
+  rewindTutorialStep,
   skipTutorial,
   tutorialNudgeLine,
   tutorialStep
@@ -118,6 +120,7 @@ import {
   updatePassiveIncome
 } from "./systems/StaminaSystem/index.js?v=phase1-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=phase1-1";
+import { PETS, PET_UNLOCK_LEVEL, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=pets-1";
 import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=viewport-width-1";
 import {
   renderCharacterSelect,
@@ -140,6 +143,7 @@ const elements = {
   raidTimer: document.querySelector("#raid-timer"),
   raidTimerLabel: document.querySelector("#raid-timer-label"),
   raidCountLabel: document.querySelector("#raid-count-label"),
+  raidCaughtRiskLabel: document.querySelector("#raid-caught-risk-label"),
   raidSummary: document.querySelector("#raid-summary"),
   raidSummaryTitle: document.querySelector("#raid-summary-title"),
   raidSummaryMoney: document.querySelector("#raid-summary-money"),
@@ -149,6 +153,7 @@ const elements = {
   raidSummaryItems: document.querySelector("#raid-summary-items"),
   raidRepeatButton: document.querySelector("#raid-repeat-button"),
   raidReturnButton: document.querySelector("#raid-return-button"),
+  raidNextButton: document.querySelector("#raid-next-button"),
   autoRepeatToggle: document.querySelector("#auto-repeat-toggle"),
   playerHpFill: document.querySelector("#player-hp-fill"),
   playerHp: document.querySelector("#player-hp-label"),
@@ -241,10 +246,15 @@ const HIDEOUT_REST_FAST_HP_PER_SECOND = 0.1;
 const HIDEOUT_REST_SLOW_HP_PER_SECOND = 0.006;
 const HIDEOUT_REST_FAST_STAMINA_PER_SECOND = HIDEOUT_STAMINA_RECOVERY_CONFIG.nearHousePerMinute / 60;
 const HIDEOUT_REST_SLOW_STAMINA_PER_SECOND = HIDEOUT_STAMINA_RECOVERY_CONFIG.awayPerMinute / 60;
+const BACKGROUND_TICK_MS = 1000;
+const DETAILED_GAME_STEP_SECONDS = 0.05;
+const SIMPLE_GAME_STEP_SECONDS = 1;
 
 await renderer.load();
 await boot();
+lastTime = performance.now();
 requestAnimationFrame(tick);
+window.setInterval(runBackgroundTick, BACKGROUND_TICK_MS);
 
 async function boot() {
   const params = new URLSearchParams(location.search);
@@ -642,36 +652,75 @@ function persistBeforeExit(event = null) {
 window.addEventListener("pagehide", () => persistGame({ keepalive: true }));
 window.addEventListener("beforeunload", persistBeforeExit);
 document.addEventListener("visibilitychange", () => {
+  runGameClock(performance.now(), { render: document.visibilityState !== "hidden" });
   if (document.visibilityState === "hidden") persistGame({ keepalive: true });
 });
 
 function tick(now) {
-  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  runGameClock(now, { render: true });
+  requestAnimationFrame(tick);
+}
+
+function runBackgroundTick() {
+  if (document.visibilityState !== "hidden") return;
+  runGameClock(performance.now(), { render: false });
+}
+
+function runGameClock(now, options = {}) {
+  const dt = Math.max(0, (now - lastTime) / 1000);
   lastTime = now;
 
   if (state && combat) {
-    combat.update(dt);
-    online?.update(dt);
-    updatePassiveIncome(state, dt);
-    updateHideoutRestRecovery(dt);
-    updateTutorialCityNpcArrival();
-    updatePendingCityNpcArrival();
-    updatePendingCityPortalArrival();
-    updatePendingHideoutPortalArrival();
-    updatePendingIdlePortalArrival();
-    updatePendingHideoutHouseArrival();
-    renderer.draw(state, playerRow());
-    syncHud();
-    renderTutorial();
-    saveTimer += dt;
-    if (!state.settings.visualPreview && saveTimer > 8) {
-      saveTimer = 0;
-      persistGame();
+    advanceGameTime(dt);
+    flushAutosave();
+    if (options.render !== false) {
+      renderer.draw(state, playerRow());
+      syncHud();
+      renderTutorial();
     }
-    if (!state.settings.visualPreview) updateSessionGuard(dt);
   }
+}
 
-  requestAnimationFrame(tick);
+function advanceGameTime(seconds) {
+  let remaining = Math.max(0, Number(seconds || 0));
+  let safety = 0;
+  while (remaining > 0.0001 && safety < 200000) {
+    const step = Math.min(remaining, gameStepSeconds());
+    advanceGameStep(step);
+    remaining -= step;
+    safety += 1;
+  }
+}
+
+function gameStepSeconds() {
+  const mode = state?.run?.mode;
+  if (state?.scene === "map") return DETAILED_GAME_STEP_SECONDS;
+  if (["combat", "choice", "approaching", "stealing", "collectingLoot", "summary"].includes(mode)) {
+    return DETAILED_GAME_STEP_SECONDS;
+  }
+  return SIMPLE_GAME_STEP_SECONDS;
+}
+
+function advanceGameStep(dt) {
+  combat.update(dt);
+  online?.update(dt);
+  updatePassiveIncome(state, dt);
+  updateHideoutRestRecovery(dt);
+  updateTutorialCityNpcArrival();
+  updatePendingCityNpcArrival();
+  updatePendingCityPortalArrival();
+  updatePendingHideoutPortalArrival();
+  updatePendingIdlePortalArrival();
+  updatePendingIdleNpcArrival();
+  updatePendingHideoutHouseArrival();
+  saveTimer += dt;
+  if (!state.settings.visualPreview) updateSessionGuard(dt);
+}
+
+function flushAutosave() {
+  if (state.settings.visualPreview || saveTimer <= 8) return;
+  saveTimer = 0;
+  persistGame();
 }
 
 function updateSessionGuard(dt) {
@@ -777,6 +826,7 @@ function ensureTutorialOverlay() {
       }
       advanceActiveTutorial();
     },
+    onBack: () => rewindActiveTutorial(),
     onSkip: () => skipActiveTutorial(),
     onPassive: (step) => performTutorialPrimaryAction(step)
   });
@@ -802,12 +852,17 @@ function renderTutorial() {
     tutorialOverlay?.hide();
     return;
   }
-  ensureTutorialOverlay().render(tutorialStep(state));
+  ensureTutorialOverlay().render(tutorialStep(state), { canGoBack: canRewindTutorialStep(state) });
 }
 
 function advanceActiveTutorial() {
   if (!state) return;
   commitTutorialChange(advanceTutorialStep(state));
+}
+
+function rewindActiveTutorial() {
+  if (!state) return;
+  commitTutorialChange(rewindTutorialStep(state));
 }
 
 function performTutorialPrimaryAction(step) {
@@ -1309,13 +1364,16 @@ function syncHud() {
     : "Sem alvo em combate";
   const isRaid = state.scene === "map" && state.run.raidTimeLeft > 0 && state.run.mode !== "returning" && !state.run.animationTest;
   const isTemporary = state.run.mode === "temporary" && temporaryStay;
-  elements.raidTimer.classList.toggle("hidden", !isRaid && !isTemporary);
-  if (isTemporary) {
-    elements.raidTimerLabel.textContent = `${temporaryStay.label}: ${formatTime(temporaryStay.remaining)}`;
-    elements.raidCountLabel.textContent = "Saida bloqueada";
-  } else if (isRaid) {
+  document.body.classList.toggle("temporary-stay-mode", Boolean(isTemporary));
+  elements.raidTimer.classList.toggle("hidden", !isRaid);
+  elements.raidCaughtRiskLabel?.classList.toggle("hidden", !isRaid);
+  if (isRaid) {
     elements.raidTimerLabel.textContent = formatTime(state.run.raidTimeLeft);
     elements.raidCountLabel.textContent = `${remainingTargets(state)} / ${totalTargets(state)} alvos`;
+    const caughtRisk = Math.max(0, Math.min(100, 100 - calculateStealChancePercent(map, stats)));
+    if (elements.raidCaughtRiskLabel) {
+      elements.raidCaughtRiskLabel.textContent = `Ser pego: ${formatPercent(caughtRisk)}`;
+    }
   }
   elements.playerHpFill.style.width = `${Math.round(hpPercent * 100)}%`;
   elements.playerHp.textContent = `HP ${state.player.hp} / ${stats.maxHp}`;
@@ -1324,17 +1382,18 @@ function syncHud() {
 
 function syncSurvivalWarning(stats, hpPercent) {
   if (!elements.survivalWarning) return;
+  if (state.scene === "idle" && state.run?.mode === "temporary") {
+    elements.survivalWarning.classList.remove("hidden");
+    elements.survivalWarning.textContent = temporaryStayText();
+    return;
+  }
+
   const staminaPercentValue = state.player.staminaMax
     ? Number(state.player.staminaAtual || 0) / state.player.staminaMax
     : 1;
   const danger = hpPercent < 0.3 || staminaPercentValue < 0.3 || Boolean(state.player.needsHideoutRest);
   elements.survivalWarning.classList.toggle("hidden", !danger);
   if (!danger) return;
-
-  if (state.scene === "idle" && state.run?.mode === "temporary") {
-    elements.survivalWarning.textContent = temporaryStayText();
-    return;
-  }
 
   if (state.scene === "hideout") {
     elements.survivalWarning.textContent = state.run?.nearHideoutHouse
@@ -1377,7 +1436,17 @@ function handleStagePointer(event) {
       walkToIdlePortal(portal);
       return;
     }
+    const npc = findClickedIdleNpc(point.x, point.y);
+    if (npc) {
+      if (activeCityNpc?.id === npc.id) {
+        closeCityShopPanel();
+        return;
+      }
+      walkToIdleNpc(npc);
+      return;
+    }
     state.run.pendingIdlePortalId = null;
+    state.run.pendingIdleNpcId = null;
     combat.moveIdleTo(renderer.screenToWorld(point.x, state));
     return;
   }
@@ -1582,6 +1651,7 @@ function applyKeyboardMovement() {
     combat.moveHideoutTo(targetX);
   } else if (state.scene === "idle" && ["idle", "temporary"].includes(state.run.mode)) {
     state.run.pendingIdlePortalId = null;
+    state.run.pendingIdleNpcId = null;
     combat.moveIdleTo(targetX);
   }
 }
@@ -1592,6 +1662,7 @@ function stopKeyboardMovement() {
   state.run.cityTargetX = null;
   state.run.pendingHideoutPortalId = null;
   state.run.pendingIdlePortalId = null;
+  state.run.pendingIdleNpcId = null;
   state.run.pendingHideoutItemId = null;
   state.run.playerAction = null;
   renderAll();
@@ -1612,6 +1683,7 @@ function renderInventory() {
     close: closeMaster,
     openTab: openMasterTab,
     openConfig,
+    openPets: openPetsPanel,
     activeLeft,
     activeRight,
     selectInventory: (index) => {
@@ -1904,7 +1976,10 @@ function panelCallbacks(close) {
       closeCityShopPanel({ render: false });
       closeCityPortalPanel({ render: false });
       closeMaster({ render: false, force: true });
-      combat.enterIdleMap(mapId, { logMessage: `Voce entrou em ${idleMapName(mapId)}.` });
+      combat.enterIdleMap(mapId, {
+        logMessage: `Voce entrou em ${idleMapName(mapId)}.`,
+        returnToCity: cityReturnPointForIdleMap(mapId)
+      });
       renderAll();
     },
     enterCity: () => {
@@ -1912,7 +1987,7 @@ function panelCallbacks(close) {
         showToast(temporaryStayText());
         return;
       }
-      combat.enterCity();
+      combat.enterCity(cityReturnPointForCurrentScene() || {});
       online?.sayHello();
       renderAll();
     },
@@ -1937,6 +2012,8 @@ function panelCallbacks(close) {
       handleResult(result);
       renderAll();
     },
+    equipPet: (petId) => handlePetResult(equipPet(state.player, petId)),
+    unequipPet: () => handlePetResult(unequipPet(state.player)),
     refreshFactions: () => renderAll(),
     createFaction: (fields) => handleFactionResult(createFaction(state.player, fields)),
     joinFaction: (factionId) => handleFactionResult(joinFaction(state.player, factionId)),
@@ -2040,7 +2117,7 @@ function openMasterTab(type) {
   if (type === "city") {
     hideChoice();
     closeCityShopPanel({ render: false });
-    combat?.enterCity();
+    combat?.enterCity(cityReturnPointForCurrentScene() || {});
     activeLeft = null;
     activeRight = activeRight === "city" ? null : activeRight;
     showToast("Cidade inicial.");
@@ -2071,6 +2148,12 @@ function openPanel(type) {
   openMasterTab(type);
 }
 
+function openPetsPanel() {
+  activeCenter = true;
+  activeLeft = activeLeft === "pets" ? null : "pets";
+  renderAll();
+}
+
 function openHideoutVault() {
   activeCenter = true;
   activeLeft = "hideout";
@@ -2079,6 +2162,33 @@ function openHideoutVault() {
   dispatchTutorialEvent("hideout_house_opened", {}, { render: false });
   showToast("Cofre aberto.");
   renderAll();
+}
+
+function petshopCityReturnPoint() {
+  const npc = CITY_NPCS.find((candidate) => candidate.id === "npc-petshop");
+  return {
+    playerX: Math.max(64, Math.round((npc?.x ?? 1840) - 48)),
+    playerDirection: "right"
+  };
+}
+
+function cityHideoutReturnPoint() {
+  const portal = CITY_PORTALS.find((candidate) => candidate.id === "hideout-door");
+  return {
+    playerX: Math.max(64, Math.round(portal?.x ?? 505)),
+    playerDirection: "right"
+  };
+}
+
+function cityReturnPointForIdleMap(mapId) {
+  if (mapId === "petshop") return petshopCityReturnPoint();
+  return null;
+}
+
+function cityReturnPointForCurrentScene() {
+  if (state?.scene === "hideout") return cityHideoutReturnPoint();
+  if (state?.scene === "idle") return cityReturnPointForIdleMap(state.currentMapId);
+  return null;
 }
 
 function canUseHideout() {
@@ -2668,6 +2778,12 @@ function handleHideoutHouseClick(point) {
   const hit = renderer.hitTestHideoutItem(point.x, point.y);
   if (hit?.typeId !== "house") return false;
   if (blockWrongTutorialTarget("hideout_item", "house")) return true;
+  if (activeCenter && activeRight === "vault") {
+    state.run.pendingHideoutPortalId = null;
+    state.run.pendingHideoutItemId = null;
+    closeMaster();
+    return true;
+  }
 
   const placement = getHideoutItemPlacement("house");
   state.run.pendingHideoutPortalId = null;
@@ -3020,6 +3136,24 @@ function startRaid(mapId, options = {}) {
   });
 }
 
+function startNextRaidFromSummary() {
+  const nextMap = nextRaidMapFromSummary();
+  if (!nextMap) {
+    showToast("Proximo mapa ainda bloqueado.");
+    return;
+  }
+  startRaid(nextMap.id);
+}
+
+function nextRaidMapFromSummary() {
+  const sourceMapId = state.run?.summary?.mapId || state.currentMapId;
+  const current = MAPS.find((map) => map.id === sourceMapId);
+  if (!current) return null;
+  const next = MAPS.find((map) => map.index === current.index + 1);
+  if (!next || next.index > Number(state.player.highestMapUnlocked || 1)) return null;
+  return next;
+}
+
 function playerNeedsHideoutRest() {
   const stats = calculateStats(state.player);
   return Boolean(state.player.needsHideoutRest && Number(state.player.hp || 0) < stats.maxHp * 0.6);
@@ -3084,6 +3218,19 @@ function findClickedIdlePortal(screenX, screenY) {
   )) || null;
 }
 
+function findClickedIdleNpc(screenX, screenY) {
+  if (state.scene !== "idle") return null;
+  const worldX = renderer.screenToWorld(screenX, state);
+  const groundY = idleGroundY();
+  const npcHeight = cityNpcHeight();
+  if (screenY < groundY - npcHeight - 24 || screenY > groundY + 18) return null;
+  return (state.run?.npcs || [])
+    .filter((npc) => npc.role)
+    .map((npc) => ({ npc, distance: Math.abs(worldX - npc.x) }))
+    .filter((entry) => entry.distance <= 58)
+    .sort((a, b) => a.distance - b.distance)[0]?.npc || null;
+}
+
 function walkToCityPortal(portal) {
   if (portal.action === "hideout" && !canUseHideout()) return;
   closeCityInteractions({ render: false });
@@ -3107,12 +3254,24 @@ function walkToHideoutPortal(portal) {
 function walkToIdlePortal(portal) {
   if (!state?.run || state.scene !== "idle") return;
   state.run.pendingIdlePortalId = portal.id;
+  state.run.pendingIdleNpcId = null;
   state.run.pendingHideoutPortalId = null;
   state.run.pendingHideoutItemId = null;
   const defaultOffset = portal.x < 90 ? portal.width / 2 + 8 : -portal.width / 2 - 12;
   const approachX = Math.max(64, Math.round(portal.x + Number(portal.approachOffset ?? defaultOffset)));
   combat.moveIdleTo(approachX);
   showToast("Indo até a cidade.");
+}
+
+function walkToIdleNpc(npc) {
+  if (!state?.run || state.scene !== "idle") return;
+  closeCityShopPanel({ render: false, force: true });
+  closeMaster({ render: false, force: true });
+  state.run.pendingIdleNpcId = npc.id;
+  state.run.pendingIdlePortalId = null;
+  const approachOffset = (state.run.playerX || 0) <= npc.x ? -48 : 48;
+  combat.moveIdleTo(npc.x + approachOffset);
+  showToast(`Indo ate ${npc.name}.`);
 }
 
 function openCityPortalPanel(portal) {
@@ -3159,8 +3318,9 @@ function updatePendingHideoutPortalArrival() {
   if (!portal || portal.action !== "city") return;
   closeMaster({ render: false, force: true });
   state.run.cityTargetX = null;
+  const returnPoint = cityHideoutReturnPoint();
   fadeThen("Voltando para a cidade.", () => {
-    combat.enterCity();
+    combat.enterCity(returnPoint);
     dispatchTutorialEvent("scene_entered", { scene: "city", from: "hideout" }, { render: false });
   });
 }
@@ -3177,11 +3337,36 @@ function updatePendingIdlePortalArrival() {
   closeMaster({ render: false, force: true });
   state.run.cityTargetX = null;
   const fromMap = state.currentMapId || "idle";
+  const returnToCity = state.run.returnToCity || cityReturnPointForIdleMap(fromMap);
   fadeThen("Voltando para a cidade.", () => {
-    combat.enterCity();
+    combat.enterCity(returnToCity || {});
     online?.sayHello();
     dispatchTutorialEvent("scene_entered", { scene: "city", from: fromMap }, { render: false });
   });
+}
+
+function updatePendingIdleNpcArrival() {
+  if (state.scene !== "idle" || !["idle", "temporary"].includes(state.run.mode) || !state.run.pendingIdleNpcId) return;
+  if (Number.isFinite(state.run.cityTargetX)) return;
+  const npc = (state.run.npcs || []).find((candidate) => candidate.id === state.run.pendingIdleNpcId);
+  state.run.pendingIdleNpcId = null;
+  if (!npc) return;
+  openIdleNpcPanel(npc);
+}
+
+function openIdleNpcPanel(npc) {
+  if (activeCityNpc?.id === npc?.id) {
+    closeCityShopPanel();
+    return;
+  }
+  if (npc?.role !== "petshop") return;
+  closeMaster({ render: false, force: true });
+  activeCityNpc = npc;
+  activeCityNpcGreeting = cityNpcGreeting(npc);
+  shopMode = "pets";
+  pendingSellIndexes.clear();
+  pendingCraftIndex = null;
+  renderAll();
 }
 
 function updatePendingHideoutHouseArrival() {
@@ -3225,6 +3410,11 @@ function interactWithNearestCityNpc() {
 
   if (nearest.distance > 86) {
     walkToCityNpc(nearest.npc);
+    return;
+  }
+
+  if (activeCityNpc?.id === nearest.npc.id) {
+    closeCityShopPanel();
     return;
   }
 
@@ -3317,6 +3507,10 @@ function renderCityShopPanel() {
     renderDrugPanel(panel, activeCityNpc);
     return;
   }
+  if (shopMode === "pets") {
+    renderPetShopPanel(panel, activeCityNpc);
+    return;
+  }
   if (shopMode === "buy") {
     renderBuyPanel(panel, activeCityNpc);
     return;
@@ -3363,6 +3557,7 @@ function renderCityShopPanel() {
       ${activeCityNpc.role === "vendor" ? `
         <button type="button" class="primary-action" data-shop-mode="buy">Itens Aleatorios</button>
         <button type="button" class="primary-action" data-shop-mode="craft">Fundir</button>
+        <button type="button" class="secondary-action" data-shop-quick-craft>Fusao Rapida</button>
       ` : ""}
       ${activeCityNpc.role === "buyer" ? `
         <button type="button" class="primary-action" data-shop-mode="sell">Vender</button>
@@ -3400,6 +3595,72 @@ function renderDrugPanel(panel, npc) {
   panel.querySelectorAll("[data-buy-drug]").forEach((button) => {
     button.addEventListener("click", () => handleDrugPurchase(button.dataset.buyDrug));
   });
+}
+
+function renderPetShopPanel(panel, npc) {
+  normalizePets(state.player, { silent: true });
+  const greeting = petsUnlocked(state.player)
+    ? "Escolhe um parceiro. So um acompanha voce por vez."
+    : "Nao te conheco ainda. Pets liberados no nivel 5.";
+  panel.innerHTML = `
+    <header>
+      <span class="eyebrow">${npc.name}</span>
+      <h2>Loja de Pets</h2>
+      <button type="button" class="close-button" data-shop-close aria-label="Fechar">X</button>
+    </header>
+    <p>${greeting}</p>
+    <div class="pet-shop-list">
+      ${PETS.map((pet) => petShopRow(pet)).join("")}
+    </div>
+    <div class="shop-sell-footer">
+      <button type="button" class="secondary-action" data-shop-close>Fechar</button>
+    </div>
+  `;
+  bindShopPanel(panel);
+  panel.querySelectorAll("[data-pet-preview]").forEach((canvas) => {
+    renderer.drawPetPreview(canvas, canvas.dataset.petPreview);
+  });
+  panel.querySelectorAll("[data-buy-pet]").forEach((button) => {
+    button.addEventListener("click", () => handlePetResult(buyPet(state.player, button.dataset.buyPet)));
+  });
+  panel.querySelectorAll("[data-equip-pet]").forEach((button) => {
+    button.addEventListener("click", () => handlePetResult(equipPet(state.player, button.dataset.equipPet)));
+  });
+  panel.querySelector("[data-unequip-pet]")?.addEventListener("click", () => handlePetResult(unequipPet(state.player)));
+}
+
+function petShopRow(pet) {
+  const status = petStatus(state.player, pet);
+  const price = petPrice(pet);
+  const statusLabel = {
+    "locked-system": `Libera no nivel ${PET_UNLOCK_LEVEL}`,
+    "locked-level": `Libera no nivel ${pet.requiredLevel}`,
+    equipped: "Equipado",
+    owned: "Comprado",
+    claimable: "Disponivel gratis",
+    available: "Disponivel"
+  }[status] || "Disponivel";
+
+  const action = petShopAction(pet, status, price);
+  return `
+    <article class="pet-shop-row">
+      <canvas class="pet-preview" width="86" height="70" data-pet-preview="${pet.id}"></canvas>
+      <div>
+        <h3>${pet.name}</h3>
+        <p>Nivel ${pet.requiredLevel} | ${Math.round(pet.dpsPercent * 1000) / 10}% DPS | ${pet.cooldown.toFixed(2)}s</p>
+        <small>${statusLabel}${price > 0 ? ` | ${formatMoney(price)}` : ""}</small>
+      </div>
+      ${action}
+    </article>
+  `;
+}
+
+function petShopAction(pet, status, price) {
+  if (status === "equipped") return `<button type="button" class="panel-action" data-unequip-pet>Desequipar</button>`;
+  if (status === "owned") return `<button type="button" class="panel-action" data-equip-pet="${pet.id}">Equipar</button>`;
+  if (status === "claimable") return `<button type="button" class="panel-action" data-buy-pet="${pet.id}">Resgatar gratis</button>`;
+  if (status === "available") return `<button type="button" class="panel-action" data-buy-pet="${pet.id}" ${state.player.money >= price ? "" : "disabled"}>${formatMoney(price)}</button>`;
+  return `<button type="button" class="panel-action" disabled>Bloqueado</button>`;
 }
 
 function drugShopRow(drug, stats, now) {
@@ -3602,6 +3863,18 @@ function renderCraftPanel(panel, npc) {
     handleResult(result);
     renderAll();
   });
+  panel.querySelectorAll("[data-craft-one]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const index = Number(button.dataset.craftOne);
+      const currentPreview = getCraftPreview(state.player, index);
+      if (!currentPreview?.canCraft) return;
+      if (!confirmCraftRisk(currentPreview)) return;
+      const result = craftInventoryItem(state.player, index);
+      handleResult(result);
+      renderAll();
+    });
+  });
   panel.querySelector("[data-craft-all]")?.addEventListener("click", () => {
     const currentEntries = shopCraftEntries();
     if (!confirmCraftAllRisk(currentEntries)) return;
@@ -3697,6 +3970,17 @@ function bindShopPanel(panel) {
       renderTutorial();
     });
   });
+  panel.querySelector("[data-shop-quick-craft]")?.addEventListener("click", () => {
+    const entries = shopCraftEntries();
+    if (!entries.length) {
+      showToast("Junte 4 itens iguais para fundir.");
+      return;
+    }
+    if (!confirmCraftAllRisk(entries)) return;
+    const result = craftAllInventory(state.player);
+    handleResult(result);
+    renderAll();
+  });
   panel.querySelector("[data-enter-petshop]")?.addEventListener("click", () => {
     if (state.run?.mode === "temporary") {
       showToast(temporaryStayText());
@@ -3705,7 +3989,11 @@ function bindShopPanel(panel) {
     closeCityShopPanel({ render: false });
     closeCityPortalPanel({ render: false });
     closeMaster({ render: false, force: true });
-    combat.enterIdleMap("petshop", { playerX: 620, logMessage: `Voce entrou em ${idleMapName("petshop")}.` });
+    combat.enterIdleMap("petshop", {
+      playerX: 620,
+      logMessage: `Voce entrou em ${idleMapName("petshop")}.`,
+      returnToCity: petshopCityReturnPoint()
+    });
     renderAll();
   });
 }
@@ -3729,7 +4017,10 @@ function closeCityShopPanel(options = {}) {
   shopMode = "talk";
   pendingSellIndexes.clear();
   pendingCraftIndex = null;
-  if (state?.run) state.run.pendingCityNpcId = null;
+  if (state?.run) {
+    state.run.pendingCityNpcId = null;
+    state.run.pendingIdleNpcId = null;
+  }
   panel?.classList.add("hidden");
   if (options.render !== false && hadShop) renderAll();
   return hadShop;
@@ -3766,10 +4057,11 @@ function shopCraftCell(entry, selected) {
   const status = preview.result ? `${preview.count}/${preview.needed} -> ${preview.result.name}` : "Item no maximo";
   const risk = preview.failureChance ? " | risco 50%" : "";
   return `
-    <button type="button" class="shop-sell-cell shop-craft-cell ${selected ? "selected" : ""} ${preview.canCraft ? "ready" : ""}" data-craft-index="${entry.index}" title="${entry.item.name}">
+    <article class="shop-sell-cell shop-craft-cell ${selected ? "selected" : ""} ${preview.canCraft ? "ready" : ""}" data-craft-index="${entry.index}" title="${entry.item.name}">
       <span>${entry.item.name}</span>
       <small>${status}${risk}</small>
-    </button>
+      <button type="button" class="item-action" data-craft-one="${entry.index}" ${preview.canCraft ? "" : "disabled"}>Fundir</button>
+    </article>
   `;
 }
 
@@ -3920,6 +4212,12 @@ function handleResult(result) {
   }
 }
 
+function handlePetResult(result) {
+  handleResult(result);
+  if (result?.ok) persistGame();
+  renderAll();
+}
+
 function confirmSellItems(items) {
   const valuable = items.filter((item) => ["epico", "lendario", "mestre"].includes(item?.rarity));
   if (!valuable.length) return true;
@@ -4026,6 +4324,9 @@ function syncRaidSummary() {
   ];
   elements.raidSummaryItems.textContent = items.length ? items.join(" | ") : "Nenhum item obtido.";
   elements.autoRepeatToggle.checked = Boolean(state.settings.autoRepeatRaid);
+  if (elements.raidNextButton) {
+    elements.raidNextButton.disabled = !nextRaidMapFromSummary();
+  }
 }
 
 function remainingTargets(sourceState = state) {
@@ -4146,6 +4447,7 @@ function normalizeState() {
     state.selectedVaultIndex = null;
   }
   normalizeProgressionSystems(state.player);
+  normalizePets(state.player, { silent: true });
   applyOfflinePassiveIncome(state);
   state.run ||= createNewGame(state.selectedPlayerId || "iris").run;
   state.run.playerDirection ||= "right";
@@ -4154,7 +4456,9 @@ function normalizeState() {
   state.run.pendingCityPortalId ??= null;
   state.run.pendingHideoutPortalId ??= null;
   state.run.pendingIdlePortalId ??= null;
+  state.run.pendingIdleNpcId ??= null;
   state.run.pendingHideoutItemId ??= null;
+  state.run.returnToCity ??= null;
   state.run.playerAction ??= null;
   state.run.playerActionTimer ||= 0;
   state.run.playerActionDuration ||= 0;
@@ -4338,6 +4642,10 @@ elements.hospitalModal?.addEventListener("click", (event) => {
 elements.raidRepeatButton?.addEventListener("click", () => {
   combat.repeatLastRaid();
   renderAll();
+});
+
+elements.raidNextButton?.addEventListener("click", () => {
+  startNextRaidFromSummary();
 });
 
 elements.raidReturnButton?.addEventListener("click", () => {

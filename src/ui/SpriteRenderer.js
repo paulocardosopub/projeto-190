@@ -5,6 +5,7 @@ import { CITY_NPCS } from "../data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "../data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-7";
+import { PETS, PET_FRAME_BOUNDS, getEquippedPet, getPetById } from "../data/pets/index.js?v=pets-1";
 
 export class SpriteRenderer {
   constructor(canvas) {
@@ -16,6 +17,8 @@ export class SpriteRenderer {
     this.lastHideoutItemBounds = [];
     this.playerAnimations = [];
     this.playerAnimationState = {};
+    this.petFrames = [];
+    this.petAnimationState = {};
     this.ctx.imageSmoothingEnabled = false;
   }
 
@@ -27,6 +30,7 @@ export class SpriteRenderer {
     this.actorBounds.enemies = buildActorBounds(this.images.enemies, actorSheet("enemies"));
     this.actorBounds.enemies2 = buildActorBounds(this.images.enemies2, actorSheet("enemies2"));
     this.actorBounds.enemies3 = buildActorBounds(this.images.enemies3, actorSheet("enemies3"));
+    this.petFrames = buildPetFrames(this.images.pets);
     HIDEOUT_ITEM_TYPES.forEach((item) => {
       const config = SPRITES.hideoutItems[item.id];
       this.hideoutItemBounds[item.id] = buildGridBounds(this.images[config.sheet], config);
@@ -68,7 +72,7 @@ export class SpriteRenderer {
     this.drawDecorativeNpcs(state, cameraWorld, visual);
 
     for (const npc of npcs) {
-      if (npc.done) continue;
+      if (npc.done && !npc.robbed) continue;
       const screenX = this.worldToScreen(npc.x, cameraWorld);
       if (screenX < -110 || screenX > width + 110) continue;
       const npcFeetY = visual.groundY + visual.npcYOffset;
@@ -84,12 +88,14 @@ export class SpriteRenderer {
       );
       if (npc.alerted) this.drawSpeech(screenX, npcFeetY - visual.npcHeight - 18, npc.alertLine);
     }
+    this.drawAmbientPets(state, cameraWorld, visual);
     this.drawItemTheftChats(state, cameraWorld, visual);
     this.drawGroundLoots(state, cameraWorld, visual);
     this.drawOnlinePlayers(state, cameraWorld, visual);
 
     const playerScreenX = this.worldToScreen(state.run.playerX || 120, cameraWorld);
     const playerFeetY = visual.groundY + visual.playerYOffset;
+    this.drawPlayerPet(state, cameraWorld, visual, playerScreenX, playerFeetY);
     const playerConfig = PLAYERS.find((player) => player.id === state.selectedPlayerId);
     const animationIndex = Number.isInteger(playerConfig?.animationIndex) ? playerConfig.animationIndex : playerRow;
     const playerAnimation = this.playerAnimations[animationIndex];
@@ -224,6 +230,116 @@ export class SpriteRenderer {
         drawHeight
       );
     }
+  }
+
+  drawPlayerPet(state, cameraWorld, visual, fallbackPlayerX, playerFeetY) {
+    const pet = getEquippedPet(state.player);
+    if (!pet || petHiddenInScene(state)) return;
+    const petState = state.run?.pet || {};
+    const rowFrames = this.petFrames[pet.row] || [];
+    if (!rowFrames.length) return;
+
+    const action = petAction(state);
+    const frameIndexes = SPRITES.petFrames.actions[action] || SPRITES.petFrames.actions.walk;
+    const animationState = this.petAnimationStateFor(pet.id, action);
+    const frameIndex = petFrameIndex(action, frameIndexes.length, state, animationState);
+    const frame = rowFrames[frameIndexes[frameIndex] ?? 0] || rowFrames[0];
+    if (!frame) return;
+
+    const petWorldX = Number.isFinite(petState.x)
+      ? petState.x
+      : (state.run?.playerX || 120) + (state.run?.playerDirection === "left" ? 36 : -36);
+    const x = this.worldToScreen(petWorldX, cameraWorld);
+    if (x < -120 || x > this.canvas.width + 120) return;
+
+    const direction = petState.direction || state.run?.playerDirection || state.player?.lastPetFollowDirection || "right";
+    const mirrored = direction === "left";
+    const height = visual.playerHeight * Number(pet.heightRatio || 0.55);
+    const scale = height / Math.max(1, frame.referenceHeight || frame.bodyHeight || frame.height);
+    const drawWidth = frame.width * scale;
+    const drawHeight = frame.height * scale;
+    const drawX = Math.round(x - (mirrored ? frame.width - frame.anchorX : frame.anchorX) * scale);
+    const drawY = Math.round(playerFeetY + 2 - frame.anchorY * scale);
+
+    this.drawContactShadow(x, playerFeetY + 2, Math.max(18, frame.footWidth * scale * 0.82));
+    if (mirrored) {
+      this.ctx.save();
+      this.ctx.translate(drawX + drawWidth, drawY);
+      this.ctx.scale(-1, 1);
+      this.ctx.drawImage(this.images.pets, frame.x, frame.y, frame.width, frame.height, 0, 0, drawWidth, drawHeight);
+      this.ctx.restore();
+      return;
+    }
+
+    this.ctx.drawImage(
+      this.images.pets,
+      frame.x,
+      frame.y,
+      frame.width,
+      frame.height,
+      drawX,
+      drawY,
+      drawWidth,
+      drawHeight
+    );
+  }
+
+  drawAmbientPets(state, cameraWorld, visual) {
+    const pets = ambientPetsForState(state);
+    if (!pets.length) return;
+
+    const time = performance.now() / 1000;
+    const feetY = visual.groundY + visual.playerYOffset + 2;
+    pets.forEach(({ pet, baseX, range, phase }, index) => {
+      const speed = 0.45 + (index % 4) * 0.08;
+      const wave = Math.sin(time * speed + phase);
+      const drift = Math.cos(time * speed + phase);
+      const worldX = baseX + wave * range;
+      const x = this.worldToScreen(worldX, cameraWorld);
+      if (x < -120 || x > this.canvas.width + 120) return;
+      const direction = drift >= 0 ? "right" : "left";
+      const height = visual.playerHeight * Number(pet.heightRatio || 0.55) * 0.96;
+      this.drawPetSprite(pet, "walk", `ambient-${state.scene}-${state.currentMapId || "hideout"}-${pet.id}-${index}`, x, feetY, height, direction);
+    });
+  }
+
+  drawPetSprite(pet, action, animationKey, x, feetY, height, direction) {
+    const rowFrames = this.petFrames[pet.row] || [];
+    if (!rowFrames.length) return;
+    const frameIndexes = SPRITES.petFrames.actions[action] || SPRITES.petFrames.actions.walk;
+    const animationState = this.petAnimationStateFor(animationKey, action);
+    const frameIndex = petLoopFrameIndex(action, frameIndexes.length, animationState);
+    const frame = rowFrames[frameIndexes[frameIndex] ?? 0] || rowFrames[0];
+    if (!frame) return;
+
+    const mirrored = direction === "left";
+    const scale = height / Math.max(1, frame.referenceHeight || frame.bodyHeight || frame.height);
+    const drawWidth = frame.width * scale;
+    const drawHeight = frame.height * scale;
+    const drawX = Math.round(x - (mirrored ? frame.width - frame.anchorX : frame.anchorX) * scale);
+    const drawY = Math.round(feetY - frame.anchorY * scale);
+
+    this.drawContactShadow(x, feetY, Math.max(18, frame.footWidth * scale * 0.82));
+    if (mirrored) {
+      this.ctx.save();
+      this.ctx.translate(drawX + drawWidth, drawY);
+      this.ctx.scale(-1, 1);
+      this.ctx.drawImage(this.images.pets, frame.x, frame.y, frame.width, frame.height, 0, 0, drawWidth, drawHeight);
+      this.ctx.restore();
+      return;
+    }
+
+    this.ctx.drawImage(
+      this.images.pets,
+      frame.x,
+      frame.y,
+      frame.width,
+      frame.height,
+      drawX,
+      drawY,
+      drawWidth,
+      drawHeight
+    );
   }
 
   drawActor(imageOrSheet, row, direction, x, feetY, height, pulse = 1, options = {}) {
@@ -447,6 +563,8 @@ export class SpriteRenderer {
       const feetY = visual.groundY + visual.npcYOffset + Number(portal.yOffset || 0);
       if (portal.type === "assailant") {
         this.drawAssailantPortal(portal, x, feetY);
+      } else if (portal.type === "smoke") {
+        this.drawHideoutSmokePortal(portal, x, feetY);
       } else {
         this.drawAssaultPortal(portal, x, feetY);
       }
@@ -629,16 +747,18 @@ export class SpriteRenderer {
       const alpha = Math.max(0, 1 - Math.max(0, progress - 0.72) / 0.28);
       this.ctx.save();
       this.ctx.globalAlpha = alpha;
-      this.drawActor(
-        chat.sheet || "enemies",
-        chat.row || 0,
-        chat.direction || "left",
-        x,
-        feetY,
-        visual.npcHeight * Number(chat.heightScale || 1),
-        1.04,
-        { columnOffset: Number(chat.columnOffset || 0) }
-      );
+      if (chat.actorHidden !== false) {
+        this.drawActor(
+          chat.sheet || "enemies",
+          chat.row || 0,
+          chat.direction || "left",
+          x,
+          feetY,
+          visual.npcHeight * Number(chat.heightScale || 1),
+          1.04,
+          { columnOffset: Number(chat.columnOffset || 0) }
+        );
+      }
       this.drawSpeech(x, feetY - visual.npcHeight - 18, chat.line);
       this.ctx.restore();
     });
@@ -1001,6 +1121,31 @@ export class SpriteRenderer {
     );
   }
 
+  drawPetPreview(canvas, petId) {
+    const pet = getPetById(petId);
+    const frame = pet ? this.petFrames[pet.row]?.[0] : null;
+    const image = this.images.pets;
+    if (!canvas || !frame || !image) return;
+
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = false;
+    const scale = Math.min(canvas.width * 0.82 / frame.width, canvas.height * 0.82 / (frame.referenceHeight || frame.bodyHeight || frame.height));
+    const feetX = canvas.width * 0.5;
+    const feetY = canvas.height * 0.9;
+    ctx.drawImage(
+      image,
+      frame.x,
+      frame.y,
+      frame.width,
+      frame.height,
+      Math.round(feetX - frame.anchorX * scale),
+      Math.round(feetY - frame.anchorY * scale),
+      frame.width * scale,
+      frame.height * scale
+    );
+  }
+
   drawAnimatedPreview(canvas, animation) {
     const ctx = canvas.getContext("2d");
     const frame = animation.actions.walk[0];
@@ -1064,6 +1209,19 @@ export class SpriteRenderer {
       };
     }
     return this.playerAnimationState[key];
+  }
+
+  petAnimationStateFor(key, action) {
+    const now = performance.now();
+    const stateKey = `pet-${key}`;
+    const current = this.petAnimationState[stateKey];
+    if (!current || current.action !== action) {
+      this.petAnimationState[stateKey] = {
+        action,
+        startedAt: now
+      };
+    }
+    return this.petAnimationState[stateKey];
   }
 }
 
@@ -1181,6 +1339,27 @@ function buildStealAnimations(image) {
     return builtFrames.map((frame) => ({
       ...frame,
       image,
+      referenceHeight
+    }));
+  });
+}
+
+function buildPetFrames(image) {
+  if (!image) return [];
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(image, 0, 0);
+  const pixels = ctx.getImageData(0, 0, image.width, image.height).data;
+
+  return PET_FRAME_BOUNDS.map((row) => {
+    const frames = row
+      .map((rect) => buildExplicitAnimationFrame(pixels, image.width, image.height, rect, "foot"))
+      .filter(Boolean);
+    const referenceHeight = median(frames.slice(0, 4).map((frame) => frame.bodyHeight)) || median(frames.map((frame) => frame.bodyHeight));
+    return frames.map((frame) => ({
+      ...frame,
       referenceHeight
     }));
   });
@@ -1560,6 +1739,13 @@ function playerAction(state) {
   return isPlayerWalking(state) ? "walk" : "idle";
 }
 
+function petAction(state) {
+  const action = state.run?.pet?.action;
+  if (action === "attack") return "attack";
+  if (action === "returnToPlayer") return "returnToPlayer";
+  return isPlayerWalking(state) ? "walk" : "idle";
+}
+
 function playerFrameIndex(action, length, state, animationState) {
   if (!length) return 0;
   if (action === "idle") return 0;
@@ -1579,6 +1765,58 @@ function playerFrameIndex(action, length, state, animationState) {
   const speed = state.scene === "map" ? 7.5 : 4.5;
   const elapsed = (performance.now() - animationState.startedAt) / 1000;
   return Math.floor(elapsed * speed) % length;
+}
+
+function petFrameIndex(action, length, state, animationState) {
+  if (!length) return 0;
+  if (action === "attack") {
+    const duration = state.run?.pet?.actionDuration || 0.46;
+    const remaining = state.run?.pet?.actionTimer || 0;
+    const progress = clamp((duration - remaining) / duration, 0, 0.999);
+    return Math.min(length - 1, Math.floor(progress * length));
+  }
+  const speed = action === "idle" ? 1.7 : 5.2;
+  const elapsed = (performance.now() - animationState.startedAt) / 1000;
+  return Math.floor(elapsed * speed) % length;
+}
+
+function petLoopFrameIndex(action, length, animationState) {
+  if (!length) return 0;
+  const speed = action === "idle" ? 1.7 : 4.6;
+  const elapsed = (performance.now() - animationState.startedAt) / 1000;
+  return Math.floor(elapsed * speed) % length;
+}
+
+function ambientPetsForState(state) {
+  if (state.scene === "idle" && state.currentMapId === "petshop") {
+    return PETS.map((pet, index) => ({
+      pet,
+      baseX: 320 + index * 135,
+      range: 22 + (index % 3) * 8,
+      phase: index * 0.9
+    }));
+  }
+
+  if (state.scene === "hideout") {
+    const equippedId = state.player?.equippedPetId || null;
+    const owned = Array.isArray(state.player?.petsOwned) ? state.player.petsOwned : [];
+    return owned
+      .filter((id) => id !== equippedId)
+      .map((id) => getPetById(id))
+      .filter(Boolean)
+      .map((pet, index) => ({
+        pet,
+        baseX: 360 + index * 118,
+        range: 18 + (index % 3) * 7,
+        phase: index * 1.1
+      }));
+  }
+
+  return [];
+}
+
+function petHiddenInScene(state) {
+  return state.scene === "idle" && state.currentMapId === "prisao";
 }
 
 function isPlayerWalking(state) {

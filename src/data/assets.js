@@ -28,6 +28,7 @@ export const ASSETS = {
   backgroundIdle1: "./assets/backgroundidle1.png",
   assaultPortal: "./assets/assaltante.png",
   hideouts: "./assets/esconderijos.png",
+  pets: "./assets/pets.png",
   hideoutHouses: "./src/hideout/casas.png",
   hideoutVehicles: "./src/hideout/veiculos.png?v=vehicle-alpha-3",
   players: "./player.png",
@@ -232,6 +233,14 @@ export const SPRITES = {
         { x: 1810, y: 390, width: 362, height: 430, anchorX: 238, anchorY: 400 }
       ]
     ]
+  },
+  petFrames: {
+    actions: {
+      idle: [0, 1],
+      walk: [0, 1, 2, 3],
+      attack: [4, 5],
+      returnToPlayer: [0, 1, 2, 3]
+    }
   },
   hideoutItems: {
     house: {

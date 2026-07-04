@@ -3,6 +3,7 @@ import { PLAYERS } from "../data/players/index.js?v=bruno-yellow-1";
 import { EQUIPMENT_SLOTS, SLOT_LABELS } from "../data/equipment/index.js?v=gloves-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemCost } from "../data/hideoutItems/index.js";
 import { calculateStats, formatStat, statLabel } from "../systems/EquipmentSystem/index.js?v=equipment-2";
+import { PETS, PET_UNLOCK_LEVEL, petsUnlocked } from "../data/pets/index.js?v=pets-1";
 import {
   assetRequirementText,
   canUnlockAsset,
@@ -32,7 +33,7 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
     : null;
 
   container.innerHTML = `
-    ${windowHeader("Equipamento/Mochila", "inventory", { config: true })}
+    ${windowHeader("Equipamento/Mochila", "inventory", { config: true, pets: true })}
     <div class="window-body">
       <div class="equipment-compact">
         <div class="equipment-summary">
@@ -144,6 +145,7 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
   container.querySelector("#filter-inventory")?.addEventListener("click", callbacks.filterInventory);
   container.querySelector("[data-use-selected-drug]")?.addEventListener("click", () => callbacks.useInventoryDrug?.(state.selectedInventoryIndex));
   container.querySelector("[data-open-config]")?.addEventListener("click", callbacks.openConfig);
+  container.querySelector("[data-open-pets]")?.addEventListener("click", callbacks.openPets);
   bindBackpackPages(container, callbacks.selectBackpackPage);
   container.querySelectorAll("[data-master-tab]").forEach((button) => {
     button.addEventListener("click", () => callbacks.openTab(button.dataset.masterTab));
@@ -267,6 +269,7 @@ export function renderPanel(container, type, state, renderer, callbacks) {
     assaults: "Assaltos",
     city: "Cidade",
     hideout: "Esconderijo",
+    pets: "Pets",
     faction: "Faccao"
   };
 
@@ -316,6 +319,7 @@ export function renderPanel(container, type, state, renderer, callbacks) {
     input.value = "";
   });
   if (type === "faction") bindFactionControls(container, callbacks);
+  if (type === "pets") bindPetControls(container, renderer, callbacks);
 }
 
 export function renderConfigWindow(container, state, callbacks) {
@@ -483,6 +487,10 @@ function panelBody(type, state, online, faction) {
     `;
   }
 
+  if (type === "pets") {
+    return petInventoryPanel(state);
+  }
+
   if (type === "hideout") {
     return `
       ${hideoutProgressPanel(state)}
@@ -562,6 +570,62 @@ function onlineStatusLabel(status) {
     "missing-config": "Configurar servidor",
     unsupported: "Indisponivel"
   }[status] || "Offline";
+}
+
+function petInventoryPanel(state) {
+  const ownedPets = PETS.filter((pet) => state.player?.petsOwned?.includes(pet.id));
+  if (!petsUnlocked(state.player)) {
+    return `
+      <section class="pet-empty-panel">
+        <span class="eyebrow">Pets</span>
+        <h3>Liberado no nivel ${PET_UNLOCK_LEVEL}</h3>
+        <p>Quando chegar la, o Pinscher entra de graca para acompanhar voce.</p>
+      </section>
+    `;
+  }
+
+  if (!ownedPets.length) {
+    return `
+      <section class="pet-empty-panel">
+        <span class="eyebrow">Pets</span>
+        <h3>Nenhum pet comprado</h3>
+        <p>Visite o petshop para resgatar ou comprar um companheiro.</p>
+      </section>
+    `;
+  }
+
+  return `
+    <div class="pet-owned-list">
+      ${ownedPets.map((pet) => petOwnedRow(state, pet)).join("")}
+    </div>
+  `;
+}
+
+function petOwnedRow(state, pet) {
+  const equipped = state.player.equippedPetId === pet.id;
+  return `
+    <article class="pet-row">
+      <canvas class="pet-preview" width="84" height="72" data-pet-preview="${pet.id}"></canvas>
+      <div>
+        <h3>${escapeHtml(pet.name)}</h3>
+        <p>${Math.round(pet.dpsPercent * 1000) / 10}% do DPS | ${pet.cooldown.toFixed(2)}s</p>
+        <small>${escapeHtml(pet.attackLabel)}</small>
+      </div>
+      <button type="button" class="panel-action" ${equipped ? "data-unequip-pet" : `data-equip-pet="${pet.id}"`}>
+        ${equipped ? "Desequipar" : "Equipar"}
+      </button>
+    </article>
+  `;
+}
+
+function bindPetControls(container, renderer, callbacks) {
+  container.querySelectorAll("[data-pet-preview]").forEach((canvas) => {
+    renderer.drawPetPreview(canvas, canvas.dataset.petPreview);
+  });
+  container.querySelectorAll("[data-equip-pet]").forEach((button) => {
+    button.addEventListener("click", () => callbacks.equipPet?.(button.dataset.equipPet));
+  });
+  container.querySelector("[data-unequip-pet]")?.addEventListener("click", () => callbacks.unequipPet?.());
 }
 
 function factionPanel(snapshot) {
@@ -703,6 +767,7 @@ function windowHeader(title, name, actions = {}) {
     <header class="window-header">
       <h2>${title}</h2>
       <div class="window-actions">
+        ${actions.pets ? `<button type="button" class="pet-button" data-open-pets aria-label="Abrir pets" title="Pets"><span class="pet-paw-icon" aria-hidden="true"></span></button>` : ""}
         ${actions.config ? `<button type="button" class="config-button" data-open-config aria-label="Abrir configuracoes" title="Configuracoes">&#9881;</button>` : ""}
         <button class="close-button" data-close-window="${name}" aria-label="Fechar">X</button>
       </div>

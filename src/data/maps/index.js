@@ -55,7 +55,12 @@ export const IDLE_MAPS = [
     spawnX: 260,
     description: "Area reservada para o futuro sistema de pets.",
     npcs: [
-      idleNpc("petshop-responsavel", "Dr. Rubens", 5, 0, 620, "front")
+      {
+        ...idleNpc("petshop-responsavel", "Dr. Rubens", 5, 0, 620, "front"),
+        role: "petshop",
+        shopName: "Petshop",
+        greeting: "Escolhe teu parceiro. Aqui eu cuido dos pets da area."
+      }
     ]
   }
 ];

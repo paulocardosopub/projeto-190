@@ -64,6 +64,7 @@
             <span>Tempo</span>
             <strong id="raid-timer-label">01:00</strong>
             <small id="raid-count-label">0 / 0 alvos</small>
+            <small id="raid-caught-risk-label">Ser pego: 0%</small>
           </div>
           <div class="combat-card" id="combat-card">
             <span id="enemy-label">Sem alvo</span>
@@ -86,13 +87,14 @@
             <div><span>Retorno</span><strong id="raid-summary-countdown">5s</strong></div>
           </div>
           <p id="raid-summary-items">Nenhum item obtido.</p>
-          <label class="auto-repeat-toggle">
-            <input type="checkbox" id="auto-repeat-toggle">
-            <span>Auto repetir</span>
-          </label>
           <div class="raid-summary-actions">
+            <label class="auto-repeat-toggle">
+              <input type="checkbox" id="auto-repeat-toggle">
+              <span>Auto repetir</span>
+            </label>
             <button type="button" class="secondary-action" id="raid-return-button">Retornar</button>
             <button type="button" class="primary-action" id="raid-repeat-button">Repetir</button>
+            <button type="button" class="primary-action" id="raid-next-button">Proximo</button>
           </div>
         </div>
         <button class="master-toggle" id="master-toggle" aria-label="Abrir Equipamento e Mochila" aria-expanded="false">

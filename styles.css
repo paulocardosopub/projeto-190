@@ -264,6 +264,10 @@ button:disabled {
   pointer-events: none;
 }
 
+body.temporary-stay-mode .stage-hud .status-card {
+  display: none;
+}
+
 .survival-warning {
   position: absolute;
   left: 50%;
@@ -370,7 +374,7 @@ button:disabled {
 }
 
 .raid-timer {
-  width: 96px;
+  width: 124px;
   text-align: center;
 }
 
@@ -453,11 +457,14 @@ button:disabled {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  margin: 0 0 10px;
+  min-height: 28px;
+  margin: 0;
 }
 
 .raid-summary-actions {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
 }
@@ -552,6 +559,14 @@ button:disabled {
 
 .shop-craft-cell.ready {
   border-color: rgba(118, 214, 120, 0.72);
+}
+
+.shop-craft-cell .item-action {
+  width: 100%;
+  min-height: 24px;
+  margin-top: 5px;
+  padding: 4px 6px;
+  font-size: 10px;
 }
 
 .shop-craft-preview {
@@ -1023,7 +1038,8 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 }
 
 .close-button,
-.config-button {
+.config-button,
+.pet-button {
   width: 28px;
   height: 28px;
   display: grid;
@@ -1034,11 +1050,53 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
   font-weight: 900;
 }
 
-.config-button {
+.config-button,
+.pet-button {
   background: #271b13;
   border-color: #b97824;
   font-size: 17px;
   line-height: 1;
+}
+
+.pet-button {
+  position: relative;
+  font-size: 0;
+}
+
+.pet-paw-icon {
+  position: relative;
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.pet-paw-icon::before,
+.pet-paw-icon::after {
+  content: "";
+  position: absolute;
+  display: block;
+  background: #ffe1a2;
+}
+
+.pet-paw-icon::before {
+  left: 5px;
+  top: 8px;
+  width: 7px;
+  height: 6px;
+  border-radius: 54% 54% 48% 48%;
+  transform: rotate(8deg);
+}
+
+.pet-paw-icon::after {
+  left: 1px;
+  top: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  box-shadow:
+    4px -3px 0 #ffe1a2,
+    9px -3px 0 #ffe1a2,
+    12px 1px 0 #ffe1a2;
 }
 
 .window-body {
@@ -1895,7 +1953,9 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 
 .hideout-status-grid,
 .drug-shop-list,
-.asset-shop-list {
+.asset-shop-list,
+.pet-shop-list,
+.pet-owned-list {
   display: grid;
   gap: 7px;
 }
@@ -1907,7 +1967,9 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 
 .hideout-status-grid article,
 .drug-shop-row,
-.asset-shop-row {
+.asset-shop-row,
+.pet-shop-row,
+.pet-row {
   padding: 8px;
   border: 1px solid rgba(174, 132, 61, 0.35);
   background: rgba(0, 0, 0, 0.26);
@@ -1915,7 +1977,9 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 
 .hideout-status-grid h3,
 .drug-shop-row h3,
-.asset-shop-row h3 {
+.asset-shop-row h3,
+.pet-shop-row h3,
+.pet-row h3 {
   margin: 2px 0 4px;
   color: #ffe19d;
   font-size: 12px;
@@ -1925,14 +1989,19 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 .drug-shop-row p,
 .drug-shop-row small,
 .asset-shop-row p,
-.asset-shop-row small {
+.asset-shop-row small,
+.pet-shop-row p,
+.pet-shop-row small,
+.pet-row p,
+.pet-row small {
   margin: 0 0 6px;
   color: #d6c5a1;
   font-size: 10px;
   line-height: 1.35;
 }
 
-.drug-shop-list {
+.drug-shop-list,
+.pet-shop-list {
   max-height: 210px;
   overflow: auto;
   padding-right: 3px;
@@ -1955,6 +2024,40 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
   grid-template-columns: 1fr auto;
   gap: 8px;
   align-items: center;
+}
+
+.pet-shop-row,
+.pet-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.pet-preview {
+  width: 86px;
+  height: 70px;
+  background: rgba(0, 0, 0, 0.24);
+  border: 1px solid rgba(228, 173, 56, 0.18);
+}
+
+.pet-shop-row .panel-action,
+.pet-row .panel-action {
+  min-width: 92px;
+}
+
+.pet-empty-panel {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  color: #d8caa7;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(228, 173, 56, 0.2);
+}
+
+.pet-empty-panel h3,
+.pet-empty-panel p {
+  margin: 0;
 }
 
 .shop-buy-grid {
@@ -2816,6 +2919,7 @@ body.auth-pending .window-layer {
 }
 
 .tutorial-primary,
+.tutorial-back,
 .tutorial-skip {
   min-height: 34px;
   padding: 8px 10px;
@@ -2829,12 +2933,15 @@ body.auth-pending .window-layer {
   cursor: pointer;
 }
 
+.tutorial-back,
 .tutorial-skip {
+  min-width: 34px;
   color: #f3d8a2;
   background: rgba(45, 35, 24, 0.94);
   border-color: #8d6a32;
 }
 
+.tutorial-back.hidden,
 .tutorial-skip.hidden {
   display: none;
 }
