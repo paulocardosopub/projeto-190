@@ -525,7 +525,7 @@ export class TutorialOverlay {
     this.ensure();
     const targetRect = this.resolveTargetRect?.(step.target) || centeredRect();
     const viewportRect = clampRect(targetRect);
-    const hideTargetMark = Boolean(targetRect?.hideTutorialMark);
+    const hideTargetMark = Boolean(targetRect?.hideTutorialMark || step.target === "stage");
     this.positionHighlight(viewportRect, hideTargetMark);
     this.positionBubble(step, viewportRect, hideTargetMark);
     this.node.classList.remove("hidden");

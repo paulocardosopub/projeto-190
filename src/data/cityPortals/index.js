@@ -3,8 +3,9 @@ export const CITY_PORTALS = [
     id: "assaults",
     label: "Assaltos",
     x: 82,
-    width: 108,
-    height: 82,
+    width: 126,
+    height: 94,
+    yOffset: 6,
     action: "assaults",
     type: "assailant"
   },

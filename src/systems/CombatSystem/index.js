@@ -1,10 +1,10 @@
 import { IDLE_MAPS, MAPS } from "../../data/maps/index.js?v=idle-maps-1";
-import { SPRITES } from "../../data/assets.js?v=idle-maps-1";
-import { NPC_ALERT_LINES } from "../../data/enemies/index.js?v=idle-npcs-1";
+import { SPRITES } from "../../data/assets.js?v=npc-crops-1";
+import { NPC_ALERT_LINES } from "../../data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "../../data/cityNpcs/index.js?v=drugs-2";
-import { decorativeNpcsForIdleMap } from "../../data/decorativeNpcs/index.js?v=idle-npcs-1";
+import { decorativeNpcsForIdleMap } from "../../data/decorativeNpcs/index.js?v=npc-crops-1";
 import { calculateStats } from "../EquipmentSystem/index.js";
-import { createNpcWave, createEnemyStats } from "../EnemySystem/index.js?v=idle-npcs-1";
+import { createNpcWave, createEnemyStats } from "../EnemySystem/index.js?v=npc-crops-1";
 import { rollLoot, applyLoot } from "../LootSystem/index.js?v=phase1-1";
 import { gainXp, addLog } from "../PlayerSystem/index.js";
 import { applyHospitalFee, applyPrisonFee } from "../PenaltySystem/index.js?v=hospital-fee-1";
@@ -711,7 +711,9 @@ export class CombatSystem {
       x: target.x,
       sheet: target.sheet || "enemies",
       row: target.row,
+      columnOffset: Number(target.columnOffset || 0),
       direction: target.fixedFrame ? target.direction : "left",
+      heightScale: Number(target.heightScale || 1),
       age: 0,
       duration: ITEM_THEFT_CHAT_SECONDS
     });

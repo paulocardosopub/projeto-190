@@ -1,9 +1,9 @@
-import { ASSETS, SPRITES } from "../data/assets.js?v=portal-assailant-1";
+import { ASSETS, SPRITES } from "../data/assets.js?v=npc-crops-1";
 import { CITY, HIDEOUTS, IDLE_MAPS, MAPS } from "../data/maps/index.js?v=idle-maps-1";
 import { PLAYERS } from "../data/players/index.js";
 import { CITY_NPCS } from "../data/cityNpcs/index.js?v=drugs-2";
-import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=idle-npcs-1";
-import { CITY_PORTALS, HIDEOUT_PORTALS } from "../data/cityPortals/index.js?v=portal-assailant-1";
+import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=npc-crops-1";
+import { CITY_PORTALS, HIDEOUT_PORTALS } from "../data/cityPortals/index.js?v=npc-crops-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-7";
 
 export class SpriteRenderer {
@@ -70,7 +70,16 @@ export class SpriteRenderer {
       const screenX = this.worldToScreen(npc.x, cameraWorld);
       if (screenX < -110 || screenX > width + 110) continue;
       const npcFeetY = visual.groundY + visual.npcYOffset;
-      this.drawActor(npc.sheet || "enemies", npc.row, npc.direction, screenX, npcFeetY, visual.npcHeight, npc.alerted ? 1.05 : 1);
+      this.drawActor(
+        npc.sheet || "enemies",
+        npc.row,
+        npc.direction,
+        screenX,
+        npcFeetY,
+        visual.npcHeight * Number(npc.heightScale || 1),
+        npc.alerted ? 1.05 : 1,
+        { columnOffset: Number(npc.columnOffset || 0) }
+      );
       if (npc.alerted) this.drawSpeech(screenX, npcFeetY - visual.npcHeight - 18, npc.alertLine);
     }
     this.drawItemTheftChats(state, cameraWorld, visual);
@@ -202,7 +211,7 @@ export class SpriteRenderer {
     }
   }
 
-  drawActor(imageOrSheet, row, direction, x, feetY, height, pulse = 1) {
+  drawActor(imageOrSheet, row, direction, x, feetY, height, pulse = 1, options = {}) {
     const sheetName = typeof imageOrSheet === "string"
       ? imageOrSheet
       : imageOrSheet === this.images.players
@@ -210,15 +219,15 @@ export class SpriteRenderer {
         : "enemies";
     const image = typeof imageOrSheet === "string" ? this.images[sheetName] : imageOrSheet;
     const actor = actorSheet(sheetName);
-    const directionIndex = actor.direction[direction] ?? actor.direction.right;
+    const directionIndex = (actor.direction[direction] ?? actor.direction.right) + Number(options.columnOffset || 0);
     const trim = this.actorBounds[sheetName]?.[row]?.[directionIndex] || {
       x: 0,
       y: 0,
       width: actor.cellWidth,
       height: actor.cellHeight
     };
-    const sourceX = directionIndex * actor.cellWidth + trim.x;
-    const sourceY = row * actor.cellHeight + trim.y;
+    const sourceX = Number.isFinite(trim.sourceX) ? trim.sourceX : directionIndex * actor.cellWidth + trim.x;
+    const sourceY = Number.isFinite(trim.sourceY) ? trim.sourceY : row * actor.cellHeight + trim.y;
     const drawHeight = height * pulse;
     const drawWidth = drawHeight * (trim.width / trim.height);
     const drawX = Math.round(x - drawWidth / 2);
@@ -296,8 +305,9 @@ export class SpriteRenderer {
         npc.direction || "front",
         screenX,
         feetY,
-        visual.npcHeight * Number(npc.heightScale || 0.92),
-        1
+        visual.npcHeight * Number(npc.heightScale || 0.96),
+        1,
+        { columnOffset: Number(npc.columnOffset || 0) }
       );
     }
   }
@@ -370,23 +380,46 @@ export class SpriteRenderer {
 
     const ctx = this.ctx;
     const time = performance.now() / 1000;
-    const pulse = (Math.sin(time * 2.2) + 1) / 2;
-    const height = Number(portal.height || 82) * (1 + pulse * 0.025);
+    const engineShake = Math.sin(time * 9) * 0.22 + Math.sin(time * 13) * 0.12;
+    const smokePulse = (Math.sin(time * 2.6) + 1) / 2;
+    const height = Number(portal.height || 94) * (1 + Math.sin(time * 8) * 0.0009);
     const width = height * (image.width / image.height);
-    const drawX = Math.round(x - width / 2);
-    const drawY = Math.round(feetY - height);
+    const drawX = Math.round(x - width / 2 + engineShake * 0.35);
+    const drawY = Math.round(feetY - height + Math.sin(time * 10) * 0.12);
 
     ctx.save();
     this.drawContactShadow(x, feetY + 3, width * 0.46);
+    this.drawAssailantSmoke(drawX, drawY, width, height, time);
 
     const glow = ctx.createRadialGradient(x, feetY - height * 0.38, 8, x, feetY - height * 0.38, width * 0.72);
-    glow.addColorStop(0, `rgba(255, 204, 84, ${0.18 + pulse * 0.07})`);
+    glow.addColorStop(0, `rgba(255, 204, 84, ${0.11 + smokePulse * 0.025})`);
     glow.addColorStop(0.58, "rgba(187, 50, 38, 0.1)");
     glow.addColorStop(1, "rgba(0, 0, 0, 0)");
     ctx.fillStyle = glow;
     ctx.fillRect(drawX - 18, drawY - 12, width + 36, height + 28);
 
     ctx.drawImage(image, drawX, drawY, width, height);
+    ctx.restore();
+  }
+
+  drawAssailantSmoke(drawX, drawY, width, height, time) {
+    const ctx = this.ctx;
+    const exhaustX = drawX + width * 0.88;
+    const exhaustY = drawY + height * 0.72;
+
+    ctx.save();
+    for (let index = 0; index < 6; index += 1) {
+      const phase = (time * 0.62 + index * 0.17) % 1;
+      const wave = Math.sin(time * 2.1 + index * 1.9);
+      const x = exhaustX + phase * 34 + wave * 2.6;
+      const y = exhaustY - phase * 18 + Math.cos(time * 1.8 + index) * 2;
+      const radius = 3.5 + phase * 8 + (index % 2) * 1.4;
+      ctx.globalAlpha = 0.18 * (1 - phase);
+      ctx.fillStyle = index % 2 ? "#b7b7b2" : "#83837f";
+      ctx.beginPath();
+      ctx.ellipse(x, y, radius * 1.45, radius * 0.72, -0.24 + wave * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
@@ -560,7 +593,16 @@ export class SpriteRenderer {
       const alpha = Math.max(0, 1 - Math.max(0, progress - 0.72) / 0.28);
       this.ctx.save();
       this.ctx.globalAlpha = alpha;
-      this.drawActor(chat.sheet || "enemies", chat.row || 0, chat.direction || "left", x, feetY, visual.npcHeight, 1.04);
+      this.drawActor(
+        chat.sheet || "enemies",
+        chat.row || 0,
+        chat.direction || "left",
+        x,
+        feetY,
+        visual.npcHeight * Number(chat.heightScale || 1),
+        1.04,
+        { columnOffset: Number(chat.columnOffset || 0) }
+      );
       this.drawSpeech(x, feetY - visual.npcHeight - 18, chat.line);
       this.ctx.restore();
     });
@@ -912,8 +954,8 @@ export class SpriteRenderer {
     const drawWidth = drawHeight * (trim.width / trim.height);
     ctx.drawImage(
       image,
-      directionIndex * actor.cellWidth + trim.x,
-      row * actor.cellHeight + trim.y,
+      Number.isFinite(trim.sourceX) ? trim.sourceX : directionIndex * actor.cellWidth + trim.x,
+      Number.isFinite(trim.sourceY) ? trim.sourceY : row * actor.cellHeight + trim.y,
       trim.width,
       trim.height,
       (canvas.width - drawWidth) / 2,
@@ -1011,11 +1053,29 @@ function buildActorBounds(image, actor) {
   for (let row = 0; row < actor.rows; row += 1) {
     bounds[row] = [];
     for (let col = 0; col < actor.cols; col += 1) {
-      bounds[row][col] = findVisibleBounds(ctx, col * actor.cellWidth, row * actor.cellHeight, actor.cellWidth, actor.cellHeight);
+      bounds[row][col] = actor.scanPadding
+        ? findExpandedVisibleBounds(ctx, image, col * actor.cellWidth, row * actor.cellHeight, actor.cellWidth, actor.cellHeight, actor.scanPadding)
+        : findVisibleBounds(ctx, col * actor.cellWidth, row * actor.cellHeight, actor.cellWidth, actor.cellHeight);
     }
   }
 
   return bounds;
+}
+
+function findExpandedVisibleBounds(ctx, image, cellX, cellY, cellWidth, cellHeight, padding) {
+  const scanX = Math.max(0, cellX - padding);
+  const scanY = Math.max(0, cellY - padding);
+  const scanRight = Math.min(image.width, cellX + cellWidth + padding);
+  const scanBottom = Math.min(image.height, cellY + cellHeight + padding);
+  const scanWidth = Math.max(1, scanRight - scanX);
+  const scanHeight = Math.max(1, scanBottom - scanY);
+  const bounds = findVisibleBounds(ctx, scanX, scanY, scanWidth, scanHeight);
+  return {
+    x: scanX + bounds.x - cellX,
+    y: scanY + bounds.y - cellY,
+    width: bounds.width,
+    height: bounds.height
+  };
 }
 
 function buildGridBounds(image, config) {

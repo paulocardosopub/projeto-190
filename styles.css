@@ -235,11 +235,11 @@ button:disabled {
   align-self: end;
   width: 100%;
   margin: 0;
-  border: 2px solid #0a0a0a;
-  outline: 1px solid var(--line);
+  border: 0;
+  outline: 0;
   background: #000;
   overflow: hidden;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.72);
+  box-shadow: none;
 }
 
 #game-canvas {

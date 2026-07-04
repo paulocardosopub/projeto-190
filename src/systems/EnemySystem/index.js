@@ -1,4 +1,4 @@
-import { npcTypesForMap } from "../../data/enemies/index.js?v=idle-npcs-1";
+import { npcTypesForMap } from "../../data/enemies/index.js?v=npc-crops-1";
 
 export function createNpcWave(map) {
   const count = randomInt(5, 10);
@@ -19,10 +19,12 @@ export function createNpcWave(map) {
       name: type.name,
       sheet: type.sheet || "enemies",
       row: type.row,
+      columnOffset: Number(type.columnOffset || 0),
       x: 380 + index * spacing + randomInt(20, 120),
       y: 235,
       direction: type.direction || (index % 2 === 0 ? "back" : "right"),
       fixedFrame: Boolean(type.fixedFrame),
+      heightScale: Number(type.heightScale || 1),
       walkPhase: Math.random() * 10,
       done: false,
       alerted: false,

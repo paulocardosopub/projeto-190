@@ -1,10 +1,10 @@
 import { PLAYERS } from "./data/players/index.js";
 import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=idle-maps-1";
-import { NPC_TYPES } from "./data/enemies/index.js?v=idle-npcs-1";
+import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=drugs-2";
-import { CITY_PORTALS, HIDEOUT_PORTALS } from "./data/cityPortals/index.js?v=portal-assailant-1";
+import { CITY_PORTALS, HIDEOUT_PORTALS } from "./data/cityPortals/index.js?v=npc-crops-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem } from "./systems/CombatSystem/index.js?v=portal-assailant-1";
+import { CombatSystem } from "./systems/CombatSystem/index.js?v=npc-crops-1";
 import { calculateStats, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -91,7 +91,7 @@ import {
   skipTutorial,
   tutorialNudgeLine,
   tutorialStep
-} from "./systems/TutorialSystem/index.js?v=tutorial-flow-2";
+} from "./systems/TutorialSystem/index.js?v=npc-crops-1";
 import {
   activateCar,
   activateHouse,
@@ -118,7 +118,7 @@ import {
   updatePassiveIncome
 } from "./systems/StaminaSystem/index.js?v=phase1-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=phase1-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=portal-assailant-1";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=npc-crops-1";
 import {
   renderCharacterSelect,
   renderConfigWindow,
@@ -2484,10 +2484,12 @@ function createNpcTestRun(direction) {
       name: type.name,
       sheet: type.sheet || "enemies",
       row: type.row,
+      columnOffset: Number(type.columnOffset || 0),
       x: 112 + index * 78,
       y: 235,
       direction: type.fixedFrame ? type.direction : direction,
       fixedFrame: Boolean(type.fixedFrame),
+      heightScale: Number(type.heightScale || 1),
       walkPhase: 0,
       done: false,
       alerted: false,
@@ -3051,7 +3053,7 @@ function walkToCityPortal(portal) {
   const defaultOffset = portal.x < 90 ? portal.width / 2 + 8 : -portal.width / 2 - 12;
   const approachX = Math.max(64, Math.round(portal.x + Number(portal.approachOffset ?? defaultOffset)));
   combat.moveCityTo(approachX);
-  showToast(portal.action === "hideout" ? "Indo até o esconderijo." : "Indo ate o portal.");
+  showToast(portal.action === "hideout" ? "Indo até o esconderijo." : "Indo pra pista");
 }
 
 function walkToHideoutPortal(portal) {
