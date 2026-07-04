@@ -48,6 +48,7 @@ jobs:
           mkdir -p _site
           cp index.html styles.css player.png paginas.png _site/
           cp -R assets src _site/
+          find _site -name '*.before-*' -type f -delete
           touch _site/.nojekyll
 
       - name: Publish gh-pages branch
