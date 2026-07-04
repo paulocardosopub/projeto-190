@@ -5,7 +5,119 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#070707">
   <meta name="description" content="Projeto 190 - Idle Crime RPG em pixel art">
-  <link rel="stylesheet" href="./styles.css?v=spawn-height-1">
+  <script>
+    window.PROJETO190_CLIENT_VERSION = "local-dev";
+    window.PROJETO190_VERSION_CHECK = (() => {
+      const VERSION_KEY = "projeto190_app_version";
+      const RELOAD_VERSION_KEY = "projeto190_reload_version";
+      const RELOAD_COUNT_KEY = "projeto190_reload_count";
+      const MAX_RELOADS_PER_VERSION = 2;
+      const canUseWebUpdates = ["http:", "https:"].includes(window.location.protocol);
+
+      async function readLatestVersion() {
+        const url = new URL("./version.json", window.location.href);
+        url.searchParams.set("_", String(Date.now()));
+        const response = await fetch(url, {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache"
+          }
+        });
+        if (!response.ok) return null;
+        const payload = await response.json();
+        const version = String(payload.version || payload.sha || "").trim();
+        return version ? { ...payload, version } : null;
+      }
+
+      async function clearBrowserCaches() {
+        if ("caches" in window) {
+          const names = await caches.keys();
+          await Promise.all(names.map((name) => caches.delete(name)));
+        }
+
+        if ("serviceWorker" in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map(async (registration) => {
+            try {
+              registration.active?.postMessage({ type: "CLEAR_APP_CACHES" });
+              await registration.update();
+            } catch {
+              // Updating caches is best-effort; the reload still busts browser cache.
+            }
+          }));
+        }
+      }
+
+      function shouldReloadFor(version) {
+        const previousReloadVersion = sessionStorage.getItem(RELOAD_VERSION_KEY);
+        const previousCount = previousReloadVersion === version
+          ? Number(sessionStorage.getItem(RELOAD_COUNT_KEY) || 0)
+          : 0;
+        if (previousCount >= MAX_RELOADS_PER_VERSION) return false;
+        sessionStorage.setItem(RELOAD_VERSION_KEY, version);
+        sessionStorage.setItem(RELOAD_COUNT_KEY, String(previousCount + 1));
+        return true;
+      }
+
+      function reloadWithFreshUrl(version) {
+        const url = new URL(window.location.href);
+        url.searchParams.set("appVersion", version);
+        url.searchParams.set("cacheBust", String(Date.now()));
+        window.location.replace(url.href);
+      }
+
+      async function registerServiceWorker() {
+        if (!("serviceWorker" in navigator) || !canUseWebUpdates) return;
+        try {
+          const registration = await navigator.serviceWorker.register("./sw.js", {
+            updateViaCache: "none"
+          });
+          await registration.update();
+        } catch (error) {
+          console.warn("Nao foi possivel ativar o atualizador do jogo.", error);
+        }
+      }
+
+      async function checkVersion() {
+        if (!canUseWebUpdates) return;
+        try {
+          await registerServiceWorker();
+          const latest = await readLatestVersion();
+          if (!latest) return;
+
+          const previous = localStorage.getItem(VERSION_KEY);
+          const clientVersion = String(window.PROJETO190_CLIENT_VERSION || "").trim();
+          if (clientVersion && clientVersion === latest.version) {
+            localStorage.setItem(VERSION_KEY, latest.version);
+            sessionStorage.removeItem(RELOAD_VERSION_KEY);
+            sessionStorage.removeItem(RELOAD_COUNT_KEY);
+            return;
+          }
+
+          if (!previous) {
+            localStorage.setItem(VERSION_KEY, latest.version);
+            return;
+          }
+
+          if (previous === latest.version && !clientVersion) {
+            sessionStorage.removeItem(RELOAD_VERSION_KEY);
+            sessionStorage.removeItem(RELOAD_COUNT_KEY);
+            return;
+          }
+
+          await clearBrowserCaches();
+          localStorage.setItem(VERSION_KEY, latest.version);
+          if (shouldReloadFor(latest.version)) reloadWithFreshUrl(latest.version);
+        } catch (error) {
+          console.warn("Nao foi possivel verificar a versao mais recente.", error);
+        }
+      }
+
+      return checkVersion();
+    })();
+  </script>
+  <link rel="stylesheet" href="./styles.css?v=cache-check-1">
   <title>Projeto 190</title>
   <script>
     const bootParams = new URLSearchParams(window.location.search);
@@ -179,7 +291,7 @@
   </div>
   <div class="death-flash hidden" id="death-flash" aria-hidden="true"></div>
 
-  <script src="./src/config/publicOnlineConfig.js?v=login-save-2"></script>
-  <script type="module" src="./src/main.js?v=viewport-width-1"></script>
+  <script src="./src/config/publicOnlineConfig.js?v=cache-check-1"></script>
+  <script type="module" src="./src/main.js?v=cache-check-1"></script>
 </body>
 </html>

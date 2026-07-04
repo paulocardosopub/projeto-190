@@ -29,6 +29,8 @@
     "files": [
       "index.html",
       "styles.css",
+      "sw.js",
+      "version.json",
       "src/**/*",
       "assets/**/*",
       "player.png",
