@@ -2420,6 +2420,18 @@ body.character-selecting .window-layer {
   pointer-events: none;
 }
 
+body.auth-pending .topbar {
+  display: none;
+}
+
+body.auth-pending .stage-hud,
+body.auth-pending .master-toggle,
+body.auth-pending .window-layer {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 .character-stage-backdrop {
   position: absolute;
   inset: 0;

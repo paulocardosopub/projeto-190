@@ -1,9 +1,13 @@
 const DEFAULT_URL = "ws://localhost:4191";
 const SUPABASE_JS_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/+esm";
 const CITY_CHANNEL = "projeto190:city:initial";
-const MOVE_SEND_INTERVAL_MS = 80;
+const MOVE_SEND_INTERVAL_MS = 50;
 const PRESENCE_TRACK_INTERVAL_MS = 1000;
 const RECONNECT_DELAY_MS = 2200;
+const PRESENCE_GRACE_MS = 6500;
+const PLAYER_REMOVE_AFTER_MS = 35000;
+const REMOTE_LERP_SPEED = 12;
+const REMOTE_SNAP_DISTANCE = 2200;
 
 let supabaseModulePromise = null;
 
@@ -84,7 +88,7 @@ export class OnlineSystem {
       this.channel
         .on("presence", { event: "sync" }, () => this.syncSupabasePresence())
         .on("presence", { event: "leave" }, ({ leftPresences }) => {
-          (leftPresences || []).forEach((presence) => this.removeCityPlayer(presence.clientId || presence.playerId));
+          (leftPresences || []).forEach((presence) => this.markCityPlayerMissing(presence.clientId || presence.playerId));
         })
         .on("broadcast", { event: "city:player_moved" }, ({ payload }) => this.upsertCityPlayer(payload?.player || payload))
         .on("broadcast", { event: "city:player_stopped" }, ({ payload }) => this.upsertCityPlayer(payload?.player || payload))
@@ -412,6 +416,7 @@ export class OnlineSystem {
     if (!this.channel) return;
     const presenceState = this.channel.presenceState?.() || {};
     const activeKeys = new Set();
+    const now = Date.now();
 
     Object.entries(presenceState).forEach(([presenceKey, presences]) => {
       (presences || []).forEach((presence) => {
@@ -427,7 +432,7 @@ export class OnlineSystem {
 
     for (const [key, player] of this.cityPlayers.entries()) {
       if (player.provider === "supabase" && !activeKeys.has(key)) {
-        this.cityPlayers.delete(key);
+        player.missingSince ||= now;
       }
     }
 
@@ -466,6 +471,9 @@ export class OnlineSystem {
     const existing = this.cityPlayers.get(key);
     const targetX = Number(raw.x || 120);
     const targetY = Number(raw.y || 0);
+    const timestamp = Number(raw.timestamp || Date.now());
+    if (existing?.lastRemoteTimestamp && timestamp < existing.lastRemoteTimestamp - 120) return;
+
     this.cityPlayers.set(key, {
       provider: raw.provider || this.provider,
       socketId: raw.socketId || raw.clientId || key,
@@ -479,7 +487,9 @@ export class OnlineSystem {
       targetY,
       direction: raw.direction === "left" ? "left" : "right",
       isMoving: Boolean(raw.isMoving),
-      timestamp: Number(raw.timestamp || Date.now()),
+      timestamp,
+      lastRemoteTimestamp: timestamp,
+      missingSince: null,
       lastSeen: Date.now()
     });
   }
@@ -489,6 +499,18 @@ export class OnlineSystem {
     for (const [key, player] of this.cityPlayers.entries()) {
       if (key === id || player.socketId === id || player.clientId === id || player.playerId === id) {
         this.cityPlayers.delete(key);
+      }
+    }
+    this.syncStatePlayers();
+  }
+
+  markCityPlayerMissing(identifier) {
+    const id = String(identifier || "");
+    const now = Date.now();
+    for (const [key, player] of this.cityPlayers.entries()) {
+      if (key === id || player.socketId === id || player.clientId === id || player.playerId === id) {
+        player.missingSince ||= now;
+        player.isMoving = false;
       }
     }
     this.syncStatePlayers();
@@ -518,12 +540,17 @@ export class OnlineSystem {
 
   interpolatePlayers(dt) {
     const now = Date.now();
-    const amount = Math.min(1, Math.max(0.12, dt * 9));
+    const amount = 1 - Math.exp(-REMOTE_LERP_SPEED * Math.max(0, dt));
     for (const [key, player] of this.cityPlayers.entries()) {
-      if (now - player.lastSeen > 35_000) {
+      if (
+        now - player.lastSeen > PLAYER_REMOVE_AFTER_MS ||
+        (player.missingSince && now - player.missingSince > PRESENCE_GRACE_MS)
+      ) {
         this.cityPlayers.delete(key);
         continue;
       }
+      if (Math.abs(player.targetX - player.x) > REMOTE_SNAP_DISTANCE) player.x = player.targetX;
+      if (Math.abs(player.targetY - player.y) > REMOTE_SNAP_DISTANCE) player.y = player.targetY;
       player.x += (player.targetX - player.x) * amount;
       player.y += (player.targetY - player.y) * amount;
       if (Math.abs(player.targetX - player.x) < 0.25) player.x = player.targetX;

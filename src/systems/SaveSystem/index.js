@@ -1,3 +1,5 @@
+import { cloudRpc } from "../CloudSystem/index.js";
+
 export const SAVE_KEY = "projeto-190-save-v1";
 export const VISUAL_KEY = "projeto-190-visual-v1";
 export const WINDOW_LAYOUT_KEY = "projeto-190-window-layout-v1";
@@ -49,6 +51,27 @@ export function saveProfileGame(profileId, state) {
   }
 }
 
+export async function loadCloudProfileGame(sessionToken) {
+  if (!sessionToken) return null;
+  const result = await cloudRpc("app_load_game", {
+    p_session_token: sessionToken
+  });
+  if (!result?.ok) return null;
+  return result.save || null;
+}
+
+export async function saveCloudProfileGame(sessionToken, state, options = {}) {
+  if (!sessionToken || !state) return false;
+  const persisted = sanitizeStateForSave(state);
+  const result = await cloudRpc("app_save_game", {
+    p_session_token: sessionToken,
+    p_save_data: persisted
+  }, {
+    keepalive: Boolean(options.keepalive)
+  });
+  return Boolean(result?.ok);
+}
+
 export function clearProfileSave(profileId) {
   localStorage.removeItem(profileSaveKey(profileId));
 }
@@ -57,7 +80,7 @@ function profileSaveKey(profileId) {
   return `${PROFILE_SAVE_PREFIX}${String(profileId || "local")}`;
 }
 
-function sanitizeStateForSave(state) {
+export function sanitizeStateForSave(state) {
   const persisted = structuredClone(state);
   if (persisted.settings) persisted.settings.visualPreview = false;
   delete persisted.onlineCityPlayers;

@@ -32,10 +32,12 @@ import {
   createGuestSession,
   getActiveProfile,
   loginAccount,
+  activeSessionToken,
   syncProfileFromState,
   updateProfile,
+  validateActiveSession,
   validateDisplayName
-} from "./systems/AccountSystem/index.js";
+} from "./systems/AccountSystem/index.js?v=login-save-2";
 import {
   createFaction,
   editFaction,
@@ -48,15 +50,17 @@ import {
   clearProfileSave,
   clearSave,
   clearWindowLayout,
+  loadCloudProfileGame,
   loadProfileGame,
   loadVisualCalibration,
   loadWindowLayout,
+  saveCloudProfileGame,
   saveProfileGame,
   saveGame,
   saveVisualCalibration,
   saveWindowLayout
-} from "./systems/SaveSystem/index.js?v=phase1-1";
-import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=phase1-1";
+} from "./systems/SaveSystem/index.js?v=login-save-2";
+import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=login-save-2";
 import {
   buyReceptadorOffer,
   ensureReceptadorStock,
@@ -194,6 +198,9 @@ let characterSelectionMode = "new";
 let tutorialOverlay = null;
 let characterTutorialVisible = false;
 let lastTutorialSideEffectStep = null;
+let cloudSavePending = false;
+let sessionCheckTimer = 0;
+let sessionCheckInFlight = false;
 
 const STAGE_HOLD_DELAY_MS = 180;
 const STAGE_HOLD_MOVE_THRESHOLD = 7;
@@ -250,10 +257,19 @@ async function boot() {
   }
 
   activeProfile = getActiveProfile();
+  if (activeProfile) {
+    const sessionResult = await validateActiveSession();
+    if (!sessionResult.ok) {
+      activeProfile = null;
+      showAuthScreen("home", sessionResult.reason || "Conta acessada em outro dispositivo.");
+      return;
+    }
+    activeProfile = sessionResult.profile || activeProfile;
+  }
   showAuthScreen("home");
 }
 
-function continueAfterAuth(options = {}) {
+async function continueAfterAuth(options = {}) {
   hideAuthScreen();
   const shouldStartNew = Boolean(options.newGame);
 
@@ -265,10 +281,22 @@ function continueAfterAuth(options = {}) {
     }
   }
 
-  state = !shouldStartNew && activeProfile?.id ? loadProfileGame(activeProfile.id) : null;
+  state = !shouldStartNew && activeProfile?.id ? await loadSavedGameForActiveProfile() : null;
 
   if (state) hydrateProfileFromLoadedState();
   advanceStartupFlow();
+}
+
+async function loadSavedGameForActiveProfile() {
+  const token = activeSessionToken();
+  if (token) {
+    const cloudState = await loadCloudProfileGame(token);
+    if (cloudState) {
+      saveProfileGame(activeProfile.id, cloudState);
+      return cloudState;
+    }
+  }
+  return loadProfileGame(activeProfile.id);
 }
 
 function hydrateProfileFromLoadedState() {
@@ -332,6 +360,7 @@ function startLoadedGame(options = {}) {
 
   hideAuthScreen();
   hideNameModal();
+  document.body.classList.remove("auth-pending");
   renderAll();
   if (!previewMode) {
     persistGame();
@@ -379,6 +408,7 @@ function hideCharacterSelection() {
 }
 
 function showAuthScreen(mode = "home", message = "") {
+  document.body.classList.add("auth-pending");
   elements.authModal.classList.remove("hidden");
   elements.authPanel.innerHTML = authTemplate(mode, message);
   bindAuthScreen(mode);
@@ -454,13 +484,13 @@ function bindAuthScreen(mode) {
     button.addEventListener("click", () => showAuthScreen(button.dataset.authMode));
   });
 
-  elements.authPanel.querySelector("[data-auth-continue]")?.addEventListener("click", () => {
+  elements.authPanel.querySelector("[data-auth-continue]")?.addEventListener("click", async () => {
     activeProfile = getActiveProfile();
     if (!activeProfile) {
       showAuthScreen("home", "Sessao nao encontrada. Entre novamente.");
       return;
     }
-    continueAfterAuth({ newGame: bootOptions?.newCharacterMode });
+    await continueAfterAuth({ newGame: bootOptions?.newCharacterMode });
   });
 
   elements.authPanel.querySelector("[data-auth-login]")?.addEventListener("submit", async (event) => {
@@ -471,7 +501,7 @@ function bindAuthScreen(mode) {
       return;
     }
     activeProfile = result.profile;
-    continueAfterAuth({ newGame: bootOptions?.newCharacterMode });
+    await continueAfterAuth({ newGame: bootOptions?.newCharacterMode });
   });
 
   elements.authPanel.querySelector("[data-auth-create]")?.addEventListener("submit", async (event) => {
@@ -482,17 +512,17 @@ function bindAuthScreen(mode) {
       return;
     }
     activeProfile = result.profile;
-    continueAfterAuth();
+    await continueAfterAuth();
   });
 
-  elements.authPanel.querySelector("[data-auth-guest-confirm]")?.addEventListener("click", () => {
+  elements.authPanel.querySelector("[data-auth-guest-confirm]")?.addEventListener("click", async () => {
     const result = createGuestSession();
     if (!result.ok) {
       showAuthScreen(mode, result.reason);
       return;
     }
     activeProfile = result.profile;
-    continueAfterAuth();
+    await continueAfterAuth();
   });
 }
 
@@ -559,14 +589,42 @@ function setupCombat() {
   });
 }
 
-function persistGame() {
+function persistGame(options = {}) {
   if (!state) return false;
+  let savedLocally = false;
   if (activeProfile?.id) {
     activeProfile = syncProfileFromState(activeProfile.id, state) || activeProfile;
-    return saveProfileGame(activeProfile.id, state);
+    savedLocally = saveProfileGame(activeProfile.id, state);
+  } else {
+    savedLocally = saveGame(state);
   }
-  return saveGame(state);
+  const token = activeSessionToken();
+  if (token && !state.settings?.visualPreview) {
+    cloudSavePending = true;
+    saveCloudProfileGame(token, state, { keepalive: Boolean(options.keepalive) })
+      .catch(() => false)
+      .finally(() => {
+        cloudSavePending = false;
+      });
+  }
+  return savedLocally;
 }
+
+function persistBeforeExit(event = null) {
+  const started = persistGame({ keepalive: true });
+  if (event && started && cloudSavePending) {
+    event.preventDefault();
+    event.returnValue = "Salvando progresso na nuvem.";
+    return event.returnValue;
+  }
+  return undefined;
+}
+
+window.addEventListener("pagehide", () => persistGame({ keepalive: true }));
+window.addEventListener("beforeunload", persistBeforeExit);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") persistGame({ keepalive: true });
+});
 
 function tick(now) {
   const dt = Math.min(0.05, (now - lastTime) / 1000);
@@ -589,9 +647,47 @@ function tick(now) {
       saveTimer = 0;
       persistGame();
     }
+    if (!state.settings.visualPreview) updateSessionGuard(dt);
   }
 
   requestAnimationFrame(tick);
+}
+
+function updateSessionGuard(dt) {
+  if (!activeSessionToken() || sessionCheckInFlight) return;
+  sessionCheckTimer += dt;
+  if (sessionCheckTimer < 4) return;
+  sessionCheckTimer = 0;
+  sessionCheckInFlight = true;
+  validateActiveSession()
+    .then((result) => {
+      if (result?.ok) {
+        activeProfile = result.profile || activeProfile;
+        return;
+      }
+      handleRemoteSessionClosed(result?.reason || "Conta acessada em outro dispositivo.");
+    })
+    .finally(() => {
+      sessionCheckInFlight = false;
+    });
+}
+
+function handleRemoteSessionClosed(message) {
+  persistGame({ keepalive: true });
+  online?.disconnect();
+  combat = null;
+  online = null;
+  state = null;
+  activeProfile = null;
+  activeCenter = false;
+  activeLeft = null;
+  activeRight = null;
+  document.body.classList.add("auth-pending");
+  elements.inventoryWindow.classList.add("hidden");
+  elements.leftWindow.classList.add("hidden");
+  elements.rightWindow.classList.add("hidden");
+  elements.configWindow.classList.add("hidden");
+  showAuthScreen("home", message);
 }
 
 function renderAll() {

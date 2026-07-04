@@ -24,11 +24,26 @@ Para testar localmente sem GitHub Pages, edite `src/config/publicOnlineConfig.js
 
 ## O que roda no Supabase
 
+- Contas de jogador.
+- Sessao ativa por conta, com bloqueio automatico quando a mesma conta entra em outro dispositivo.
+- Save completo do progresso de cada conta.
 - Presenca dos jogadores na cidade inicial.
 - Entrada e saida da cidade.
 - Movimento em tempo real por Broadcast.
 - Snapshot de jogadores online por Presence.
 - Chat/atividade simples da cidade pelo mesmo canal.
+
+## Banco de dados
+
+O SQL base esta em `docs/supabase-schema.sql`. Ele cria as tabelas `app_accounts`,
+`app_sessions` e `app_saves`, alem das funcoes RPC usadas pelo jogo:
+
+- `app_create_account`
+- `app_login`
+- `app_get_profile`
+- `app_update_profile`
+- `app_load_game`
+- `app_save_game`
 
 ## Observacao
 

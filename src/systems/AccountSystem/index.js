@@ -1,3 +1,5 @@
+import { cloudEnabled, cloudRpc } from "../CloudSystem/index.js";
+
 const ACCOUNT_KEY = "projeto-190-accounts-v1";
 const SESSION_KEY = "projeto-190-session-v1";
 
@@ -9,6 +11,21 @@ export async function createAccount({ username, password, confirmation }) {
   if (!cleanUsername) return { ok: false, reason: "Informe um usuario." };
   if (!cleanPassword) return { ok: false, reason: "Informe uma senha." };
   if (cleanPassword !== cleanConfirmation) return { ok: false, reason: "As senhas precisam ser iguais." };
+
+  if (cloudEnabled()) {
+    const result = await cloudRpc("app_create_account", {
+      p_username: cleanUsername,
+      p_password: cleanPassword
+    });
+    if (!result?.ok) return { ok: false, reason: result?.reason || "Nao foi possivel criar a conta." };
+    const profile = normalizePublicProfile(result.profile);
+    const session = activateSession(profile, {
+      cloud: true,
+      sessionToken: result.sessionToken
+    });
+    cacheProfile(profile);
+    return { ok: true, profile, session };
+  }
 
   const store = readAccountStore();
   const exists = store.profiles.some((profile) => (
@@ -37,8 +54,9 @@ export async function createAccount({ username, password, confirmation }) {
 
   store.profiles.push(profile);
   writeAccountStore(store);
-  const session = activateSession(profile);
-  return { ok: true, profile: publicProfile(profile), session };
+  const publicData = publicProfile(profile);
+  const session = activateSession(publicData);
+  return { ok: true, profile: publicData, session };
 }
 
 export async function loginAccount({ username, password }) {
@@ -46,6 +64,21 @@ export async function loginAccount({ username, password }) {
   const cleanPassword = String(password || "");
   if (!cleanUsername) return { ok: false, reason: "Informe o usuario." };
   if (!cleanPassword) return { ok: false, reason: "Informe a senha." };
+
+  if (cloudEnabled()) {
+    const result = await cloudRpc("app_login", {
+      p_username: cleanUsername,
+      p_password: cleanPassword
+    });
+    if (!result?.ok) return { ok: false, reason: result?.reason || "Usuario ou senha invalido." };
+    const profile = normalizePublicProfile(result.profile);
+    const session = activateSession(profile, {
+      cloud: true,
+      sessionToken: result.sessionToken
+    });
+    cacheProfile(profile);
+    return { ok: true, profile, session };
+  }
 
   const store = readAccountStore();
   const profile = store.profiles.find((candidate) => (
@@ -59,8 +92,9 @@ export async function loginAccount({ username, password }) {
   profile.lastLoginAt = Date.now();
   profile.lastSeenAt = profile.lastLoginAt;
   writeAccountStore(store);
-  const session = activateSession(profile);
-  return { ok: true, profile: publicProfile(profile), session };
+  const publicData = publicProfile(profile);
+  const session = activateSession(publicData);
+  return { ok: true, profile: publicData, session };
 }
 
 export function createGuestSession() {
@@ -85,12 +119,14 @@ export function createGuestSession() {
 
   store.profiles.push(profile);
   writeAccountStore(store);
-  const session = activateSession(profile);
-  return { ok: true, profile: publicProfile(profile), session };
+  const publicData = publicProfile(profile);
+  const session = activateSession(publicData);
+  return { ok: true, profile: publicData, session };
 }
 
 export function getActiveProfile() {
   const session = readSession();
+  if (session?.profile) return normalizePublicProfile(session.profile);
   if (!session?.playerId) return null;
   const profile = findProfile(session.playerId);
   return profile ? publicProfile(profile) : null;
@@ -101,6 +137,15 @@ export function clearActiveSession() {
 }
 
 export function updateProfile(profileId, changes) {
+  const session = readSession();
+  if (session?.cloud && session.sessionToken && session.profile?.id === profileId) {
+    const profile = normalizePublicProfile({ ...session.profile, ...changes });
+    writeSession({ ...session, profile });
+    cacheProfile(profile);
+    updateCloudProfile(session.sessionToken, changes).catch(() => {});
+    return profile;
+  }
+
   const store = readAccountStore();
   const profile = store.profiles.find((candidate) => candidate.id === profileId);
   if (!profile) return null;
@@ -154,15 +199,22 @@ export function validateDisplayName(name) {
   return { ok: true, value };
 }
 
-function activateSession(profile) {
+function activateSession(profile, options = {}) {
+  const publicData = normalizePublicProfile(profile);
   const session = {
-    playerId: profile.id,
-    sessionToken: createId("session"),
-    isGuest: Boolean(profile.isGuest),
+    playerId: publicData.id,
+    sessionToken: optionsSessionToken(options) || createId("session"),
+    cloud: Boolean(options.cloud),
+    isGuest: Boolean(publicData.isGuest),
+    profile: publicData,
     createdAt: Date.now()
   };
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  writeSession(session);
   return session;
+}
+
+function optionsSessionToken(options) {
+  return typeof options?.sessionToken === "string" && options.sessionToken ? options.sessionToken : "";
 }
 
 function readSession() {
@@ -192,6 +244,24 @@ function writeAccountStore(store) {
   localStorage.setItem(ACCOUNT_KEY, JSON.stringify(normalizeStore(store)));
 }
 
+function writeSession(session) {
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+}
+
+function cacheProfile(profile) {
+  const publicData = normalizePublicProfile(profile);
+  const store = readAccountStore();
+  const index = store.profiles.findIndex((candidate) => candidate.id === publicData.id);
+  const cached = {
+    ...publicData,
+    passwordHash: "",
+    passwordSalt: ""
+  };
+  if (index >= 0) store.profiles[index] = { ...store.profiles[index], ...cached };
+  else store.profiles.push(cached);
+  writeAccountStore(store);
+}
+
 function normalizeStore(store) {
   const profiles = Array.isArray(store?.profiles) ? store.profiles : [];
   return {
@@ -216,7 +286,7 @@ function normalizeStore(store) {
 }
 
 function publicProfile(profile) {
-  return {
+  return normalizePublicProfile({
     id: profile.id,
     username: profile.username,
     isGuest: Boolean(profile.isGuest),
@@ -228,6 +298,72 @@ function publicProfile(profile) {
     lastPositionX: Number(profile.lastPositionX || 120),
     lastPositionY: Number(profile.lastPositionY || 0),
     factionId: profile.factionId || null
+  });
+}
+
+function normalizePublicProfile(profile) {
+  return {
+    id: String(profile?.id || ""),
+    username: String(profile?.username || ""),
+    isGuest: Boolean(profile?.isGuest),
+    displayName: String(profile?.displayName || profile?.display_name || ""),
+    characterId: profile?.characterId || profile?.character_id || null,
+    createdAt: Number(profile?.createdAt || profile?.created_at || Date.now()),
+    lastLoginAt: Number(profile?.lastLoginAt || profile?.last_login_at || Date.now()),
+    lastMap: profile?.lastMap || profile?.last_map || "city",
+    lastPositionX: Number(profile?.lastPositionX || profile?.last_position_x || 120),
+    lastPositionY: Number(profile?.lastPositionY || profile?.last_position_y || 0),
+    factionId: profile?.factionId || profile?.faction_id || null
+  };
+}
+
+export function activeSessionToken() {
+  const session = readSession();
+  return session?.cloud ? String(session.sessionToken || "") : "";
+}
+
+export function hasCloudSession() {
+  return Boolean(activeSessionToken());
+}
+
+export async function validateActiveSession() {
+  const session = readSession();
+  if (!session?.cloud || !session.sessionToken) return { ok: true, profile: getActiveProfile() };
+  const result = await cloudRpc("app_get_profile", {
+    p_session_token: session.sessionToken
+  });
+  if (!result?.ok) {
+    if (result?.code !== "other_device" && result?.code !== "session_invalid") {
+      return { ok: true, profile: getActiveProfile(), transient: true };
+    }
+    clearActiveSession();
+    return {
+      ok: false,
+      code: result?.code || "session_invalid",
+      reason: result?.reason || "Conta acessada em outro dispositivo."
+    };
+  }
+  const profile = normalizePublicProfile(result.profile);
+  writeSession({ ...session, profile, playerId: profile.id, isGuest: Boolean(profile.isGuest) });
+  cacheProfile(profile);
+  return { ok: true, profile };
+}
+
+async function updateCloudProfile(sessionToken, changes) {
+  await cloudRpc("app_update_profile", {
+    p_session_token: sessionToken,
+    p_profile: profileChangesForCloud(changes)
+  });
+}
+
+function profileChangesForCloud(changes = {}) {
+  return {
+    displayName: changes.displayName,
+    characterId: changes.characterId,
+    factionId: changes.factionId,
+    lastMap: changes.lastMap,
+    lastPositionX: changes.lastPositionX,
+    lastPositionY: changes.lastPositionY
   };
 }
 
