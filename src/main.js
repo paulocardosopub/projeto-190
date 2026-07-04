@@ -1,11 +1,20 @@
 import { PLAYERS } from "./data/players/index.js";
 import { HIDEOUTS, MAPS } from "./data/maps/index.js?v=phase1-1";
 import { NPC_TYPES } from "./data/enemies/index.js";
-import { CITY_NPCS } from "./data/cityNpcs/index.js?v=phase1-1";
+import { CITY_NPCS } from "./data/cityNpcs/index.js?v=drugs-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS } from "./data/cityPortals/index.js?v=rest-3";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
 import { CombatSystem } from "./systems/CombatSystem/index.js?v=hospital-fee-1";
 import { calculateStats, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
+import {
+  buyAndUseDrug,
+  DRUG_ITEMS,
+  drugCooldownLabel,
+  drugEffectText,
+  HIDEOUT_STAMINA_RECOVERY_CONFIG,
+  normalizeDrugState
+} from "./systems/DrugSystem/index.js?v=drugs-1";
+import { applyHospitalFee } from "./systems/PenaltySystem/index.js?v=hospital-fee-1";
 import {
   createItem,
   craftAllInventory,
@@ -159,6 +168,7 @@ const elements = {
   hospitalText: document.querySelector("#hospital-text"),
   hospitalFee: document.querySelector("#hospital-fee"),
   hospitalClose: document.querySelector("#hospital-close"),
+  deathFlash: document.querySelector("#death-flash"),
   saveButton: document.querySelector("#save-button"),
   masterToggle: document.querySelector("#master-toggle"),
   bottomDock: document.querySelector(".bottom-dock"),
@@ -191,6 +201,7 @@ let editorBarClosed = false;
 let activeCityNpc = null;
 let activeCityPortalId = null;
 let shopMode = "talk";
+let activeCityNpcGreeting = "";
 let pendingSellIndexes = new Set();
 let pendingCraftIndex = null;
 let hideoutItemDrag = null;
@@ -223,11 +234,11 @@ const KEYBOARD_MOVE_KEYS = new Map([
   ["arrowright", "right"]
 ]);
 const KEYBOARD_INTERACT_KEYS = new Set([" "]);
-const HIDEOUT_REST_DISTANCE = 78;
+const HIDEOUT_REST_DISTANCE = HIDEOUT_STAMINA_RECOVERY_CONFIG.restDistance;
 const HIDEOUT_REST_FAST_HP_PER_SECOND = 0.1;
 const HIDEOUT_REST_SLOW_HP_PER_SECOND = 0.006;
-const HIDEOUT_REST_FAST_STAMINA_PER_SECOND = 2.2;
-const HIDEOUT_REST_SLOW_STAMINA_PER_SECOND = 0.08;
+const HIDEOUT_REST_FAST_STAMINA_PER_SECOND = HIDEOUT_STAMINA_RECOVERY_CONFIG.nearHousePerMinute / 60;
+const HIDEOUT_REST_SLOW_STAMINA_PER_SECOND = HIDEOUT_STAMINA_RECOVERY_CONFIG.awayPerMinute / 60;
 
 await renderer.load();
 await boot();
@@ -3160,7 +3171,8 @@ function openCityNpcPanel(npc) {
   }
   closeCityPortalPanel({ render: false });
   activeCityNpc = npc;
-  shopMode = "talk";
+  shopMode = npc?.role === "drugs" ? "drugs" : "talk";
+  activeCityNpcGreeting = cityNpcGreeting(npc);
   restoreTutorialNpcShopMode(npc);
   pendingSellIndexes.clear();
   pendingCraftIndex = null;
@@ -3176,6 +3188,10 @@ function renderCityShopPanel() {
   }
 
   panel.classList.remove("hidden");
+  if (shopMode === "drugs") {
+    renderDrugPanel(panel, activeCityNpc);
+    return;
+  }
   if (shopMode === "buy") {
     renderBuyPanel(panel, activeCityNpc);
     return;
@@ -3227,10 +3243,92 @@ function renderCityShopPanel() {
         <button type="button" class="primary-action" data-shop-mode="sell">Vender</button>
         <button type="button" class="secondary-action" data-shop-mode="sell-all-confirm">Vender Tudo</button>
       ` : ""}
-      ${activeCityNpc.role !== "oldman" && activeCityNpc.role !== "vendor" && activeCityNpc.role !== "buyer" ? `<button type="button" class="secondary-action" disabled>Em breve</button>` : ""}
+      ${activeCityNpc.role === "drugs" ? `
+        <button type="button" class="primary-action" data-shop-mode="drugs">Comprar</button>
+      ` : ""}
+      ${activeCityNpc.role !== "oldman" && activeCityNpc.role !== "vendor" && activeCityNpc.role !== "buyer" && activeCityNpc.role !== "drugs" ? `<button type="button" class="secondary-action" disabled>Em breve</button>` : ""}
     </div>
   `;
   bindShopPanel(panel);
+}
+
+function renderDrugPanel(panel, npc) {
+  const stats = calculateStats(state.player);
+  const now = Date.now();
+  const greeting = activeCityNpcGreeting || cityNpcGreeting(npc);
+  panel.innerHTML = `
+    <header>
+      <span class="eyebrow">${npc.name}</span>
+      <h2>${npc.shopName}</h2>
+      <button type="button" class="close-button" data-shop-close aria-label="Fechar">X</button>
+    </header>
+    <p>${greeting}</p>
+    <div class="drug-shop-list">
+      ${DRUG_ITEMS.map((drug) => drugShopRow(drug, stats, now)).join("")}
+    </div>
+  `;
+  bindShopPanel(panel);
+  panel.querySelectorAll("[data-buy-drug]").forEach((button) => {
+    button.addEventListener("click", () => handleDrugPurchase(button.dataset.buyDrug));
+  });
+}
+
+function drugShopRow(drug, stats, now) {
+  const effect = drugEffectText(drug, state.player, stats);
+  const cooldown = drugCooldownLabel(state.player, drug.id, now);
+  return `
+    <article class="drug-shop-row">
+      <div>
+        <h3>${drug.name}</h3>
+        <p>${formatMoney(drug.price)} | ${effect}</p>
+        <small>${cooldown || `Risco ${drug.risk}`}</small>
+      </div>
+      <button type="button" class="panel-action" data-buy-drug="${drug.id}">
+        Usar
+      </button>
+    </article>
+  `;
+}
+
+function cityNpcGreeting(npc) {
+  const greetings = Array.isArray(npc?.greetings) && npc.greetings.length ? npc.greetings : [npc?.greeting || ""];
+  return greetings[Math.floor(Math.random() * greetings.length)] || "";
+}
+
+function handleDrugPurchase(drugId) {
+  if (!state?.player) return;
+  const stats = calculateStats(state.player);
+  const result = buyAndUseDrug(state.player, drugId, stats);
+  if (!result.ok) {
+    showToast(result.reason);
+    renderCityShopPanel();
+    return;
+  }
+
+  addLog(state, result.message);
+  showToast(result.message);
+  if (result.died) {
+    handleDrugDeath(result);
+    return;
+  }
+
+  normalizeProgressionSystems(state.player);
+  persistGame();
+  renderAll();
+}
+
+function handleDrugDeath(result) {
+  const bill = applyHospitalFee(state.player);
+  state.player.hp = 0;
+  state.player.needsHideoutRest = true;
+  addLog(state, `${result.drug.name}: você apagou e voltou para o esconderijo.`);
+  addLog(state, `Taxa hospitalar: ${formatMoney(bill.charged || 0)}.`);
+  closeCityShopPanel({ render: false });
+  closeMaster({ render: false, force: true });
+  combat.enterHideout();
+  showHospitalBill(bill);
+  persistGame();
+  renderAll();
 }
 
 function renderBuyPanel(panel, npc) {
@@ -3469,6 +3567,7 @@ function closeCityShopPanel(options = {}) {
     lastTutorialSideEffectStep = null;
   }
   activeCityNpc = null;
+  activeCityNpcGreeting = "";
   shopMode = "talk";
   pendingSellIndexes.clear();
   pendingCraftIndex = null;
@@ -3688,10 +3787,22 @@ function showToast(message) {
 
 function showHospitalBill(bill) {
   if (!bill || !elements.hospitalModal) return;
+  triggerDeathFlash();
   elements.hospitalTitle.textContent = bill.title || "Você foi apagado!";
   elements.hospitalText.textContent = bill.message || "Atendimento feito. Conta cobrada.";
   elements.hospitalFee.textContent = `Taxa hospitalar: ${formatMoney(bill.charged || 0)}`;
   elements.hospitalModal.classList.remove("hidden");
+}
+
+function triggerDeathFlash() {
+  if (!elements.deathFlash) return;
+  elements.deathFlash.classList.remove("hidden", "active");
+  void elements.deathFlash.offsetWidth;
+  elements.deathFlash.classList.add("active");
+  window.setTimeout(() => {
+    elements.deathFlash?.classList.remove("active");
+    elements.deathFlash?.classList.add("hidden");
+  }, 780);
 }
 
 function hideHospitalBill() {
@@ -3824,6 +3935,7 @@ function normalizeState() {
   state.player.hideoutTier = Number(state.player.hideoutTier || state.player.terrenoAtual || 0);
   state.player.hideoutItems ||= {};
   state.player.needsHideoutRest = Boolean(state.player.needsHideoutRest);
+  normalizeDrugState(state.player);
   HIDEOUT_ITEM_TYPES.forEach((item) => {
     state.settings.hideoutEditor.previewTiers[item.id] ||= state.player.hideoutItems[item.id] || 1;
   });

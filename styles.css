@@ -1864,6 +1864,7 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 }
 
 .hideout-status-grid,
+.drug-shop-list,
 .asset-shop-list {
   display: grid;
   gap: 7px;
@@ -1875,6 +1876,7 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 }
 
 .hideout-status-grid article,
+.drug-shop-row,
 .asset-shop-row {
   padding: 8px;
   border: 1px solid rgba(174, 132, 61, 0.35);
@@ -1882,6 +1884,7 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 }
 
 .hideout-status-grid h3,
+.drug-shop-row h3,
 .asset-shop-row h3 {
   margin: 2px 0 4px;
   color: #ffe19d;
@@ -1889,12 +1892,32 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 }
 
 .hideout-status-grid p,
+.drug-shop-row p,
+.drug-shop-row small,
 .asset-shop-row p,
 .asset-shop-row small {
   margin: 0 0 6px;
   color: #d6c5a1;
   font-size: 10px;
   line-height: 1.35;
+}
+
+.drug-shop-list {
+  max-height: 210px;
+  overflow: auto;
+  padding-right: 3px;
+}
+
+.drug-shop-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.drug-shop-row small {
+  display: block;
+  color: #f2c96c;
 }
 
 .asset-shop-row {
@@ -2490,6 +2513,34 @@ body.auth-pending .window-layer {
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 212, 95, 0.42);
   font-size: 16px;
+}
+
+.death-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+  pointer-events: none;
+  background:
+    radial-gradient(circle, rgba(255, 0, 0, 0.08), rgba(130, 0, 0, 0.54)),
+    rgba(145, 0, 0, 0.36);
+}
+
+.death-flash.active {
+  animation: deathFlashPulse 760ms ease-out both;
+}
+
+@keyframes deathFlashPulse {
+  0% {
+    opacity: 0;
+  }
+
+  22% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
 }
 
 .auth-backdrop {

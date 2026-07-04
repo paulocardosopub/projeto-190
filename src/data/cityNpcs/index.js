@@ -33,6 +33,23 @@ export const CITY_NPCS = [
     greeting: "Ainda estou organizando minhas coisas."
   },
   {
+    id: "npc-mendigo-fumante",
+    name: "Mendigo Fumante",
+    shopName: "Corre do Fumante",
+    role: "drugs",
+    sheet: "enemies2",
+    row: 7,
+    x: 930,
+    direction: "front",
+    greeting: "Tenho umas paradas aí, mas usa com juízo.",
+    greetings: [
+      "E aí, patrão... quer dar uma acordada?",
+      "Tenho umas paradas aí, mas usa com juízo.",
+      "Barato não é de graça, hein.",
+      "Se passar do ponto, o hospital te abraça."
+    ]
+  },
+  {
     id: "npc-vendedor",
     name: "Vendedor",
     shopName: "Banca do Vendedor",
