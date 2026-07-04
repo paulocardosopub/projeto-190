@@ -1,10 +1,10 @@
 import { PLAYERS } from "./data/players/index.js?v=bruno-yellow-1";
-import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=petshop-portal-1";
+import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=spawn-height-1";
 import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem } from "./systems/CombatSystem/index.js?v=petshop-portal-1";
+import { CombatSystem } from "./systems/CombatSystem/index.js?v=spawn-height-1";
 import { calculateStats, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -1904,7 +1904,7 @@ function panelCallbacks(close) {
       closeCityShopPanel({ render: false });
       closeCityPortalPanel({ render: false });
       closeMaster({ render: false, force: true });
-      combat.enterIdleMap(mapId, { playerX: 120, logMessage: `Voce entrou em ${idleMapName(mapId)}.` });
+      combat.enterIdleMap(mapId, { logMessage: `Voce entrou em ${idleMapName(mapId)}.` });
       renderAll();
     },
     enterCity: () => {

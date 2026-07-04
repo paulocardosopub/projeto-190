@@ -1,4 +1,4 @@
-import { IDLE_MAPS, MAPS } from "../../data/maps/index.js?v=petshop-portal-1";
+import { IDLE_MAPS, MAPS } from "../../data/maps/index.js?v=spawn-height-1";
 import { SPRITES } from "../../data/assets.js?v=petshop-portal-1";
 import { NPC_ALERT_LINES } from "../../data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "../../data/cityNpcs/index.js?v=petshop-portal-1";
@@ -18,6 +18,7 @@ const POLICE_RISK_STARTS_AFTER_FIGHTS = 2;
 const GROUND_LOOT_PICKUP_DISTANCE = 22;
 const GROUND_LOOT_PICKUP_DELAY = 0.4;
 const CITY_SPAWN_X = 190;
+const HIDEOUT_SPAWN_X = 260;
 
 const POLICE_WARNINGS = [
   "Dessa vez ficou so no prejuizo. Na proxima, voce vai junto.",
@@ -158,7 +159,7 @@ export class CombatSystem {
     this.state.currentMapId = map.id;
     this.state.run = {
       mode: temporaryStay ? "temporary" : "idle",
-      playerX: clampWorldX(options.playerX ?? 120),
+      playerX: clampWorldX(options.playerX ?? map.spawnX ?? 120),
       playerDirection: options.playerDirection || "right",
       npcs: cloneIdleNpcs(map.npcs),
       targetId: null,
@@ -247,7 +248,7 @@ export class CombatSystem {
     this.state.player.hideoutTier = tier;
     this.state.run = {
       mode: "hideout",
-      playerX: 120,
+      playerX: HIDEOUT_SPAWN_X,
       playerDirection: "right",
       npcs: [],
       targetId: null,
