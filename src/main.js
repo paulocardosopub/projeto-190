@@ -778,6 +778,10 @@ function renderTutorial() {
     ensureTutorialOverlay().render(CHARACTER_SELECT_TUTORIAL);
     return;
   }
+  if (state?.scene === "map") {
+    tutorialOverlay?.hide();
+    return;
+  }
   ensureTutorialOverlay().render(tutorialStep(state));
 }
 
@@ -2911,6 +2915,7 @@ function startRaid(mapId, options = {}) {
   }
   if (!options.keepMenus) closeMaster({ render: false, force: true });
   closeCityShopPanel({ force: true });
+  tutorialOverlay?.hide();
   fadeThen("Roube o maximo que conseguir!", () => {
     combat.enterMap(mapId);
     dispatchTutorialEvent("raid_started", { mapId, mapIndex: map?.index || 1 }, { render: false });
