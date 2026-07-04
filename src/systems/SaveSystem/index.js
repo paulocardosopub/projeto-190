@@ -1,4 +1,4 @@
-import { cloudRpc } from "../CloudSystem/index.js";
+import { cloudRpc } from "../CloudSystem/index.js?v=city-stable-1";
 
 export const SAVE_KEY = "projeto-190-save-v1";
 export const VISUAL_KEY = "projeto-190-visual-v1";

@@ -320,16 +320,16 @@ export function renderConfigWindow(container, state, callbacks) {
       <section class="online-config-panel">
         <span class="eyebrow">Servidor online</span>
         <div class="online-provider-tabs">
-          <button type="button" class="item-action ${state.settings.onlineProvider !== "local" ? "active" : ""}" data-online-provider="supabase">Supabase</button>
+          <button type="button" class="item-action ${state.settings.onlineProvider !== "local" ? "active" : ""}" data-online-provider="supabase">Nuvem</button>
           <button type="button" class="item-action ${state.settings.onlineProvider === "local" ? "active" : ""}" data-online-provider="local">Local</button>
         </div>
         <label>
-          <span>Supabase URL</span>
-          <input data-online-setting="supabaseUrl" value="${escapeAttribute(state.settings.supabaseUrl || "")}" placeholder="https://seu-projeto.supabase.co">
+          <span>URL do servidor</span>
+          <input data-online-setting="supabaseUrl" value="${escapeAttribute(state.settings.supabaseUrl || "")}" placeholder="https://servidor-online">
         </label>
         <label>
-          <span>Chave publica</span>
-          <input data-online-setting="supabaseKey" value="${escapeAttribute(state.settings.supabaseKey || "")}" placeholder="sb_publishable_... ou anon key">
+          <span>Chave do servidor</span>
+          <input data-online-setting="supabaseKey" value="${escapeAttribute(state.settings.supabaseKey || "")}" placeholder="chave publica do servidor">
         </label>
         <label>
           <span>WebSocket local</span>
@@ -492,7 +492,7 @@ function onlineCityPanel(online) {
         <div>
           <span class="eyebrow">Cidade online</span>
           <h3>${onlineStatusLabel(snapshot.status)}</h3>
-          <small>${snapshot.provider === "supabase" ? "Supabase Realtime" : "Servidor local"}</small>
+          <small>${snapshot.provider === "supabase" ? "Servidor da cidade" : "Servidor local"}</small>
           <p>${isOnline ? `${snapshot.players.length} conexao(oes), ${cityPlayers.length} visivel(eis) para voce.` : "A cidade roda offline ate conectar o servidor."}</p>
         </div>
         <button class="panel-action" ${isOnline ? "data-online-disconnect" : "data-online-connect"}>
@@ -532,7 +532,7 @@ function onlineStatusLabel(status) {
     online: "Conectado",
     connecting: "Conectando",
     offline: "Offline",
-    "missing-config": "Configurar Supabase",
+    "missing-config": "Configurar servidor",
     unsupported: "Indisponivel"
   }[status] || "Offline";
 }

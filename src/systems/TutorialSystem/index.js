@@ -1,4 +1,4 @@
-const TUTORIAL_VERSION = 3;
+const TUTORIAL_VERSION = 4;
 
 const FINAL_STEP = "tutorial_complete";
 
@@ -36,135 +36,41 @@ export const TUTORIAL_STEPS = [
   },
   {
     id: "almeida_intro",
-    message: "Ta vendo esse cidadao? Compra de tudo. Ate coisa que nem ele sabe pra que serve.",
-    buttonLabel: "Quem e esse?",
+    message: "Esse e o Sr. Almeida. Ele compra tua tralha quando a mochila virar bagunca.",
+    buttonLabel: "Passar por ele",
     target: "npc_almeida",
-    allowSkip: true,
-    next: "almeida_click"
-  },
-  {
-    id: "almeida_click",
-    message: "Clica no Sr. Almeida e troca uma ideia.",
-    buttonLabel: "Vai la nele",
-    target: "npc_almeida",
-    actionRequired: "click_npc_almeida",
+    actionRequired: "visit_npc_almeida",
     passiveButton: true,
-    allowSkip: true
-  },
-  {
-    id: "almeida_window",
-    message: "Esse e o Almeida. Compra tua tralha e ainda faz cara de honesto.",
-    buttonLabel: "Boa",
-    target: "city_shop_panel",
-    allowSkip: true,
-    next: "vendedor_intro"
-  },
-  {
-    id: "almeida_sell",
-    message: "Esse botao transforma bagunca em dindin. Simples, rapido e sem recibo.",
-    buttonLabel: "Gostei",
-    target: "shop_sell_all",
     allowSkip: true,
     next: "vendedor_intro"
   },
   {
     id: "vendedor_intro",
-    message: "Agora olha o Vendedor. Item aleatorio, venda e fusao moram na banca dele.",
-    buttonLabel: "Bora no vendedor",
+    message: "Ali fica o Vendedor. Item surpresa e fusao de equipamento passam por ele.",
+    buttonLabel: "Passar por ele",
     target: "npc_vendedor",
-    allowSkip: true,
-    next: "vendedor_click"
-  },
-  {
-    id: "vendedor_click",
-    message: "Clica no Vendedor e ve o balcao da sorte.",
-    buttonLabel: "Falar com Vendedor",
-    target: "npc_vendedor",
-    actionRequired: "click_npc_vendedor",
+    actionRequired: "visit_npc_vendedor",
     passiveButton: true,
-    allowSkip: true
-  },
-  {
-    id: "vendedor_window",
-    message: "Esse ai vende item aleatorio, compra tralha e funde repetido. Cassino com balcao.",
-    buttonLabel: "Entendi",
-    target: "city_shop_panel",
-    allowSkip: true,
-    next: "vendedor_buy"
-  },
-  {
-    id: "vendedor_buy",
-    message: "Itens aleatorios: tu paga, ele entrega surpresa. Pode vir ouro, pode vir dor.",
-    buttonLabel: "Boa",
-    target: "shop_buy",
-    allowSkip: true,
-    next: "vendedor_sell"
-  },
-  {
-    id: "vendedor_sell",
-    message: "Vender Tudo transforma mochila baguncada em dinheiro. So confere antes de torrar reliquia.",
-    buttonLabel: "Gostei",
-    target: "shop_sell_all",
-    allowSkip: true,
-    next: "vendedor_craft"
-  },
-  {
-    id: "vendedor_craft",
-    message: "Juntou 4 iguais da mesma raridade? O Vendedor funde e tenta puxar coisa melhor.",
-    buttonLabel: "Brabo",
-    target: "shop_craft",
     allowSkip: true,
     next: "zeca_intro"
   },
   {
     id: "zeca_intro",
-    message: "Agora cola no Seu Zeca. O velho sabe mais da quebrada que camera de seguranca.",
-    buttonLabel: "Bora no velho",
-    target: "npc_zeca",
-    allowSkip: true,
-    next: "zeca_click"
-  },
-  {
-    id: "zeca_click",
-    message: "Clica no Seu Zeca pra ouvir umas verdades.",
-    buttonLabel: "Falar com Zeca",
+    message: "Esse e o Seu Zeca. Ele resolve teu esconderijo, e isso muda o comeco do jogo.",
+    buttonLabel: "Passar pelo Zeca",
     target: "npc_zeca",
     actionRequired: "click_npc_zeca",
     passiveButton: true,
-    allowSkip: true
+    allowSkip: true,
+    next: "zeca_dialog_1"
   },
   {
     id: "zeca_dialog_1",
-    message: "Fiquei sabendo que tu e o novo bagunceiro da comunidade.",
-    buttonLabel: "Eita",
+    message: "Fala comigo, cria. Primeiro a gente arruma um terreno pra virar teu esconderijo.",
+    buttonLabel: "Comprar esconderijo",
     target: "city_shop_panel",
     allowSkip: true,
-    next: "zeca_dialog_2"
-  },
-  {
-    id: "zeca_dialog_2",
-    message: "Presta atencao: na pista, quem anda fazendo barulho vira sirene.",
-    buttonLabel: "To esperto",
-    target: "city_shop_panel",
-    allowSkip: true,
-    next: "zeca_dialog_3"
-  },
-  {
-    id: "zeca_dialog_3",
-    message: "Se precisar de uns achados, fala comigo. Tenho coisa boa e coisa que eu nem pergunto.",
-    buttonLabel: "Mostra ai",
-    target: "city_shop_panel",
-    allowSkip: true,
-    next: "zeca_land_mode"
-  },
-  {
-    id: "zeca_land_mode",
-    message: "Primeiro tu precisa de um pedaco de chao. Sem terreno, tu e so turista com problema.",
-    buttonLabel: "Comprar terreno",
-    target: "shop_land_mode",
-    actionRequired: "open_land_shop",
-    passiveButton: true,
-    allowSkip: true
+    next: "zeca_buy_land"
   },
   {
     id: "zeca_buy_land",
@@ -379,8 +285,31 @@ export function normalizeTutorialState(state, options = {}) {
 
   state.tutorial.version ||= TUTORIAL_VERSION;
   state.tutorial.step ||= state.tutorial.completed ? FINAL_STEP : "city_welcome";
-  if (state.tutorial.step === "almeida_sell") state.tutorial.step = "vendedor_intro";
-  if (state.tutorial.step === "almeida_craft") state.tutorial.step = "vendedor_intro";
+  if ([
+    "almeida_click",
+    "almeida_window",
+    "almeida_sell",
+    "almeida_craft"
+  ].includes(state.tutorial.step)) {
+    state.tutorial.step = "almeida_intro";
+  }
+  if ([
+    "vendedor_click",
+    "vendedor_window",
+    "vendedor_buy",
+    "vendedor_sell",
+    "vendedor_craft"
+  ].includes(state.tutorial.step)) {
+    state.tutorial.step = "vendedor_intro";
+  }
+  if ([
+    "zeca_click",
+    "zeca_dialog_2",
+    "zeca_dialog_3",
+    "zeca_land_mode"
+  ].includes(state.tutorial.step)) {
+    state.tutorial.step = "zeca_intro";
+  }
   if ([
     "almeida_return_click",
     "almeida_return_window",
@@ -704,6 +633,12 @@ function nextStepId(stepId) {
 
 function tutorialActionMatches(action, event) {
   if (!event) return false;
+  if (action === "visit_npc_almeida") {
+    return event.type === "npc_visited" && event.npcId === "comerciante-itens";
+  }
+  if (action === "visit_npc_vendedor") {
+    return event.type === "npc_visited" && event.npcId === "npc-vendedor";
+  }
   if (action === "click_npc_almeida" || action === "click_almeida_after_loot") {
     return event.type === "npc_opened" && event.npcId === "comerciante-itens";
   }
@@ -748,6 +683,8 @@ function tutorialActionMatches(action, event) {
 
 function expectedTargetForAction(action) {
   const targets = {
+    visit_npc_almeida: { type: "city_npc", id: "comerciante-itens" },
+    visit_npc_vendedor: { type: "city_npc", id: "npc-vendedor" },
     click_npc_almeida: { type: "city_npc", id: "comerciante-itens" },
     click_almeida_after_loot: { type: "city_npc", id: "comerciante-itens" },
     click_npc_zeca: { type: "city_npc", id: "seu-zeca" },

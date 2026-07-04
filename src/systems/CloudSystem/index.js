@@ -14,7 +14,7 @@ export function cloudEnabled() {
 export async function cloudRpc(name, payload = {}, options = {}) {
   const config = cloudConfig();
   if (!config.url || !config.key) {
-    return { ok: false, reason: "Supabase nao configurado." };
+    return { ok: false, reason: "Servidor online nao configurado." };
   }
 
   try {

@@ -1,4 +1,4 @@
-import { cloudEnabled, cloudRpc } from "../CloudSystem/index.js";
+import { cloudEnabled, cloudRpc } from "../CloudSystem/index.js?v=city-stable-1";
 
 const ACCOUNT_KEY = "projeto-190-accounts-v1";
 const SESSION_KEY = "projeto-190-session-v1";

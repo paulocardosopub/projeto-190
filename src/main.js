@@ -37,7 +37,7 @@ import {
   updateProfile,
   validateActiveSession,
   validateDisplayName
-} from "./systems/AccountSystem/index.js?v=login-save-2";
+} from "./systems/AccountSystem/index.js?v=city-stable-1";
 import {
   createFaction,
   editFaction,
@@ -59,8 +59,8 @@ import {
   saveGame,
   saveVisualCalibration,
   saveWindowLayout
-} from "./systems/SaveSystem/index.js?v=login-save-2";
-import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=login-save-2";
+} from "./systems/SaveSystem/index.js?v=city-stable-1";
+import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=city-stable-1";
 import {
   buyReceptadorOffer,
   ensureReceptadorStock,
@@ -80,7 +80,7 @@ import {
   skipTutorial,
   tutorialNudgeLine,
   tutorialStep
-} from "./systems/TutorialSystem/index.js?v=phase1-1";
+} from "./systems/TutorialSystem/index.js?v=tutorial-flow-1";
 import {
   activateCar,
   activateHouse,
@@ -114,7 +114,7 @@ import {
   renderInventoryWindow,
   renderVaultWindow,
   renderPanel
-} from "./ui/WindowSystem.js?v=phase1-1";
+} from "./ui/WindowSystem.js?v=city-stable-1";
 
 const elements = {
   canvas: document.querySelector("#game-canvas"),
@@ -635,6 +635,7 @@ function tick(now) {
     online?.update(dt);
     updatePassiveIncome(state, dt);
     updateHideoutRestRecovery(dt);
+    updateTutorialCityNpcArrival();
     updatePendingCityNpcArrival();
     updatePendingCityPortalArrival();
     updatePendingHideoutPortalArrival();
@@ -757,7 +758,7 @@ function ensureTutorialOverlay() {
       advanceActiveTutorial();
     },
     onSkip: () => skipActiveTutorial(),
-    onPassive: () => showToast(tutorialNudgeLine())
+    onPassive: (step) => performTutorialPrimaryAction(step)
   });
   return tutorialOverlay;
 }
@@ -785,6 +786,61 @@ function advanceActiveTutorial() {
   commitTutorialChange(advanceTutorialStep(state));
 }
 
+function performTutorialPrimaryAction(step) {
+  if (!state || !combat || !step?.actionRequired) {
+    showToast(tutorialNudgeLine());
+    return;
+  }
+
+  const action = step.actionRequired;
+  if (action === "visit_npc_almeida") {
+    moveToTutorialCityNpc("comerciante-itens");
+    return;
+  }
+  if (action === "visit_npc_vendedor") {
+    moveToTutorialCityNpc("npc-vendedor");
+    return;
+  }
+  if (action === "click_npc_zeca") {
+    moveToTutorialCityNpc("seu-zeca");
+    return;
+  }
+  if (action === "buy_land_1") {
+    buyTutorialAsset("land", 1);
+    return;
+  }
+  if (action === "buy_house_1") {
+    buyTutorialAsset("house", 1);
+    return;
+  }
+  if (action === "buy_car_1") {
+    buyTutorialAsset("car", 1);
+    return;
+  }
+  if (action === "click_city_hideout_portal") {
+    walkToTutorialCityPortal("hideout-door");
+    return;
+  }
+  if (action === "click_hideout_house") {
+    walkToTutorialHideoutHouse();
+    return;
+  }
+  if (action === "click_hideout_return_portal") {
+    walkToTutorialHideoutPortal("city-return");
+    return;
+  }
+  if (action === "click_assault_portal") {
+    walkToTutorialCityPortal("assaults");
+    return;
+  }
+  if (action === "start_first_raid") {
+    startRaid(MAPS[0]?.id);
+    return;
+  }
+
+  showToast(tutorialNudgeLine());
+}
+
 function skipActiveTutorial() {
   if (!state) return;
   commitTutorialChange(skipTutorial(state));
@@ -809,40 +865,45 @@ function applyTutorialSideEffects() {
   if (!step || state.settings?.visualPreview || lastTutorialSideEffectStep === step.id) return;
   lastTutorialSideEffectStep = step.id;
 
-  if (step.id === "almeida_intro" || step.id === "almeida_click") {
+  if (step.id === "almeida_intro") {
     closeCityShopPanel({ render: false, force: true });
     closeMaster({ render: false, force: true });
-    if (state.scene === "city" && combat) combat.moveCityTo(576);
     return;
   }
 
   if (step.id === "zeca_intro") {
     closeCityShopPanel({ render: false, force: true });
     closeMaster({ render: false, force: true });
-    if (state.scene === "city" && combat) combat.moveCityTo(772);
+    return;
+  }
+
+  if (step.id === "zeca_dialog_1") {
+    if (state.scene === "city" && activeCityNpc?.id !== "seu-zeca") {
+      openTutorialZecaShop("talk");
+    }
     return;
   }
 
   if (step.id === "vendedor_intro") {
     closeCityShopPanel({ render: false, force: true });
     closeMaster({ render: false, force: true });
-    if (state.scene === "city" && combat) combat.moveCityTo(1152);
     return;
   }
 
-  if (step.id === "zeca_buy_land" && activeCityNpc?.id === "seu-zeca") {
-    shopMode = "land";
+  if (step.id === "zeca_buy_land") {
+    openTutorialZecaShop("land");
+    ensureTutorialAssetFunds("land", 1);
     return;
   }
 
-  if (step.id === "zeca_buy_house" && activeCityNpc?.id === "seu-zeca") {
-    shopMode = "house";
+  if (step.id === "zeca_buy_house") {
+    openTutorialZecaShop("house");
     ensureTutorialAssetFunds("house", 1);
     return;
   }
 
-  if (step.id === "zeca_buy_car" && activeCityNpc?.id === "seu-zeca") {
-    shopMode = "car";
+  if (step.id === "zeca_buy_car") {
+    openTutorialZecaShop("car");
     ensureTutorialAssetFunds("car", 1);
     return;
   }
@@ -850,14 +911,10 @@ function applyTutorialSideEffects() {
   if (step.id === "hideout_portal_intro" || step.id === "hideout_portal_click") {
     closeCityShopPanel({ render: false, force: true });
     closeMaster({ render: false, force: true });
-    if (state.scene === "city" && combat) combat.moveCityTo(560);
     return;
   }
 
   if (step.id === "hideout_storage_intro" || step.id === "hideout_house_click") {
-    if (state.scene === "hideout" && combat) {
-      combat.moveHideoutTo(getHideoutItemPlacement("house").x);
-    }
     return;
   }
 
@@ -869,14 +926,12 @@ function applyTutorialSideEffects() {
 
   if (step.id === "hideout_return_click") {
     closeMaster({ render: false, force: true });
-    if (state.scene === "hideout" && combat) combat.moveHideoutTo(72);
     return;
   }
 
   if (step.id === "city_back_intro" || step.id === "assault_portal_click") {
     closeCityInteractions({ render: false, force: true });
     closeMaster({ render: false, force: true });
-    if (state.scene === "city" && combat) combat.moveCityTo(72);
     return;
   }
 
@@ -906,6 +961,86 @@ function ensureTutorialAssetFunds(type, tier) {
   state.tutorial.funding[`${type}:${tier}`] = (state.tutorial.funding[`${type}:${tier}`] || 0) + missing;
   addLog(state, `Seu Zeca adiantou ${formatMoney(missing)} para o tutorial.`);
   showToast(`Seu Zeca adiantou ${formatMoney(missing)} para o basico.`);
+}
+
+function moveToTutorialCityNpc(npcId, options = {}) {
+  if (!state || !combat || state.scene !== "city" || state.run.mode !== "city") {
+    showToast("Volte para a cidade para seguir o tutorial.");
+    return;
+  }
+  const npc = CITY_NPCS.find((candidate) => candidate.id === npcId);
+  if (!npc) return;
+  closeCityInteractions({ render: false, force: true });
+  closeMaster({ render: false, force: true });
+  const approachOffset = (state.run.playerX || 0) <= npc.x ? -48 : 48;
+  state.run.pendingCityNpcId = npc.id;
+  state.run.pendingCityPortalId = null;
+  combat.moveCityTo(npc.x + approachOffset);
+  if (!options.silent) showToast(`Indo ate ${npc.name}.`);
+}
+
+function walkToTutorialCityPortal(portalId) {
+  if (!state || !combat || state.scene !== "city" || state.run.mode !== "city") {
+    showToast("Volte para a cidade para seguir o tutorial.");
+    return;
+  }
+  const portal = CITY_PORTALS.find((candidate) => candidate.id === portalId);
+  if (!portal) return;
+  if (blockWrongTutorialTarget("city_portal", portal.id)) return;
+  walkToCityPortal(portal);
+}
+
+function walkToTutorialHideoutPortal(portalId) {
+  if (!state || !combat || state.scene !== "hideout" || state.run.mode !== "hideout") {
+    showToast("Entre no esconderijo para seguir o tutorial.");
+    return;
+  }
+  const portal = HIDEOUT_PORTALS.find((candidate) => candidate.id === portalId);
+  if (!portal) return;
+  if (blockWrongTutorialTarget("hideout_portal", portal.id)) return;
+  walkToHideoutPortal(portal);
+}
+
+function walkToTutorialHideoutHouse() {
+  if (!state || !combat || state.scene !== "hideout" || state.run.mode !== "hideout") {
+    showToast("Entre no esconderijo para seguir o tutorial.");
+    return;
+  }
+  if (blockWrongTutorialTarget("hideout_item", "house")) return;
+  const placement = getHideoutItemPlacement("house");
+  state.run.pendingHideoutPortalId = null;
+  state.run.pendingHideoutItemId = "house";
+  closeMaster({ render: false, force: true });
+  combat.moveHideoutTo(placement.x);
+  showToast("Indo ate a casa.");
+}
+
+function openTutorialZecaShop(mode = "talk") {
+  const zeca = CITY_NPCS.find((candidate) => candidate.id === "seu-zeca");
+  if (!zeca) return;
+  closeCityPortalPanel({ render: false, force: true });
+  closeMaster({ render: false, force: true });
+  activeCityNpc = zeca;
+  shopMode = mode;
+  pendingSellIndexes.clear();
+  pendingCraftIndex = null;
+  if (state?.run) {
+    state.run.pendingCityNpcId = null;
+    state.run.pendingCityPortalId = null;
+  }
+}
+
+function buyTutorialAsset(type, tier) {
+  if (!state?.player) return;
+  if (blockWrongTutorialTarget("asset", `${type}:${tier}`)) return;
+  openTutorialZecaShop(type);
+  ensureTutorialAssetFunds(type, tier);
+  const result = type === "house"
+    ? buyHouse(state.player, tier)
+    : type === "car"
+      ? buyCar(state.player, tier)
+      : buyLand(state.player, tier);
+  handleAssetBuy(result, type, tier);
 }
 
 function blockWrongTutorialTarget(targetType, targetId) {
@@ -2961,6 +3096,40 @@ function walkToCityNpc(npc) {
   showToast(`Indo ate ${npc.name}.`);
 }
 
+function updateTutorialCityNpcArrival() {
+  if (state.scene !== "city" || state.run.mode !== "city") return;
+  if (Number.isFinite(state.run.cityTargetX)) return;
+  const step = tutorialStep(state);
+  const visitNpcId = tutorialVisitNpcId(step);
+  const openNpcId = tutorialAutoOpenNpcId(step);
+  const npcId = visitNpcId || openNpcId;
+  if (!npcId) return;
+  const npc = CITY_NPCS.find((candidate) => candidate.id === npcId);
+  if (!npc) return;
+  if (Math.abs((state.run.playerX || 0) - npc.x) > 90) return;
+
+  state.run.pendingCityNpcId = null;
+  state.run.pendingCityPortalId = null;
+  if (visitNpcId) {
+    dispatchTutorialEvent("npc_visited", { npcId }, { render: false });
+    renderAll();
+    return;
+  }
+  openCityNpcPanel(npc);
+}
+
+function tutorialVisitNpcId(step = tutorialStep(state)) {
+  const visits = {
+    visit_npc_almeida: "comerciante-itens",
+    visit_npc_vendedor: "npc-vendedor"
+  };
+  return visits[step?.actionRequired] || null;
+}
+
+function tutorialAutoOpenNpcId(step = tutorialStep(state)) {
+  return step?.actionRequired === "click_npc_zeca" ? "seu-zeca" : null;
+}
+
 function updatePendingCityNpcArrival() {
   if (state.scene !== "city" || state.run.mode !== "city" || !state.run.pendingCityNpcId) return;
   if (Number.isFinite(state.run.cityTargetX)) return;
@@ -2971,6 +3140,13 @@ function updatePendingCityNpcArrival() {
 }
 
 function openCityNpcPanel(npc) {
+  if (tutorialVisitNpcId() === npc?.id) {
+    state.run.pendingCityNpcId = null;
+    state.run.pendingCityPortalId = null;
+    dispatchTutorialEvent("npc_visited", { npcId: npc.id }, { render: false });
+    renderAll();
+    return;
+  }
   closeCityPortalPanel({ render: false });
   activeCityNpc = npc;
   shopMode = "talk";
@@ -3278,6 +3454,9 @@ function restoreTutorialNpcShopMode(npc) {
 function closeCityShopPanel(options = {}) {
   const panel = document.querySelector("#city-shop-panel");
   const hadShop = Boolean(activeCityNpc || (panel && !panel.classList.contains("hidden")));
+  if (hadShop && (tutorialStep(state)?.target === "city_shop_panel" || tutorialNeedsCityShopOpen())) {
+    lastTutorialSideEffectStep = null;
+  }
   activeCityNpc = null;
   shopMode = "talk";
   pendingSellIndexes.clear();

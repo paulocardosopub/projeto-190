@@ -1,13 +1,16 @@
 const DEFAULT_URL = "ws://localhost:4191";
 const SUPABASE_JS_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/+esm";
 const CITY_CHANNEL = "projeto190:city:initial";
-const MOVE_SEND_INTERVAL_MS = 50;
-const PRESENCE_TRACK_INTERVAL_MS = 1000;
-const RECONNECT_DELAY_MS = 2200;
+const MOVE_SEND_INTERVAL_MS = 120;
+const PRESENCE_TRACK_INTERVAL_MS = 5000;
+const RECONNECT_BASE_DELAY_MS = 3200;
+const RECONNECT_MAX_DELAY_MS = 18000;
 const PRESENCE_GRACE_MS = 6500;
 const PLAYER_REMOVE_AFTER_MS = 35000;
 const REMOTE_LERP_SPEED = 12;
 const REMOTE_SNAP_DISTANCE = 2200;
+const OFFLINE_MESSAGE = "Xii, caiu a luz na favela! Segura ai";
+const ONLINE_MESSAGE = "Tudo certo, ja fizemos um gato. Tamo online!";
 
 let supabaseModulePromise = null;
 
@@ -37,6 +40,7 @@ export class OnlineSystem {
     this.manualDisconnect = false;
     this.reconnectConfig = null;
     this.reconnectTimer = null;
+    this.reconnectAttempts = 0;
     this.offlineToastShown = false;
   }
 
@@ -58,7 +62,7 @@ export class OnlineSystem {
   async connectSupabase(config) {
     if (!config.supabaseUrl || !config.supabaseKey) {
       this.status = "missing-config";
-      this.hooks.onToast?.("Configure o Supabase em Configs > Servidor online.");
+      this.hooks.onToast?.("Configure o servidor online em Configs.");
       this.emit();
       return;
     }
@@ -85,7 +89,8 @@ export class OnlineSystem {
         }
       });
 
-      this.channel
+      const channel = this.channel;
+      channel
         .on("presence", { event: "sync" }, () => this.syncSupabasePresence())
         .on("presence", { event: "leave" }, ({ leftPresences }) => {
           (leftPresences || []).forEach((presence) => this.markCityPlayerMissing(presence.clientId || presence.playerId));
@@ -94,10 +99,10 @@ export class OnlineSystem {
         .on("broadcast", { event: "city:player_stopped" }, ({ payload }) => this.upsertCityPlayer(payload?.player || payload))
         .on("broadcast", { event: "city:chat" }, ({ payload }) => this.receiveChat(payload))
         .on("broadcast", { event: "city:shop:activity" }, ({ payload }) => this.receiveShopActivity(payload))
-        .subscribe((status) => this.handleSupabaseStatus(status));
+        .subscribe((status) => this.handleSupabaseStatus(status, channel));
     } catch (error) {
       this.status = "offline";
-      this.hooks.onToast?.("Nao foi possivel conectar ao Supabase.");
+      this.hooks.onToast?.("Nao foi possivel conectar a cidade online.");
       console.warn("Supabase online error", error);
       this.emit();
       this.scheduleReconnect();
@@ -117,11 +122,12 @@ export class OnlineSystem {
 
     this.socket.addEventListener("open", () => {
       this.status = "online";
+      this.reconnectAttempts = 0;
       this.offlineToastShown = false;
       this.sayHello();
       this.syncCityMembership();
       this.emit();
-      this.hooks.onToast?.("Cidade online conectada.");
+      this.hooks.onToast?.(ONLINE_MESSAGE);
     });
 
     this.socket.addEventListener("message", (event) => {
@@ -139,14 +145,18 @@ export class OnlineSystem {
     });
   }
 
-  handleSupabaseStatus(status) {
+  handleSupabaseStatus(status, channel = this.channel) {
+    if (this.manualDisconnect) return;
+    if (channel && this.channel && channel !== this.channel) return;
     if (status === "SUBSCRIBED") {
+      const wasOnline = this.status === "online";
       this.status = "online";
+      this.reconnectAttempts = 0;
       this.offlineToastShown = false;
       this.sayHello();
       this.syncCityMembership();
       this.emit();
-      this.hooks.onToast?.("Cidade online conectada ao Supabase.");
+      if (!wasOnline) this.hooks.onToast?.(ONLINE_MESSAGE);
       return;
     }
 
@@ -163,6 +173,7 @@ export class OnlineSystem {
     this.disconnectLocal();
     this.disconnectSupabase();
     this.status = "offline";
+    this.reconnectAttempts = 0;
     this.players = [];
     this.cityPlayers.clear();
     this.syncStatePlayers();
@@ -191,14 +202,14 @@ export class OnlineSystem {
 
   handleDisconnect() {
     this.joinedCity = false;
-    this.cityPlayers.clear();
+    this.markAllCityPlayersMissing();
     this.syncStatePlayers();
     const shouldReconnect = !this.manualDisconnect;
     this.status = "offline";
     this.emit();
     if (shouldReconnect) {
       if (!this.offlineToastShown) {
-        this.hooks.onToast?.("Conexao perdida. Tentando reconectar...");
+        this.hooks.onToast?.(OFFLINE_MESSAGE);
         this.offlineToastShown = true;
       }
       this.scheduleReconnect();
@@ -516,6 +527,14 @@ export class OnlineSystem {
     this.syncStatePlayers();
   }
 
+  markAllCityPlayersMissing() {
+    const now = Date.now();
+    for (const player of this.cityPlayers.values()) {
+      player.missingSince ||= now;
+      player.isMoving = false;
+    }
+  }
+
   receiveChat(entry) {
     if (!entry?.text) return;
     this.chat.unshift({
@@ -614,10 +633,17 @@ export class OnlineSystem {
 
   scheduleReconnect() {
     this.clearReconnect();
+    const delay = Math.min(
+      RECONNECT_MAX_DELAY_MS,
+      RECONNECT_BASE_DELAY_MS * Math.max(1, this.reconnectAttempts + 1)
+    );
+    this.reconnectAttempts += 1;
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
-      if (!this.manualDisconnect) this.connect(this.reconnectConfig);
-    }, RECONNECT_DELAY_MS);
+      if (!this.manualDisconnect && !this.socket && !this.channel && this.status !== "online") {
+        this.connect(this.reconnectConfig);
+      }
+    }, delay);
   }
 
   clearReconnect() {
