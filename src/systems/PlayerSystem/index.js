@@ -1,4 +1,4 @@
-import { createStarterEquipment, createStarterInventory } from "../InventorySystem/index.js";
+import { createEmptyInventory, createStarterEquipment, createStarterInventory } from "../InventorySystem/index.js";
 
 export function createNewGame(playerId) {
   return {
@@ -8,15 +8,26 @@ export function createNewGame(playerId) {
     currentMapId: null,
     activeAssaultTier: 1,
     selectedInventoryIndex: null,
+    selectedVaultIndex: null,
     log: ["Cidade inicial desbloqueada."],
+    tutorial: {
+      version: 3,
+      active: true,
+      completed: false,
+      step: "character_selected",
+      skipped: false
+    },
     player: {
+      playerId: null,
+      username: "",
+      isGuest: false,
+      displayName: "",
+      characterId: playerId,
+      factionId: null,
       level: 1,
       highestMapUnlocked: 1,
-      hideoutTier: 1,
-      hideoutItems: {
-        house: 1,
-        vehicle: 1
-      },
+      hideoutTier: 0,
+      hideoutItems: {},
       xp: 0,
       nextXp: 100,
       money: 0,
@@ -28,15 +39,19 @@ export function createNewGame(playerId) {
       nivelJogador: 1,
       casaAtual: null,
       carroAtual: null,
-      terrenoAtual: 1,
+      terrenoAtual: null,
       ownedHouses: [],
       ownedCars: [],
-      terrenosComprados: [1],
+      terrenosComprados: [],
       maiorTerrenoDesbloqueado: 1,
       passiveVault: {
         amount: 0,
         accumulatedSeconds: 0,
         lastUpdatedAt: Date.now()
+      },
+      personalVault: {
+        money: 0,
+        items: createEmptyInventory(36)
       },
       equipment: createStarterEquipment(),
       inventory: createStarterInventory()
@@ -57,6 +72,7 @@ export function createNewGame(playerId) {
       playerActionDuration: 0,
       cityTargetX: null,
       pendingHideoutPortalId: null,
+      pendingHideoutItemId: null,
       attempts: 0,
       caughtInFlagrante: 0,
       battlesStarted: 0,
@@ -87,7 +103,10 @@ export function createNewGame(playerId) {
         players: {},
         npcs: {}
       },
-      onlineUrl: "ws://localhost:4191"
+      onlineProvider: "supabase",
+      onlineUrl: "ws://localhost:4191",
+      supabaseUrl: "",
+      supabaseKey: ""
     }
   };
 }

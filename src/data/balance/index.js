@@ -454,7 +454,7 @@ export const npcShopConfig = {
 
 export const staminaConfig = {
   staminaMaxBase: 120,
-  staminaRegenBaseNoEsconderijo: 2,
+  staminaRegenBaseNoEsconderijo: 0.5,
   states: [
     { id: "descansado", label: "Descansado", minPercent: 60, maxPercent: 100, effect: "Sem penalidade" },
     { id: "atento", label: "Atento", minPercent: 30, maxPercent: 59, effect: "Sem penalidade" },
@@ -462,7 +462,8 @@ export const staminaConfig = {
     { id: "esgotado", label: "Esgotado", minPercent: 1, maxPercent: 9, effect: "Aviso forte" },
     { id: "sem-stamina", label: "Sem stamina", minPercent: 0, maxPercent: 0, effect: "Nao pode iniciar novo assalto" }
   ],
-  emptyMessage: "Voce esta sem stamina. Volte para o esconderijo para descansar."
+  emptyMessage: "Voce esta sem stamina. Volte para o esconderijo para descansar.",
+  insufficientMessage: "Stamina insuficiente. Volte para o esconderijo e descanse perto da barraca."
 };
 
 const unlockRequirements = [
@@ -478,7 +479,7 @@ const unlockRequirements = [
 ];
 
 export const housesConfig = [
-  ["Barraca de Camping", 1500, 5, 10, 0.5, 1],
+  ["Barraca de Camping", 0, 5, 10, 0.5, 1],
   ["Barraco de Madeira", 7500, 20, 25, 0.8, 0.95],
   ["Casa Simples", 30000, 75, 45, 1.2, 0.9],
   ["Casa de Alvenaria", 150000, 250, 70, 1.7, 0.85],
@@ -500,7 +501,7 @@ export const housesConfig = [
 }));
 
 export const carsConfig = [
-  ["Carroca de Madeira", 1000, 3, 0.3],
+  ["Carroca de Madeira", 0, 3, 0.3],
   ["Charrete Simples", 5000, 12, 0.6],
   ["Fusca Velho", 25000, 45, 1],
   ["Hatch Popular", 120000, 150, 1.5],
@@ -528,7 +529,7 @@ export const passiveIncomeConfig = {
 export const cityOldManNpcConfig = {
   id: "seu-zeca",
   name: "Seu Zeca, o Velho da Cidade",
-  tabs: ["Itens Aleatorios", "Comprar Casa", "Comprar Carro", "Comprar Terreno", "Fundir Equipamentos", "Vender Itens"],
+  tabs: ["Comprar Esconderijo", "Comprar Casa", "Comprar Carro", "Vender Itens"],
   canSellHousesAndCarsBack: false
 };
 
@@ -734,31 +735,31 @@ function xpForMap(index, enemyHp) {
 
 function staminaCostForMap(index) {
   return {
-    1: 1,
-    2: 1,
-    3: 1,
-    4: 2,
-    5: 2,
-    6: 2,
-    7: 2,
-    8: 2,
-    9: 3,
-    10: 3,
-    11: 3,
-    12: 4,
-    13: 4,
-    14: 4,
-    15: 5,
-    16: 5,
-    17: 6,
-    18: 6,
-    19: 7,
-    20: 7,
-    21: 8,
-    22: 9,
-    23: 10,
-    24: 12
-  }[index] || 1;
+    1: 4,
+    2: 5,
+    3: 6,
+    4: 7,
+    5: 8,
+    6: 9,
+    7: 10,
+    8: 11,
+    9: 12,
+    10: 13,
+    11: 14,
+    12: 16,
+    13: 17,
+    14: 18,
+    15: 20,
+    16: 22,
+    17: 24,
+    18: 26,
+    19: 28,
+    20: 30,
+    21: 33,
+    22: 36,
+    23: 40,
+    24: 45
+  }[index] || 4;
 }
 
 function loot(entries) {

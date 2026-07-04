@@ -1,6 +1,7 @@
 import { ASSETS, SPRITES } from "../data/assets.js?v=vehicle-alpha-3";
-import { CITY, HIDEOUTS, MAPS } from "../data/maps/index.js";
-import { CITY_NPCS } from "../data/cityNpcs/index.js";
+import { CITY, HIDEOUTS, MAPS } from "../data/maps/index.js?v=vault-1";
+import { PLAYERS } from "../data/players/index.js";
+import { CITY_NPCS } from "../data/cityNpcs/index.js?v=vault-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS } from "../data/cityPortals/index.js?v=rest-3";
 import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-7";
 
@@ -69,6 +70,8 @@ export class SpriteRenderer {
       if (npc.alerted) this.drawSpeech(screenX, npcFeetY - visual.npcHeight - 18, npc.alertLine);
     }
     this.drawItemTheftChats(state, cameraWorld, visual);
+    this.drawGroundLoots(state, cameraWorld, visual);
+    this.drawOnlinePlayers(state, cameraWorld, visual);
 
     const playerScreenX = this.worldToScreen(state.run.playerX || 120, cameraWorld);
     const playerFeetY = visual.groundY + visual.playerYOffset;
@@ -232,6 +235,46 @@ export class SpriteRenderer {
     );
   }
 
+  drawOnlinePlayers(state, cameraWorld, visual) {
+    if (state.scene !== "city") return;
+    const players = Array.isArray(state.onlineCityPlayers) ? state.onlineCityPlayers : [];
+    if (!players.length) return;
+
+    const feetY = visual.groundY + visual.playerYOffset;
+    players
+      .filter((player) => player?.playerId && player.playerId !== state.player?.playerId)
+      .sort((a, b) => Number(a.x || 0) - Number(b.x || 0))
+      .forEach((player) => {
+        const x = this.worldToScreen(Number(player.x || 120), cameraWorld);
+        if (x < -110 || x > this.canvas.width + 110) return;
+        const row = PLAYERS.find((candidate) => candidate.id === player.characterId)?.row || 0;
+        const animation = this.playerAnimations[row];
+        const direction = player.direction === "left" ? "left" : "right";
+        const fakeState = {
+          scene: "city",
+          selectedPlayerId: `online-${player.playerId}`,
+          run: {
+            mode: "city",
+            playerX: Number(player.x || 120),
+            playerDirection: direction,
+            cityTargetX: player.isMoving
+              ? Number(player.x || 120) + (direction === "left" ? -10 : 10)
+              : null
+          }
+        };
+
+        this.ctx.save();
+        this.ctx.globalAlpha = 0.96;
+        if (animation) {
+          this.drawAnimatedPlayer(animation, fakeState, x, feetY, visual.playerHeight * 0.98, 1);
+        } else {
+          this.drawActor("players", row, direction, x, feetY, visual.playerHeight * 0.98, 1);
+        }
+        this.drawNameplate(x, feetY - visual.playerHeight - 8, player.playerName || "Jogador");
+        this.ctx.restore();
+      });
+  }
+
   drawHideoutItems(state, cameraWorld) {
     this.lastHideoutItemBounds = [];
     if (state.scene !== "hideout") return;
@@ -275,6 +318,7 @@ export class SpriteRenderer {
     if (state.scene !== "city") return;
 
     CITY_PORTALS.forEach((portal) => {
+      if (portal.action === "hideout" && !playerHasOwnedLand(state.player)) return;
       const x = this.worldToScreen(portal.x, cameraWorld);
       if (x < -portal.width || x > this.canvas.width + portal.width) return;
       const feetY = visual.groundY + visual.npcYOffset + Number(portal.yOffset || 0);
@@ -464,6 +508,60 @@ export class SpriteRenderer {
     });
   }
 
+  drawGroundLoots(state, cameraWorld, visual) {
+    const drops = state.run?.groundLoots || [];
+    if (!drops.length) return;
+    const ctx = this.ctx;
+    const feetY = visual.groundY + visual.npcYOffset;
+    const time = performance.now() / 1000;
+
+    drops.forEach((drop, index) => {
+      const x = this.worldToScreen(drop.x, cameraWorld);
+      if (x < -48 || x > this.canvas.width + 48) return;
+      const color = drop.color || lootRarityColor(drop.rarity);
+      const age = Math.max(0, Number(drop.age || 0));
+      const fall = Math.max(0, 1 - age / 0.45);
+      const bounce = Math.sin(time * 6 + index) * 2.2;
+      const y = feetY - 13 - fall * fall * 34 + bounce;
+      const pulse = 0.75 + Math.sin(time * 5.8 + index) * 0.25;
+      const radius = 5.4 + pulse * 1.7;
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const glow = ctx.createRadialGradient(x, y, 1, x, y, radius * 4.8);
+      glow.addColorStop(0, hexToRgba(color, 0.9));
+      glow.addColorStop(0.34, hexToRgba(color, 0.36));
+      glow.addColorStop(1, hexToRgba(color, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, radius * 4.8, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.88;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.96;
+      ctx.fillStyle = "#fff8d8";
+      ctx.beginPath();
+      ctx.arc(x - radius * 0.28, y - radius * 0.34, Math.max(1.2, radius * 0.32), 0, Math.PI * 2);
+      ctx.fill();
+
+      for (let spark = 0; spark < 4; spark += 1) {
+        const phase = time * (1.6 + spark * 0.2) + spark * 1.9 + index;
+        const sparkX = x + Math.cos(phase) * radius * (2.2 + spark * 0.18);
+        const sparkY = y + Math.sin(phase * 1.15) * radius * 1.7;
+        ctx.globalAlpha = 0.4 + Math.sin(phase) * 0.22;
+        ctx.fillStyle = spark % 2 ? color : "#fff6bd";
+        ctx.fillRect(Math.round(sparkX), Math.round(sparkY), 2, 2);
+      }
+
+      ctx.restore();
+    });
+  }
+
   drawHideoutItem(typeId, tier, placement, cameraWorld, selected = false) {
     const config = SPRITES.hideoutItems[typeId];
     const image = this.images[config.sheet];
@@ -559,6 +657,25 @@ export class SpriteRenderer {
   drawContactShadow(x, feetY, width) {
     this.ctx.fillStyle = "rgba(0,0,0,0.2)";
     this.ctx.fillRect(Math.round(x - width / 2), Math.round(feetY - 2), Math.round(width), 2);
+  }
+
+  drawNameplate(x, y, text) {
+    const ctx = this.ctx;
+    const label = String(text || "Jogador").slice(0, 18);
+    ctx.save();
+    ctx.font = "bold 10px Arial";
+    const width = Math.min(118, Math.max(42, ctx.measureText(label).width + 16));
+    const left = Math.round(x - width / 2);
+    const top = Math.round(y - 16);
+    ctx.fillStyle = "rgba(7, 7, 7, 0.78)";
+    ctx.strokeStyle = "rgba(241, 213, 138, 0.82)";
+    ctx.lineWidth = 1;
+    ctx.fillRect(left, top, width, 15);
+    ctx.strokeRect(left, top, width, 15);
+    ctx.fillStyle = "#fff1b2";
+    ctx.textAlign = "center";
+    ctx.fillText(label, x, top + 11);
+    ctx.restore();
   }
 
   drawProgressBubble(x, y, progress) {
@@ -1168,11 +1285,38 @@ function actorSheet(sheetName) {
   return SPRITES.actorSheets?.[sheetName] || SPRITES.actor;
 }
 
+function playerHasOwnedLand(player) {
+  return Array.isArray(player?.terrenosComprados) && player.terrenosComprados.length > 0;
+}
+
 function damageNumberColor(type) {
   if (type === "crit") return "#ffef7a";
   if (type === "player") return "#ff5656";
   if (type === "blocked") return "#ff9a52";
   return "#fff0bd";
+}
+
+function lootRarityColor(rarity) {
+  return {
+    comum: "#c8c8c8",
+    incomum: "#55d66b",
+    raro: "#52a8ff",
+    epico: "#c777ff",
+    lendario: "#ffd45f",
+    mestre: "#f8f5c4"
+  }[rarity] || "#fff0bd";
+}
+
+function hexToRgba(hex, alpha) {
+  const value = String(hex || "#fff0bd").replace("#", "");
+  const normalized = value.length === 3
+    ? value.split("").map((char) => char + char).join("")
+    : value.padEnd(6, "f").slice(0, 6);
+  const number = Number.parseInt(normalized, 16);
+  const r = (number >> 16) & 255;
+  const g = (number >> 8) & 255;
+  const b = number & 255;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function weaponEffectConfig(rarity) {
@@ -1286,7 +1430,7 @@ function isPlayerWalking(state) {
   if (state.scene === "city" || state.scene === "hideout") {
     return Number.isFinite(run.cityTargetX) && Math.abs(run.cityTargetX - (run.playerX || 0)) > 2;
   }
-  return run.mode === "approaching" || run.mode === "seeking";
+  return run.mode === "approaching" || run.mode === "seeking" || run.mode === "collectingLoot";
 }
 
 function alphaAt(pixels, imageWidth, x, y) {

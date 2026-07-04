@@ -7,7 +7,7 @@ import {
   housesConfig,
   passiveIncomeConfig,
   staminaConfig
-} from "../../data/balance/index.js";
+} from "../../data/balance/index.js?v=phase1-1";
 
 export function normalizeProgressionSystems(player) {
   player.staminaMax = calculateStaminaMax(player);
@@ -18,13 +18,14 @@ export function normalizeProgressionSystems(player) {
   player.nivelJogador = player.level || 1;
   player.ownedHouses ||= [];
   player.ownedCars ||= [];
-  player.terrenosComprados ||= [1];
-  if (!player.terrenosComprados.includes(1)) player.terrenosComprados.unshift(1);
+  player.terrenosComprados ||= [];
   player.casaAtual = player.ownedHouses.includes(player.casaAtual) ? player.casaAtual : null;
   player.carroAtual = player.ownedCars.includes(player.carroAtual) ? player.carroAtual : null;
-  player.terrenoAtual = player.terrenosComprados.includes(player.terrenoAtual) ? player.terrenoAtual : 1;
+  player.terrenoAtual = player.terrenosComprados.includes(player.terrenoAtual)
+    ? player.terrenoAtual
+    : player.terrenosComprados[0] || null;
   player.maiorTerrenoDesbloqueado = highestUnlockedLandTier(player);
-  player.hideoutTier = player.terrenoAtual;
+  player.hideoutTier = player.terrenoAtual || 0;
   player.passiveVault ||= { amount: 0, accumulatedSeconds: 0, lastUpdatedAt: Date.now() };
   player.passiveVault.amount ||= 0;
   player.passiveVault.accumulatedSeconds ||= 0;
@@ -62,15 +63,26 @@ export function updateStaminaInHideout(state, dtSeconds) {
   return recovered;
 }
 
-export function canStartRaid(player) {
-  return Number(player.staminaAtual || 0) > 0;
+export function canStartRaid(player, map = null) {
+  return Number(player.staminaAtual || 0) >= staminaCostForRaid(map);
 }
 
 export function consumeStaminaForMap(player, map) {
   updateStaminaDerivedStats(player);
-  const cost = Number(map?.staminaCost ?? map?.custoStamina ?? 1);
+  const cost = staminaCostForRaid(map);
   player.staminaAtual = Math.max(0, player.staminaAtual - cost);
   return cost;
+}
+
+export function staminaCostForRaid(map = null) {
+  return Math.max(1, Number(map?.staminaCost ?? map?.custoStamina ?? 1));
+}
+
+export function staminaRaidBlockedMessage(player, map = null) {
+  const current = Math.floor(Number(player?.staminaAtual || 0));
+  const cost = staminaCostForRaid(map);
+  if (current <= 0) return staminaConfig.emptyMessage;
+  return `${staminaConfig.insufficientMessage} Precisa de ${cost} stamina e voce tem ${current}.`;
 }
 
 export function staminaState(player) {
@@ -110,6 +122,7 @@ export function restNow(player) {
 export function buyHouse(player, tier) {
   const house = getHouseConfig(tier);
   if (!house) return { ok: false, reason: "Casa nao encontrada." };
+  if (!hasOwnedLand(player)) return { ok: false, reason: "Voce precisa de um terreno mocado antes." };
   if (!canUnlockAsset(player, house)) return { ok: false, reason: assetRequirementText(house) };
   if (player.ownedHouses.includes(house.tier)) return activateHouse(player, house.tier);
   if (player.money < house.price) return { ok: false, reason: "Moedas insuficientes para comprar essa casa." };
@@ -117,6 +130,8 @@ export function buyHouse(player, tier) {
   player.money -= house.price;
   player.ownedHouses.push(house.tier);
   player.casaAtual = house.tier;
+  player.hideoutItems ||= {};
+  player.hideoutItems.house = Math.max(Number(player.hideoutItems.house || 0), house.tier);
   updateStaminaDerivedStats(player);
   return { ok: true, message: `${house.name} comprada e ativada.` };
 }
@@ -124,6 +139,7 @@ export function buyHouse(player, tier) {
 export function buyCar(player, tier) {
   const car = getCarConfig(tier);
   if (!car) return { ok: false, reason: "Carro nao encontrado." };
+  if (!hasOwnedLand(player)) return { ok: false, reason: "Voce precisa de um terreno mocado antes." };
   if (!canUnlockAsset(player, car)) return { ok: false, reason: assetRequirementText(car) };
   if (player.ownedCars.includes(car.tier)) return activateCar(player, car.tier);
   if (player.money < car.price) return { ok: false, reason: "Moedas insuficientes para comprar esse carro." };
@@ -131,6 +147,8 @@ export function buyCar(player, tier) {
   player.money -= car.price;
   player.ownedCars.push(car.tier);
   player.carroAtual = car.tier;
+  player.hideoutItems ||= {};
+  player.hideoutItems.vehicle = Math.max(Number(player.hideoutItems.vehicle || 0), car.tier);
   return { ok: true, message: `${car.name} comprado e ativado.` };
 }
 
@@ -152,6 +170,8 @@ export function buyLand(player, tier) {
 export function activateHouse(player, tier) {
   if (!player.ownedHouses.includes(Number(tier))) return { ok: false, reason: "Voce ainda nao possui essa casa." };
   player.casaAtual = Number(tier);
+  player.hideoutItems ||= {};
+  player.hideoutItems.house = Math.max(Number(player.hideoutItems.house || 0), Number(tier));
   updateStaminaDerivedStats(player);
   return { ok: true, message: `${getHouseConfig(tier)?.name || "Casa"} ativada.` };
 }
@@ -159,6 +179,8 @@ export function activateHouse(player, tier) {
 export function activateCar(player, tier) {
   if (!player.ownedCars.includes(Number(tier))) return { ok: false, reason: "Voce ainda nao possui esse carro." };
   player.carroAtual = Number(tier);
+  player.hideoutItems ||= {};
+  player.hideoutItems.vehicle = Math.max(Number(player.hideoutItems.vehicle || 0), Number(tier));
   return { ok: true, message: `${getCarConfig(tier)?.name || "Carro"} ativado.` };
 }
 
@@ -249,4 +271,8 @@ function highestUnlockedLandTier(player) {
     .filter((land) => canUnlockAsset(player, land))
     .map((land) => land.tier)
     .at(-1) || 1;
+}
+
+function hasOwnedLand(player) {
+  return Array.isArray(player.terrenosComprados) && player.terrenosComprados.length > 0;
 }

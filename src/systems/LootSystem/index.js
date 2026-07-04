@@ -3,8 +3,8 @@ import {
   getEquipmentConfig,
   lootTables,
   rarityConfig
-} from "../../data/balance/index.js";
-import { createItem, addItem } from "../InventorySystem/index.js";
+} from "../../data/balance/index.js?v=vault-1";
+import { createItem, addItem } from "../InventorySystem/index.js?v=vault-1";
 
 const LOOT_SLOT_WEIGHTS = Object.values(equipmentSlotsConfig).map((slot) => ({
   id: slot.id,
@@ -25,7 +25,7 @@ export function rollLoot(map, stats, wonFight = false) {
 }
 
 export function applyLoot(state, reward) {
-  state.player.money += reward.money;
+  state.player.money += reward.money || 0;
   let itemAdded = false;
   if (reward.item) {
     itemAdded = addItem(state.player, reward.item);

@@ -4,7 +4,7 @@ import {
   craftConfig,
   getCraftCostForResult,
   getCraftResultConfig
-} from "../../data/balance/index.js?v=gloves-1";
+} from "../../data/balance/index.js?v=vault-1";
 import { itemPower } from "../EquipmentSystem/index.js";
 
 let uidCounter = 1;

@@ -26,18 +26,19 @@ http://127.0.0.1:4190/?preview=1&editor=1
 
 Nesse modo, arraste cada janela pelo titulo, redimensione pelo canto e use `Salvar layout`. O layout salvo passa a ser usado quando as janelas abrirem no jogo normal. Os botoes `Menor` e `Maior` ajustam a escala interna de textos e quadrados. O menu inferior tambem pode ser arrastado e redimensionado.
 
+## Online Supabase
+
+A camada online fica em `src/systems/OnlineSystem` e usa Supabase Realtime para a cidade inicial.
+
+Configure pelo jogo em `Mochila > Configs > Servidor online`, colando a Project URL e a chave publica do Supabase.
+
+Mais detalhes estao em `docs/SUPABASE.md`.
+
 ## Online local
 
-A camada online fica separada em `src/systems/OnlineSystem` e o servidor de desenvolvimento em `server/index.mjs`.
+O servidor de desenvolvimento em `server/index.mjs` continua disponivel como fallback local.
 
-Para testar cidade online:
-
-```powershell
-npm install
-npm run server
-```
-
-Depois abra o jogo e use Cidade > Conectar.
+Para usar localmente, escolha o modo `Local` nas configuracoes online e rode `npm run server`.
 
 ## Arquitetura
 

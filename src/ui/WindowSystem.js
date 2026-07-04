@@ -1,4 +1,4 @@
-import { MAPS, MAP_TIERS } from "../data/maps/index.js";
+import { MAPS, MAP_TIERS } from "../data/maps/index.js?v=phase1-1";
 import { PLAYERS } from "../data/players/index.js";
 import { EQUIPMENT_SLOTS, SLOT_LABELS } from "../data/equipment/index.js?v=gloves-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemCost } from "../data/hideoutItems/index.js";
@@ -11,8 +11,8 @@ import {
   getStaminaRechargeCost,
   staminaPercent,
   staminaState
-} from "../systems/StaminaSystem/index.js";
-import { getCarConfig, getHouseConfig, getLandConfig } from "../data/balance/index.js";
+} from "../systems/StaminaSystem/index.js?v=phase1-1";
+import { getCarConfig, getHouseConfig, getLandConfig } from "../data/balance/index.js?v=phase1-1";
 
 const BACKPACK_PAGE_SIZE = 36;
 const BACKPACK_PAGE_COUNT = 4;
@@ -54,6 +54,7 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
               <div class="selected-icon gear-square ${tierClass(selectedItem)}">
                 ${gearIcon(selectedItem)}
                 <small>${tierLabel(selectedItem)}</small>
+                ${lockBadge(selectedItem)}
               </div>
             ` : `<div class="selected-icon gear-square tier-empty"></div>`}
             <div class="selected-copy">
@@ -88,10 +89,23 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
 
   bindClose(container, callbacks.close);
   container.querySelectorAll(".inventory-cell").forEach((cell) => {
-    cell.addEventListener("click", () => callbacks.selectInventory(Number(cell.dataset.index)));
+    cell.addEventListener("click", (event) => {
+      const index = Number(cell.dataset.index);
+      if (event.altKey && player.inventory[index]) {
+        event.preventDefault();
+        callbacks.toggleInventoryLock(index);
+        return;
+      }
+      callbacks.selectInventory(index);
+    });
     cell.addEventListener("contextmenu", (event) => {
       event.preventDefault();
-      callbacks.equipFromInventory(Number(cell.dataset.index));
+      const index = Number(cell.dataset.index);
+      if (callbacks.activeRight === "vault" && callbacks.storeInventoryItem) {
+        callbacks.storeInventoryItem(index);
+        return;
+      }
+      callbacks.equipFromInventory(index);
     });
     cell.addEventListener("dragstart", (event) => event.dataTransfer.setData("text/plain", cell.dataset.index));
     cell.addEventListener("dragover", (event) => event.preventDefault());
@@ -126,6 +140,101 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
   });
 }
 
+export function renderVaultWindow(container, state, callbacks) {
+  const player = state.player;
+  const vault = player.personalVault || { money: 0, items: [] };
+  const items = vault.items || [];
+  const selectedItem = Number.isInteger(state.selectedVaultIndex)
+    ? items[state.selectedVaultIndex]
+    : null;
+  const vaultMoney = Math.floor(vault.money || 0);
+  const walletMoney = Math.floor(player.money || 0);
+
+  container.innerHTML = `
+    ${windowHeader("Cofre do Jogador", "vault")}
+    <div class="window-body vault-window-body">
+      <div class="vault-layout">
+        <section class="vault-money-panel">
+          <div class="vault-money-values">
+            <div>
+              <span class="eyebrow">Carteira</span>
+              <strong>${money(walletMoney)}</strong>
+            </div>
+            <div>
+              <span class="eyebrow">Cofre</span>
+              <strong>${money(vaultMoney)}</strong>
+            </div>
+          </div>
+          <div class="vault-money-form">
+            <input id="vault-money-input" type="number" min="1" step="1" inputmode="numeric" placeholder="Valor">
+            <button type="button" class="panel-action" data-vault-deposit ${walletMoney > 0 ? "" : "disabled"}>Depositar</button>
+            <button type="button" class="panel-action" data-vault-withdraw ${vaultMoney > 0 ? "" : "disabled"}>Sacar</button>
+            <button type="button" class="panel-action" data-vault-deposit-all ${walletMoney > 0 ? "" : "disabled"}>Tudo</button>
+          </div>
+        </section>
+
+        <section class="selected-panel vault-selected">
+          ${selectedItem ? `
+            <div class="selected-icon gear-square ${tierClass(selectedItem)}">
+              ${gearIcon(selectedItem)}
+              <small>${tierLabel(selectedItem)}</small>
+              ${lockBadge(selectedItem)}
+            </div>
+          ` : `<div class="selected-icon gear-square tier-empty"></div>`}
+          <div class="selected-copy">
+            <span class="eyebrow">Selecionado</span>
+            <h3>${selectedItem ? selectedItem.name : "Nenhum item"}</h3>
+            <p>${selectedItem ? itemStatsText(selectedItem) : "Cofre vazio ou sem selecao."}</p>
+          </div>
+        </section>
+
+        <div class="backpack-header vault-header">
+          <span class="eyebrow">Itens</span>
+          <strong>${items.filter(Boolean).length} / ${items.length}</strong>
+        </div>
+        <div class="inventory-grid compact-inventory vault-grid">
+          ${items.map((item, index) => vaultCell(item, index, state.selectedVaultIndex)).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+
+  bindClose(container, callbacks.close);
+
+  const moneyInput = container.querySelector("#vault-money-input");
+  container.querySelector("[data-vault-deposit]")?.addEventListener("click", () => {
+    callbacks.depositVaultMoney(Number(moneyInput?.value || 0));
+  });
+  container.querySelector("[data-vault-withdraw]")?.addEventListener("click", () => {
+    callbacks.withdrawVaultMoney(Number(moneyInput?.value || 0));
+  });
+  container.querySelector("[data-vault-deposit-all]")?.addEventListener("click", () => {
+    callbacks.depositVaultMoney(walletMoney);
+  });
+
+  container.querySelectorAll(".vault-cell").forEach((cell) => {
+    cell.addEventListener("click", () => callbacks.selectVaultItem(Number(cell.dataset.vaultIndex)));
+    cell.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      callbacks.withdrawVaultItem(Number(cell.dataset.vaultIndex));
+    });
+    cell.addEventListener("dragstart", (event) => {
+      event.dataTransfer.setData("text/plain", `vault:${cell.dataset.vaultIndex}`);
+    });
+    cell.addEventListener("dragover", (event) => event.preventDefault());
+    cell.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const payload = event.dataTransfer.getData("text/plain");
+      const targetIndex = Number(cell.dataset.vaultIndex);
+      if (payload.startsWith("vault:")) {
+        callbacks.moveVaultItem(Number(payload.slice(6)), targetIndex);
+        return;
+      }
+      callbacks.storeInventoryItem(Number(payload), targetIndex);
+    });
+  });
+}
+
 function bindBackpackPages(container, selectBackpackPage) {
   const buttons = [...container.querySelectorAll("[data-backpack-page]")];
   if (!buttons.length) return;
@@ -154,7 +263,7 @@ export function renderPanel(container, type, state, renderer, callbacks) {
   container.innerHTML = `
     ${windowHeader(titles[type] || "Painel", type)}
     <div class="window-body">
-      ${panelBody(type, state, callbacks.onlineSnapshot?.())}
+      ${panelBody(type, state, callbacks.onlineSnapshot?.(), callbacks.factionSnapshot?.())}
     </div>
   `;
 
@@ -190,6 +299,7 @@ export function renderPanel(container, type, state, renderer, callbacks) {
     callbacks.sendChat(input.value);
     input.value = "";
   });
+  if (type === "faction") bindFactionControls(container, callbacks);
 }
 
 export function renderConfigWindow(container, state, callbacks) {
@@ -198,10 +308,34 @@ export function renderConfigWindow(container, state, callbacks) {
   container.innerHTML = `
     ${windowHeader("Configs", "configs")}
     <div class="window-body">
+      ${state.player?.isGuest ? `
+        <section class="guest-warning-panel">
+          Voce esta jogando sem login. Seu progresso pode ser perdido.
+        </section>
+      ` : ""}
       <div class="inventory-tools">
         <button class="panel-action" id="config-save">Salvar</button>
         <button class="panel-action" id="config-reset">Novo jogo</button>
       </div>
+      <section class="online-config-panel">
+        <span class="eyebrow">Servidor online</span>
+        <div class="online-provider-tabs">
+          <button type="button" class="item-action ${state.settings.onlineProvider !== "local" ? "active" : ""}" data-online-provider="supabase">Supabase</button>
+          <button type="button" class="item-action ${state.settings.onlineProvider === "local" ? "active" : ""}" data-online-provider="local">Local</button>
+        </div>
+        <label>
+          <span>Supabase URL</span>
+          <input data-online-setting="supabaseUrl" value="${escapeAttribute(state.settings.supabaseUrl || "")}" placeholder="https://seu-projeto.supabase.co">
+        </label>
+        <label>
+          <span>Chave publica</span>
+          <input data-online-setting="supabaseKey" value="${escapeAttribute(state.settings.supabaseKey || "")}" placeholder="sb_publishable_... ou anon key">
+        </label>
+        <label>
+          <span>WebSocket local</span>
+          <input data-online-setting="onlineUrl" value="${escapeAttribute(state.settings.onlineUrl || "ws://localhost:4191")}" placeholder="ws://localhost:4191">
+        </label>
+      </section>
       ${state.settings.visualPreview ? `
         <section class="log-panel visual-tuner">
           <h3>Ajuste visual do mapa</h3>
@@ -241,6 +375,12 @@ export function renderConfigWindow(container, state, callbacks) {
   attachScrollControls(container);
   container.querySelector("#config-save").addEventListener("click", callbacks.save);
   container.querySelector("#config-reset").addEventListener("click", callbacks.reset);
+  container.querySelectorAll("[data-online-provider]").forEach((button) => {
+    button.addEventListener("click", () => callbacks.updateOnlineProvider(button.dataset.onlineProvider));
+  });
+  container.querySelectorAll("[data-online-setting]").forEach((input) => {
+    input.addEventListener("change", () => callbacks.updateOnlineSetting(input.dataset.onlineSetting, input.value));
+  });
   container.querySelectorAll("[data-visual-control]").forEach((input) => {
     input.addEventListener("input", () => callbacks.updateVisual(input.dataset.visualControl, Number(input.value)));
   });
@@ -270,7 +410,7 @@ export function renderCharacterSelect(container, renderer, onSelect) {
   });
 }
 
-function panelBody(type, state, online) {
+function panelBody(type, state, online, faction) {
   if (type === "assaults") {
     const activeTier = state.activeAssaultTier || 1;
     const maps = MAPS.filter((map) => map.tier === activeTier);
@@ -333,16 +473,7 @@ function panelBody(type, state, online) {
     `;
   }
 
-  return `
-    <div class="future-grid">
-      ${futureCard("Tropa do Fundao", "Crie uma faccao ou entre em uma.")}
-      ${futureCard("Membros", "Lista de participantes futura.")}
-      ${futureCard("Boss da Faccao", "Chefe cooperativo futuro.")}
-      ${futureCard("Doacoes", "Contribuicoes para upgrades.")}
-      ${futureCard("Ranking", "Disputa de poder online.")}
-      ${futureCard("Chat", "Canal da faccao preparado.")}
-    </div>
-  `;
+  return factionPanel(faction);
 }
 
 function onlineCityPanel(online) {
@@ -354,13 +485,15 @@ function onlineCityPanel(online) {
     activity: []
   };
   const isOnline = snapshot.status === "online";
+  const cityPlayers = snapshot.cityPlayers || [];
   return `
     <section class="online-panel">
       <div class="online-header">
         <div>
           <span class="eyebrow">Cidade online</span>
           <h3>${onlineStatusLabel(snapshot.status)}</h3>
-          <p>${isOnline ? `${snapshot.players.length} jogador(es) na cidade.` : "A cidade roda offline ate conectar o servidor."}</p>
+          <small>${snapshot.provider === "supabase" ? "Supabase Realtime" : "Servidor local"}</small>
+          <p>${isOnline ? `${snapshot.players.length} conexao(oes), ${cityPlayers.length} visivel(eis) para voce.` : "A cidade roda offline ate conectar o servidor."}</p>
         </div>
         <button class="panel-action" ${isOnline ? "data-online-disconnect" : "data-online-connect"}>
           ${isOnline ? "Sair" : "Conectar"}
@@ -369,7 +502,7 @@ function onlineCityPanel(online) {
       <div class="online-grid">
         <article>
           <h4>Players</h4>
-          <ul>${listOrEmpty(snapshot.players.map((player) => `${player.name} - NV ${player.level}`), "Nenhum player conectado.")}</ul>
+          <ul>${listOrEmpty(cityPlayers.map((player) => `${escapeHtml(player.playerName)} - ${escapeHtml(player.characterId)}`), "Nenhum player visivel.")}</ul>
         </article>
         <article>
           <h4>Lojas</h4>
@@ -399,8 +532,139 @@ function onlineStatusLabel(status) {
     online: "Conectado",
     connecting: "Conectando",
     offline: "Offline",
+    "missing-config": "Configurar Supabase",
     unsupported: "Indisponivel"
   }[status] || "Offline";
+}
+
+function factionPanel(snapshot) {
+  const data = snapshot || {
+    factions: [],
+    membership: null,
+    faction: null,
+    members: [],
+    playerRole: null
+  };
+
+  if (!data.membership || !data.faction) return factionDiscoveryPanel(data);
+  return factionMemberPanel(data);
+}
+
+function factionDiscoveryPanel(data) {
+  const factions = data.factions || [];
+  return `
+    <section class="faction-panel">
+      <div class="online-header">
+        <div>
+          <span class="eyebrow">Faccao</span>
+          <h3>Faccaoes</h3>
+          <p>Entre numa faccao ou crie a sua. Por enquanto e so o comeco da organizacao.</p>
+        </div>
+        <button type="button" class="panel-action" data-refresh-factions>Atualizar Lista</button>
+      </div>
+
+      <form class="faction-form" data-create-faction>
+        <input name="name" maxlength="24" placeholder="Nome da faccao">
+        <input name="tag" maxlength="5" placeholder="Sigla">
+        <textarea name="description" maxlength="100" placeholder="Descricao curta"></textarea>
+        <button type="submit" class="panel-action">Criar Faccao</button>
+      </form>
+
+      <div class="faction-list">
+        <span class="eyebrow">Procurar Faccao</span>
+        ${factions.length ? factions.map((faction) => `
+          <article class="faction-row">
+            <div>
+              <h3>${escapeHtml(faction.name)} <small>[${escapeHtml(faction.tag)}]</small></h3>
+              <p>${escapeHtml(faction.description || "Sem descricao.")}</p>
+              <small>${faction.memberCount} membro(s) | Lider ${escapeHtml(faction.leaderName)}</small>
+            </div>
+            <button type="button" class="panel-action" data-join-faction="${escapeHtml(faction.id)}">Entrar</button>
+          </article>
+        `).join("") : `<article class="faction-row empty"><p>Nenhuma faccao criada ainda.</p></article>`}
+      </div>
+    </section>
+  `;
+}
+
+function factionMemberPanel(data) {
+  const faction = data.faction;
+  const isLeader = data.playerRole === "leader";
+  const members = data.members || [];
+  return `
+    <section class="faction-panel">
+      <div class="faction-profile">
+        <div>
+          <span class="eyebrow">Sua Faccao</span>
+          <h3>${escapeHtml(faction.name)} <small>[${escapeHtml(faction.tag)}]</small></h3>
+          <p>${escapeHtml(faction.description || "Sem descricao.")}</p>
+        </div>
+        <div>
+          <strong>${faction.memberCount}</strong>
+          <span>membro(s)</span>
+        </div>
+      </div>
+
+      <div class="faction-details">
+        <article><span>Lider</span><strong>${escapeHtml(faction.leaderName)}</strong></article>
+        <article><span>Seu cargo</span><strong>${roleLabel(data.playerRole)}</strong></article>
+      </div>
+
+      <div class="faction-members">
+        <span class="eyebrow">Membros</span>
+        ${members.map((member) => `
+          <div class="faction-member-row">
+            <span>${escapeHtml(member.playerName)} <small>${roleLabel(member.role)}</small></span>
+            ${isLeader && member.role !== "leader" ? `
+              <button type="button" class="item-action" data-kick-member="${escapeHtml(member.playerId)}">Expulsar</button>
+            ` : ""}
+          </div>
+        `).join("")}
+      </div>
+
+      ${isLeader ? `
+        <form class="faction-form" data-edit-faction>
+          <input name="name" maxlength="24" value="${escapeAttribute(faction.name)}" placeholder="Nome da faccao">
+          <input name="tag" maxlength="5" value="${escapeAttribute(faction.tag)}" placeholder="Sigla">
+          <textarea name="description" maxlength="100" placeholder="Descricao curta">${escapeHtml(faction.description || "")}</textarea>
+          <button type="submit" class="panel-action">Editar Faccao</button>
+        </form>
+      ` : ""}
+
+      <div class="inventory-tools">
+        <button type="button" class="panel-action" data-leave-faction>Sair da Faccao</button>
+      </div>
+    </section>
+  `;
+}
+
+function bindFactionControls(container, callbacks) {
+  container.querySelector("[data-refresh-factions]")?.addEventListener("click", callbacks.refreshFactions);
+  container.querySelector("[data-create-faction]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    callbacks.createFaction?.(formData(form));
+  });
+  container.querySelector("[data-edit-faction]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    callbacks.editFaction?.(formData(form));
+  });
+  container.querySelectorAll("[data-join-faction]").forEach((button) => {
+    button.addEventListener("click", () => callbacks.joinFaction?.(button.dataset.joinFaction));
+  });
+  container.querySelector("[data-leave-faction]")?.addEventListener("click", callbacks.leaveFaction);
+  container.querySelectorAll("[data-kick-member]").forEach((button) => {
+    button.addEventListener("click", () => callbacks.kickFactionMember?.(button.dataset.kickMember));
+  });
+}
+
+function formData(form) {
+  return Object.fromEntries(new FormData(form).entries());
+}
+
+function roleLabel(role) {
+  return role === "leader" ? "Lider" : "Membro";
 }
 
 function listOrEmpty(items, empty) {
@@ -451,10 +715,24 @@ function inventoryCell(item, index, selectedIndex, player) {
   if (!item) return `<div class="inventory-cell gear-square empty tier-empty" data-index="${index}"></div>`;
   const count = craftCountForItem(player, item);
   return `
-    <div class="inventory-cell gear-square ${selectedIndex === index ? "selected" : ""} ${tierClass(item)}" title="${item.name}" data-index="${index}" data-rarity="${item.rarity}" draggable="true">
+    <div class="inventory-cell gear-square ${selectedIndex === index ? "selected" : ""} ${item.favorite ? "locked" : ""} ${tierClass(item)}" title="${item.name}${item.favorite ? " | Bloqueado para venda" : ""}" data-index="${index}" data-rarity="${item.rarity}" draggable="true">
       ${gearIcon(item)}
       <small>${tierLabel(item)}</small>
+      ${lockBadge(item)}
       ${count >= 2 ? `<em class="craft-count">${Math.min(count, 4)}/4</em>` : ""}
+    </div>
+  `;
+}
+
+function vaultCell(item, index, selectedIndex) {
+  if (!item) {
+    return `<div class="inventory-cell vault-cell gear-square empty tier-empty" data-vault-index="${index}"></div>`;
+  }
+  return `
+    <div class="inventory-cell vault-cell gear-square ${selectedIndex === index ? "selected" : ""} ${item.favorite ? "locked" : ""} ${tierClass(item)}" title="${item.name}${item.favorite ? " | Bloqueado para venda" : ""}" data-vault-index="${index}" data-rarity="${item.rarity}" draggable="true">
+      ${gearIcon(item)}
+      <small>${tierLabel(item)}</small>
+      ${lockBadge(item)}
     </div>
   `;
 }
@@ -466,6 +744,10 @@ function gearIcon(itemOrSlot) {
     return `<img class="gear-icon-image" src="${item.iconPath}" alt="" draggable="false">`;
   }
   return `<span class="gear-glyph icon-${slot}" aria-hidden="true"></span>`;
+}
+
+function lockBadge(item) {
+  return item?.favorite ? `<i class="item-lock-badge" aria-hidden="true"></i>` : "";
 }
 
 function tierClass(item) {
@@ -525,6 +807,20 @@ function futureCard(title, text) {
   return `<article class="future-card"><h3>${title}</h3><p>${text}</p></article>`;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;"
+  }[char]));
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replace(/`/g, "&#096;");
+}
+
 function hideoutUpgradeRow(item, state) {
   const currentTier = state.player.hideoutItems?.[item.id] || 0;
   const nextTier = Math.min(9, currentTier + 1);
@@ -579,7 +875,7 @@ function hideoutProgressPanel(state) {
         <p>Renda x${formatPercentless(land?.passiveIncomeMultiplier || 1)} | Offline ${formatPercentless(getOfflineLimitHours(player))}h</p>
       </article>
       <article>
-        <span class="eyebrow">Cofre</span>
+        <span class="eyebrow">Renda</span>
         <h3>${money(vault)}</h3>
         <p>Renda ${money(getPassiveIncomePerMinute(player))}/min acumulada no esconderijo.</p>
         <button class="panel-action" data-vault-collect ${vault > 0 ? "" : "disabled"}>Coletar</button>

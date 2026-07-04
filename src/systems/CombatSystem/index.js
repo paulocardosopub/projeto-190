@@ -1,16 +1,18 @@
-import { MAPS } from "../../data/maps/index.js";
+import { MAPS } from "../../data/maps/index.js?v=phase1-1";
 import { SPRITES } from "../../data/assets.js";
 import { NPC_ALERT_LINES } from "../../data/enemies/index.js";
 import { calculateStats } from "../EquipmentSystem/index.js";
 import { createNpcWave, createEnemyStats } from "../EnemySystem/index.js";
-import { rollLoot, applyLoot } from "../LootSystem/index.js";
+import { rollLoot, applyLoot } from "../LootSystem/index.js?v=phase1-1";
 import { gainXp, addLog } from "../PlayerSystem/index.js";
-import { canStartRaid, consumeStaminaForMap } from "../StaminaSystem/index.js";
-import { staminaConfig, theftConfig } from "../../data/balance/index.js?v=balance-2";
+import { canStartRaid, consumeStaminaForMap, staminaRaidBlockedMessage } from "../StaminaSystem/index.js?v=phase1-1";
+import { theftConfig } from "../../data/balance/index.js?v=phase1-1";
 
 const CHOICE_AUTO_FIGHT_SECONDS = 5;
 const ITEM_THEFT_CHAT_SECONDS = 5.5;
 const POLICE_RISK_STARTS_AFTER_FIGHTS = 2;
+const GROUND_LOOT_PICKUP_DISTANCE = 22;
+const GROUND_LOOT_PICKUP_DELAY = 0.4;
 
 const POLICE_WARNINGS = [
   "Dessa vez ficou so no prejuizo. Na proxima, voce vai junto.",
@@ -115,8 +117,10 @@ export class CombatSystem {
       choiceTimer: 0,
       pendingCityPortalId: null,
       pendingHideoutPortalId: null,
+      pendingHideoutItemId: null,
       damageNumbers: [],
       itemTheftChats: [],
+      groundLoots: [],
       summary: null,
       summaryTimer: 0
     };
@@ -152,8 +156,10 @@ export class CombatSystem {
       choiceTimer: 0,
       pendingCityPortalId: null,
       pendingHideoutPortalId: null,
+      pendingHideoutItemId: null,
       damageNumbers: [],
       itemTheftChats: [],
+      groundLoots: [],
       summary: null,
       summaryTimer: 0
     };
@@ -166,8 +172,10 @@ export class CombatSystem {
     const map = MAPS.find((candidate) => candidate.id === mapId);
     if (!map) return;
     const highestUnlocked = this.state.player.highestMapUnlocked || 1;
-    if (!this.state.settings?.visualPreview && !canStartRaid(this.state.player)) {
-      addLog(this.state, staminaConfig.emptyMessage);
+    if (!this.state.settings?.visualPreview && !canStartRaid(this.state.player, map)) {
+      const message = staminaRaidBlockedMessage(this.state.player, map);
+      addLog(this.state, message);
+      this.hooks.onToast?.(message);
       this.emit();
       return;
     }
@@ -207,8 +215,11 @@ export class CombatSystem {
       battlesStarted: 0,
       choiceTimer: 0,
       pendingHideoutPortalId: null,
+      pendingHideoutItemId: null,
       damageNumbers: [],
       itemTheftChats: [],
+      groundLoots: [],
+      targetDropId: null,
       policeTimer: 0,
       policeMessage: null,
       policeScene: null,
@@ -227,6 +238,7 @@ export class CombatSystem {
     this.updatePlayerAction(dt);
     this.updateDamageNumbers(dt);
     this.updateItemTheftChats(dt);
+    this.updateGroundLoots(dt);
     if (run.mode === "police") {
       this.updatePoliceConfiscation(dt);
       return;
@@ -264,6 +276,12 @@ export class CombatSystem {
     }
 
     if (run.mode === "seeking") {
+      const drop = this.nextGroundLoot();
+      if (drop) {
+        run.targetDropId = drop.id;
+        run.mode = "collectingLoot";
+        return;
+      }
       const target = this.nextTarget();
       if (!target) {
         this.finishMap();
@@ -294,6 +312,10 @@ export class CombatSystem {
       }
     }
 
+    if (run.mode === "collectingLoot") {
+      this.updateLootCollection(dt);
+    }
+
     if (run.mode === "stealing") {
       this.faceTarget();
       run.timer -= dt;
@@ -305,7 +327,7 @@ export class CombatSystem {
       this.updateCombat(dt);
     }
 
-    if (!this.nextTarget() && run.mode !== "combat") {
+    if (!this.nextTarget() && !this.hasGroundLoots() && run.mode !== "combat" && run.mode !== "collectingLoot") {
       this.finishMap("clear");
     }
   }
@@ -317,13 +339,13 @@ export class CombatSystem {
       target.alerted = false;
       target.direction = "right";
     }
-    this.state.run.mode = "seeking";
     this.state.run.choiceTimer = 0;
     this.state.run.targetId = null;
-    this.state.run.playerX = Math.max(70, this.state.run.playerX - 70);
-    this.state.run.playerDirection = "left";
-    addLog(this.state, "Voce fugiu e procurou outro alvo.");
-    this.emit();
+    this.state.run.enemy = null;
+    this.state.run.enemyHp = 0;
+    this.state.run.enemyMaxHp = 0;
+    addLog(this.state, "Voce fugiu do combate e voltou para a cidade.");
+    this.enterCity();
   }
 
   chooseFight() {
@@ -436,23 +458,106 @@ export class CombatSystem {
     const map = this.currentMap();
     const stats = calculateStats(this.state.player);
     const reward = rollLoot(map, stats, wonFight);
-    const itemAdded = applyLoot(this.state, reward);
+    applyLoot(this.state, { money: reward.money, item: null });
+    if (reward.item) this.spawnGroundLoot(reward.item);
     const levels = gainXp(this.state.player, reward.xp);
     this.syncHpToStats();
-    this.addRewardToSummary(reward, itemAdded, levels, wonFight);
+    this.addRewardToSummary({ ...reward, item: null }, false, levels, wonFight);
 
     const pieces = [`+R$ ${reward.money}`, `+${reward.xp} XP`];
-    if (reward.item && itemAdded) pieces.push(`loot: ${reward.item.name}`);
-    if (reward.item && !itemAdded) pieces.push(`${reward.item.name} perdido: inventario cheio`);
+    if (reward.item) pieces.push(`item no chao: ${reward.item.name}`);
     if (levels) pieces.push(`subiu ${levels} nivel`);
 
     addLog(this.state, pieces.join(" | "));
     this.hooks.onToast?.(pieces.join(" | "));
     return {
       reward,
-      itemAdded,
-      itemStolen: Boolean(reward.item && itemAdded)
+      itemAdded: false,
+      itemStolen: Boolean(reward.item)
     };
+  }
+
+  spawnGroundLoot(item) {
+    const run = this.state.run;
+    const target = this.targetNpc();
+    const baseX = target?.x ?? run.playerX ?? 120;
+    run.groundLoots ||= [];
+    run.groundLoots.push({
+      id: `${item.uid || item.id}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`,
+      item,
+      x: Math.round(baseX + (Math.random() * 20 - 10)),
+      age: 0,
+      pickupDelay: GROUND_LOOT_PICKUP_DELAY,
+      rarity: item.rarity,
+      color: item.colorHex || rarityLootColor(item.rarity)
+    });
+    run.groundLoots = run.groundLoots.slice(-8);
+  }
+
+  updateGroundLoots(dt) {
+    const run = this.state.run;
+    if (!run.groundLoots?.length) return;
+    run.groundLoots.forEach((drop) => {
+      drop.age = (drop.age || 0) + dt;
+    });
+  }
+
+  updateLootCollection(dt) {
+    const run = this.state.run;
+    const drop = this.targetGroundLoot() || this.nextGroundLoot();
+    if (!drop) {
+      run.targetDropId = null;
+      run.mode = "seeking";
+      return;
+    }
+
+    const destination = drop.x;
+    const direction = Math.sign(destination - run.playerX) || 1;
+    run.playerDirection = destination >= run.playerX ? "right" : "left";
+    run.playerX += direction * dt * 118;
+
+    if (Math.abs(destination - run.playerX) <= GROUND_LOOT_PICKUP_DISTANCE) {
+      run.playerX = destination;
+      if ((drop.age || 0) < (drop.pickupDelay || 0)) return;
+      this.collectGroundLoot(drop);
+      run.targetDropId = null;
+      run.mode = "seeking";
+    }
+  }
+
+  collectGroundLoot(drop) {
+    const itemAdded = applyLoot(this.state, { money: 0, item: drop.item });
+    this.state.run.groundLoots = (this.state.run.groundLoots || []).filter((candidate) => candidate.id !== drop.id);
+    this.recordGroundLootPickup(drop.item, itemAdded);
+    const message = itemAdded
+      ? `Item coletado: ${drop.item.name}.`
+      : `${drop.item.name} perdido: mochila cheia.`;
+    addLog(this.state, message);
+    this.hooks.onToast?.(message);
+  }
+
+  recordGroundLootPickup(item, itemAdded) {
+    const summary = this.state.run.summary;
+    if (!summary || !item) return;
+    if (itemAdded) {
+      summary.items.push(item.name);
+      if (item.uid) summary.itemUids.push(item.uid);
+    } else {
+      summary.lostItems.push(item.name);
+    }
+  }
+
+  nextGroundLoot() {
+    return (this.state.run.groundLoots || [])[0] || null;
+  }
+
+  targetGroundLoot() {
+    const id = this.state.run.targetDropId;
+    return (this.state.run.groundLoots || []).find((drop) => drop.id === id) || null;
+  }
+
+  hasGroundLoots() {
+    return Boolean(this.state.run.groundLoots?.length);
   }
 
   finishTargetAfterSteal(target) {
@@ -602,8 +707,10 @@ export class CombatSystem {
   }
 
   returnFromSummary() {
+    const summary = this.state.run.summary;
     addLog(this.state, "Voltando para a cidade.");
     this.enterCity();
+    this.hooks.onRaidReturn?.(summary);
   }
 
   updateRaidSummary(dt) {
@@ -612,9 +719,12 @@ export class CombatSystem {
     if (run.summaryTimer > 0) return;
 
     if (this.state.settings?.autoRepeatRaid) {
-      if (!canStartRaid(this.state.player)) {
+      const map = MAPS.find((candidate) => candidate.id === (run.summary?.mapId || this.state.currentMapId));
+      if (!canStartRaid(this.state.player, map)) {
+        const message = staminaRaidBlockedMessage(this.state.player, map);
         this.state.settings.autoRepeatRaid = false;
-        addLog(this.state, staminaConfig.emptyMessage);
+        addLog(this.state, message);
+        this.hooks.onToast?.(message);
         this.returnFromSummary();
         return;
       }
@@ -683,7 +793,7 @@ export class CombatSystem {
     const confiscated = {
       money: summary.money || 0,
       xp: summary.xp || 0,
-      items: summary.items?.length || 0
+      items: (summary.items?.length || 0) + (run.groundLoots?.length || 0)
     };
 
     const snapshot = run.raidStartSnapshot;
@@ -716,6 +826,8 @@ export class CombatSystem {
     summary.items = [];
     summary.itemUids = [];
     summary.lostItems = [];
+    run.groundLoots = [];
+    run.targetDropId = null;
     summary.remaining = this.remainingTargets();
     summary.finished = true;
     summary.finishedAt = Date.now();
@@ -832,6 +944,17 @@ function randomItemTheftLine() {
 
 function randomPoliceWarning() {
   return POLICE_WARNINGS[Math.floor(Math.random() * POLICE_WARNINGS.length)] || POLICE_WARNINGS[0];
+}
+
+function rarityLootColor(rarity) {
+  return {
+    comum: "#c8c8c8",
+    incomum: "#55d66b",
+    raro: "#52a8ff",
+    epico: "#c777ff",
+    lendario: "#ffd45f",
+    mestre: "#f8f5c4"
+  }[rarity] || "#fff0bd";
 }
 
 function createRaidStartSnapshot(player) {

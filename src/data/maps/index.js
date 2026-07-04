@@ -1,4 +1,4 @@
-import { mapsConfig } from "../balance/index.js";
+import { mapsConfig } from "../balance/index.js?v=stamina-lock-1";
 
 export const CITY = {
   id: "cidade",
