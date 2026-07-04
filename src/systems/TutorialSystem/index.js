@@ -489,10 +489,16 @@ function tutorialProgressStepForRaidReturned(step) {
 
 export function isTutorialTargetAllowed(state, targetType, targetId) {
   const step = tutorialStep(state);
-  if (!step?.actionRequired) return true;
+  if (!step) return true;
+  if (isTutorialStepShortcutAllowed(step, targetType, targetId)) return true;
+  if (!step.actionRequired) return false;
   const expected = expectedTargetForAction(step.actionRequired);
   if (!expected) return true;
   return expected.type === targetType && expected.id === targetId;
+}
+
+function isTutorialStepShortcutAllowed(step, targetType, targetId) {
+  return step?.id === "assault_menu" && targetType === "assault" && targetId === "map-1";
 }
 
 export function expectedTutorialAssetPurchase(state) {

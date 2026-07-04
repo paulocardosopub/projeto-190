@@ -93,7 +93,7 @@ import {
   skipTutorial,
   tutorialNudgeLine,
   tutorialStep
-} from "./systems/TutorialSystem/index.js?v=npc-crops-1";
+} from "./systems/TutorialSystem/index.js?v=tutorial-shortcut-1";
 import {
   activateCar,
   activateHouse,
@@ -1126,11 +1126,11 @@ function blockWrongTutorialTarget(targetType, targetId) {
   const step = tutorialStep(state);
   if (!step) return false;
   if (isTutorialRecoveryTargetAllowed(targetType, targetId)) return false;
+  if (isTutorialTargetAllowed(state, targetType, targetId)) return false;
   if (!step.actionRequired) {
     showToast(tutorialNudgeLine());
     return true;
   }
-  if (isTutorialTargetAllowed(state, targetType, targetId)) return false;
   showToast(tutorialNudgeLine());
   return true;
 }
@@ -4548,6 +4548,10 @@ function formatHudNumber(value) {
   if (abs >= 1_000_000) return compact(1_000_000, "M");
   if (abs >= 1_000) return compact(1_000, "K");
   return number.toLocaleString("pt-BR");
+}
+
+function formatPercent(value) {
+  return `${Math.round(Number(value || 0))}%`;
 }
 
 function formatTime(seconds) {
