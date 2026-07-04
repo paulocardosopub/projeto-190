@@ -6,7 +6,7 @@ export const CITY_NPCS = [
     role: "buyer",
     sheet: "enemies2",
     row: 5,
-    x: 620,
+    x: 600,
     direction: "front",
     greeting: "Tenho interesse nos seus achados. Quer vender alguma coisa?"
   },
@@ -17,7 +17,7 @@ export const CITY_NPCS = [
     role: "future",
     sheet: "enemies2",
     row: 0,
-    x: 1760,
+    x: 1840,
     direction: "front",
     greeting: "Volta depois que eu vou ter algo pra voce."
   },
@@ -28,7 +28,7 @@ export const CITY_NPCS = [
     role: "future",
     sheet: "enemies2",
     row: 1,
-    x: 1010,
+    x: 1140,
     direction: "front",
     greeting: "Ainda estou organizando minhas coisas."
   },
@@ -39,7 +39,7 @@ export const CITY_NPCS = [
     role: "drugs",
     sheet: "enemies2",
     row: 7,
-    x: 930,
+    x: 960,
     direction: "front",
     greeting: "Tenho umas paradas aí, mas usa com juízo.",
     greetings: [
@@ -56,7 +56,7 @@ export const CITY_NPCS = [
     role: "vendor",
     sheet: "enemies2",
     row: 2,
-    x: 1200,
+    x: 1320,
     direction: "front",
     greeting: "Tenho itens aleatorios e faco fusao de equipamentos."
   },
@@ -67,7 +67,7 @@ export const CITY_NPCS = [
     role: "future",
     sheet: "enemies2",
     row: 3,
-    x: 1390,
+    x: 1500,
     direction: "front",
     greeting: "Area em preparacao."
   },
@@ -78,7 +78,7 @@ export const CITY_NPCS = [
     role: "future",
     sheet: "enemies2",
     row: 4,
-    x: 1580,
+    x: 1680,
     direction: "front",
     greeting: "Ainda nao tenho estoque."
   },
@@ -89,7 +89,7 @@ export const CITY_NPCS = [
     role: "oldman",
     sheet: "enemies2",
     row: 6,
-    x: 820,
+    x: 780,
     direction: "front",
     greeting: "Tenho uns contatos, uns terrenos e compro seus achados. O que voce precisa?"
   }

@@ -7,6 +7,7 @@ import { rollLoot, applyLoot } from "../LootSystem/index.js?v=phase1-1";
 import { gainXp, addLog } from "../PlayerSystem/index.js";
 import { applyHospitalFee, applyPrisonFee } from "../PenaltySystem/index.js?v=hospital-fee-1";
 import { canStartRaid, consumeStaminaForMap, staminaRaidBlockedMessage } from "../StaminaSystem/index.js?v=phase1-1";
+import { confiscateDrugItems } from "../DrugSystem/index.js?v=drugs-2";
 import { theftConfig } from "../../data/balance/index.js?v=phase1-1";
 
 const CHOICE_AUTO_FIGHT_SECONDS = 5;
@@ -770,8 +771,10 @@ export class CombatSystem {
     }
 
     const confiscated = this.confiscateRaidLoot();
+    const confiscatedDrugs = confiscateDrugItems(this.state.player);
     const prisonFee = applyPrisonFee(this.state.player);
     const prisonFeeLine = `Taxa da prisao: R$ ${prisonFee.charged}.`;
+    const drugLine = confiscatedDrugs ? ` Drogas confiscadas: ${confiscatedDrugs}.` : "";
     const playerX = run.playerX || 120;
     run.mode = "police";
     run.targetId = null;
@@ -786,11 +789,12 @@ export class CombatSystem {
         { x: playerX + 62, direction: "left" }
       ]
     };
-    run.policeMessage = `${message} ${prisonFeeLine}`;
+    run.policeMessage = `${message} ${prisonFeeLine}${drugLine}`;
     addLog(this.state, `Policia no local: ${message}`);
     addLog(this.state, `Loot confiscado: R$ ${confiscated.money}, ${confiscated.items} item(ns), ${confiscated.xp} XP.`);
+    if (confiscatedDrugs) addLog(this.state, `Drogas confiscadas: ${confiscatedDrugs} unidade(s).`);
     addLog(this.state, prisonFeeLine);
-    this.hooks.onPolice?.(`${message} ${prisonFeeLine}`);
+    this.hooks.onPolice?.(`${message} ${prisonFeeLine}${drugLine}`);
   }
 
   confiscateRaidLoot() {

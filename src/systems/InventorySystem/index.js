@@ -93,6 +93,7 @@ export function unequipToInventory(player, slot) {
 export function sellInventoryItem(player, index) {
   const item = player.inventory[index];
   if (!item) return { ok: false, reason: "Selecione um item para vender." };
+  if (item.slot === "drug") return { ok: false, reason: "Esse item nao pode ser vendido." };
   if (item.favorite) return { ok: false, reason: "Item favorito nao pode ser vendido." };
   const value = itemSellValue(item);
   player.money += value;
@@ -101,13 +102,17 @@ export function sellInventoryItem(player, index) {
 }
 
 export function itemSellValue(item) {
+  if (item?.slot === "drug") return 0;
   return item ? Math.max(1, Math.round(item.sellPrice ?? item.precoNPCCompra ?? (item.price || 0) * 0.3)) : 0;
 }
 
 export function sellInventoryItems(player, indexes, options = {}) {
   const skipFavorites = options.skipFavorites !== false;
   const uniqueIndexes = [...new Set(indexes)].filter((index) => player.inventory[index]);
-  const sellableIndexes = uniqueIndexes.filter((index) => !skipFavorites || !player.inventory[index].favorite);
+  const sellableIndexes = uniqueIndexes.filter((index) => (
+    player.inventory[index]?.slot !== "drug" &&
+    (!skipFavorites || !player.inventory[index].favorite)
+  ));
   if (!sellableIndexes.length) return { ok: false, reason: "Nenhum item vendavel selecionado." };
 
   let value = 0;
@@ -145,6 +150,7 @@ export function sellNonFavoriteInventoryItems(player) {
 export function getCraftPreview(player, index) {
   const item = player.inventory[index];
   if (!item) return null;
+  if (item.slot === "drug") return null;
   const result = getCraftResultConfig(item);
   const matchingIndexes = getCraftIndexes(player, item);
   const cost = getCraftCostForResult(result);
@@ -164,6 +170,7 @@ export function getCraftPreview(player, index) {
 export function craftInventoryItem(player, index) {
   const item = player.inventory[index];
   if (!item) return { ok: false, reason: "Selecione um item para fundir." };
+  if (item.slot === "drug") return { ok: false, reason: "Esse item nao pode ser fundido." };
 
   const resultConfig = getCraftResultConfig(item);
   if (!resultConfig) return { ok: false, reason: "Este item ja esta no maximo." };

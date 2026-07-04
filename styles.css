@@ -1229,6 +1229,10 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
   margin: 0;
 }
 
+.inventory-action-bar.has-drug-action {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .inventory-action-bar .item-action,
 .compact-tools .item-action {
   min-width: 0;
@@ -1321,6 +1325,10 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 
 .inventory-grid.compact-inventory .inventory-cell span {
   display: none;
+}
+
+.inventory-grid.compact-inventory .inventory-cell .gear-glyph {
+  display: block;
 }
 
 .inventory-grid.compact-inventory .item-power {
@@ -1647,6 +1655,26 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
   top: 22%;
   background: #d7c0a2;
   border-radius: 8px;
+}
+
+.icon-drug::before {
+  width: 74%;
+  height: 28%;
+  left: 13%;
+  top: 36%;
+  background: linear-gradient(90deg, #f6f1d7 0 48%, #e34949 48% 100%);
+  border: 1px solid rgba(0, 0, 0, 0.42);
+  border-radius: 999px;
+  transform: rotate(-24deg);
+}
+
+.icon-drug::after {
+  width: 42%;
+  height: 42%;
+  left: 29%;
+  top: 29%;
+  border: 2px solid rgba(246, 241, 215, 0.72);
+  border-radius: 999px;
 }
 
 .icon-feet::before {

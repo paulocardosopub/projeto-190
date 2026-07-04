@@ -64,9 +64,10 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
             </div>
           </div>
         </div>
-        <div class="inventory-action-bar">
+        <div class="inventory-action-bar ${selectedItem?.slot === "drug" ? "has-drug-action" : ""}">
           <button class="item-action primary" id="equip-best">Equipar melhor</button>
           <button class="item-action" id="filter-inventory">Filtrar</button>
+          ${selectedItem?.slot === "drug" ? `<button class="item-action primary" data-use-selected-drug>Usar</button>` : ""}
         </div>
         <div class="backpack-header">
           <div class="backpack-title">
@@ -105,7 +106,15 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
         callbacks.storeInventoryItem(index);
         return;
       }
+      if (player.inventory[index]?.slot === "drug" && callbacks.useInventoryDrug) {
+        callbacks.useInventoryDrug(index);
+        return;
+      }
       callbacks.equipFromInventory(index);
+    });
+    cell.addEventListener("dblclick", () => {
+      const index = Number(cell.dataset.index);
+      if (player.inventory[index]?.slot === "drug" && callbacks.useInventoryDrug) callbacks.useInventoryDrug(index);
     });
     cell.addEventListener("dragstart", (event) => event.dataTransfer.setData("text/plain", cell.dataset.index));
     cell.addEventListener("dragover", (event) => event.preventDefault());
@@ -133,6 +142,7 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
 
   container.querySelector("#equip-best")?.addEventListener("click", callbacks.equipBest);
   container.querySelector("#filter-inventory")?.addEventListener("click", callbacks.filterInventory);
+  container.querySelector("[data-use-selected-drug]")?.addEventListener("click", () => callbacks.useInventoryDrug?.(state.selectedInventoryIndex));
   container.querySelector("[data-open-config]")?.addEventListener("click", callbacks.openConfig);
   bindBackpackPages(container, callbacks.selectBackpackPage);
   container.querySelectorAll("[data-master-tab]").forEach((button) => {
@@ -767,10 +777,12 @@ function shortSlotLabel(slot, index = null) {
 }
 
 function tierLabel(item) {
+  if (item?.slot === "drug") return "uso";
   return `t${Math.max(1, Math.min(4, Number(item?.tier) || 1))}`;
 }
 
 function itemStatsText(item) {
+  if (item.slot === "drug") return item.effectText || "Item de uso.";
   if (item.slot === "weapon") return `Dano +${formatNumber(item.danoBonus)}`;
   if (item.slot === "body") return `HP +${formatNumber(item.hpBonus)}`;
   if (item.slot === "hands") return `Furto +${formatPercent(item.furtoBonus)}`;
@@ -790,6 +802,7 @@ function craftPreviewLine(preview) {
 
 function craftCountForItem(player, item) {
   if (!player || !item) return 0;
+  if (item.slot === "drug") return 0;
   return player.inventory.filter((candidate) => (
     candidate &&
     candidate.slot === item.slot &&

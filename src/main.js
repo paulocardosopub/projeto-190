@@ -1,19 +1,21 @@
 import { PLAYERS } from "./data/players/index.js";
 import { HIDEOUTS, MAPS } from "./data/maps/index.js?v=phase1-1";
 import { NPC_TYPES } from "./data/enemies/index.js";
-import { CITY_NPCS } from "./data/cityNpcs/index.js?v=drugs-1";
+import { CITY_NPCS } from "./data/cityNpcs/index.js?v=drugs-2";
 import { CITY_PORTALS, HIDEOUT_PORTALS } from "./data/cityPortals/index.js?v=rest-3";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem } from "./systems/CombatSystem/index.js?v=hospital-fee-1";
+import { CombatSystem } from "./systems/CombatSystem/index.js?v=drugs-2";
 import { calculateStats, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
-  buyAndUseDrug,
+  buyDrugItem,
   DRUG_ITEMS,
-  drugCooldownLabel,
   drugEffectText,
+  drugInventoryCount,
   HIDEOUT_STAMINA_RECOVERY_CONFIG,
+  normalizeDrugInventoryItem,
+  useDrugInventoryItem,
   normalizeDrugState
-} from "./systems/DrugSystem/index.js?v=drugs-1";
+} from "./systems/DrugSystem/index.js?v=drugs-2";
 import { applyHospitalFee } from "./systems/PenaltySystem/index.js?v=hospital-fee-1";
 import {
   createItem,
@@ -33,7 +35,7 @@ import {
   sellInventoryItems,
   sellNonFavoriteInventoryItems,
   unequipToInventory
-} from "./systems/InventorySystem/index.js?v=phase1-1";
+} from "./systems/InventorySystem/index.js?v=drugs-2";
 import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=phase1-1";
 import {
   applyProfileToState,
@@ -116,14 +118,14 @@ import {
   updatePassiveIncome
 } from "./systems/StaminaSystem/index.js?v=phase1-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=phase1-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=front-select-1";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=drugs-2";
 import {
   renderCharacterSelect,
   renderConfigWindow,
   renderInventoryWindow,
   renderVaultWindow,
   renderPanel
-} from "./ui/WindowSystem.js?v=city-stable-1";
+} from "./ui/WindowSystem.js?v=drugs-2";
 
 const elements = {
   canvas: document.querySelector("#game-canvas"),
@@ -1606,6 +1608,9 @@ function renderInventory() {
       combat.syncHpToStats();
       renderAll();
     },
+    useInventoryDrug: (index) => {
+      handleInventoryDrugUse(index);
+    },
     equipSelected: () => {
       const result = equipFromInventory(state.player, state.selectedInventoryIndex);
       handleResult(result);
@@ -1761,7 +1766,7 @@ function ensurePersonalVault() {
   if (state.player.personalVault.items.length > PERSONAL_VAULT_SLOTS) {
     state.player.personalVault.items = state.player.personalVault.items.slice(0, PERSONAL_VAULT_SLOTS);
   }
-  state.player.personalVault.items = state.player.personalVault.items.map((item) => normalizeInventoryItem(item));
+  state.player.personalVault.items = state.player.personalVault.items.map((item) => normalizeDrugInventoryItem(normalizeInventoryItem(item)));
   return state.player.personalVault;
 }
 
@@ -3275,16 +3280,16 @@ function renderDrugPanel(panel, npc) {
 
 function drugShopRow(drug, stats, now) {
   const effect = drugEffectText(drug, state.player, stats);
-  const cooldown = drugCooldownLabel(state.player, drug.id, now);
+  const carried = drugInventoryCount(state.player, drug.id);
   return `
     <article class="drug-shop-row">
       <div>
         <h3>${drug.name}</h3>
         <p>${formatMoney(drug.price)} | ${effect}</p>
-        <small>${cooldown || `Risco ${drug.risk}`}</small>
+        <small>Limite ${carried}/5 | Risco ${drug.risk}</small>
       </div>
       <button type="button" class="panel-action" data-buy-drug="${drug.id}">
-        Usar
+        Comprar
       </button>
     </article>
   `;
@@ -3297,14 +3302,30 @@ function cityNpcGreeting(npc) {
 
 function handleDrugPurchase(drugId) {
   if (!state?.player) return;
-  const stats = calculateStats(state.player);
-  const result = buyAndUseDrug(state.player, drugId, stats);
+  const result = buyDrugItem(state.player, drugId);
   if (!result.ok) {
     showToast(result.reason);
     renderCityShopPanel();
     return;
   }
 
+  addLog(state, result.message);
+  showToast(result.message);
+  persistGame();
+  renderAll();
+}
+
+function handleInventoryDrugUse(index) {
+  if (!state?.player) return;
+  const stats = calculateStats(state.player);
+  const result = useDrugInventoryItem(state.player, index, stats);
+  if (!result.ok) {
+    showToast(result.reason);
+    renderAll();
+    return;
+  }
+
+  state.selectedInventoryIndex = null;
   addLog(state, result.message);
   showToast(result.message);
   if (result.died) {
@@ -3469,7 +3490,7 @@ function renderCraftPanel(panel, npc) {
 function renderSellPanel(panel, npc) {
   const selected = [...pendingSellIndexes].filter((index) => {
     const item = state.player.inventory[index];
-    return item && !item.favorite;
+    return item && !item.favorite && item.slot !== "drug";
   });
   const total = selected.reduce((sum, index) => sum + itemSellValue(state.player.inventory[index]), 0);
   panel.innerHTML = `
@@ -3495,14 +3516,14 @@ function renderSellPanel(panel, npc) {
       event.preventDefault();
       const index = Number(cell.dataset.sellIndex);
       const item = state.player.inventory[index];
-      if (!item || item.favorite) return;
+      if (!item || item.favorite || item.slot === "drug") return;
       if (pendingSellIndexes.has(index)) pendingSellIndexes.delete(index);
       else pendingSellIndexes.add(index);
       renderCityShopPanel();
     });
   });
   panel.querySelector("[data-shop-confirm-sell]")?.addEventListener("click", () => {
-    const items = [...pendingSellIndexes].map((index) => state.player.inventory[index]).filter((item) => item && !item.favorite);
+    const items = [...pendingSellIndexes].map((index) => state.player.inventory[index]).filter((item) => item && !item.favorite && item.slot !== "drug");
     if (!confirmSellItems(items)) return;
     const result = sellInventoryItems(state.player, [...pendingSellIndexes]);
     pendingSellIndexes.clear();
@@ -3513,7 +3534,7 @@ function renderSellPanel(panel, npc) {
 }
 
 function renderSellAllConfirm(panel, npc) {
-  const items = state.player.inventory.filter((item) => item && !item.favorite);
+  const items = state.player.inventory.filter((item) => item && !item.favorite && item.slot !== "drug");
   const total = items.reduce((sum, item) => sum + itemSellValue(item), 0);
   panel.innerHTML = `
     <header>
@@ -3649,6 +3670,14 @@ function confirmCraftAllRisk(entries) {
 
 function shopSellCell(item, index, selected) {
   if (!item) return `<button type="button" class="shop-sell-cell empty" data-sell-index="${index}" disabled></button>`;
+  if (item.slot === "drug") {
+    return `
+      <button type="button" class="shop-sell-cell locked" data-sell-index="${index}" title="${item.name} | Item de uso" disabled>
+        <span>${item.name}</span>
+        <small>Item de uso</small>
+      </button>
+    `;
+  }
   if (item.favorite) {
     return `
       <button type="button" class="shop-sell-cell locked" data-sell-index="${index}" title="${item.name} | Bloqueado para venda" disabled>
@@ -3947,7 +3976,7 @@ function normalizeState() {
   if (state.player.inventory.length > BACKPACK_TOTAL_SLOTS) {
     state.player.inventory = state.player.inventory.slice(0, BACKPACK_TOTAL_SLOTS);
   }
-  state.player.inventory = state.player.inventory.map((item) => normalizeInventoryItem(item));
+  state.player.inventory = state.player.inventory.map((item) => normalizeDrugInventoryItem(normalizeInventoryItem(item)));
   state.backpackPage = Math.min(BACKPACK_PAGE_COUNT, Math.max(1, Number(state.backpackPage || 1) || 1));
   state.selectedVaultIndex ??= null;
   state.player.equipment ||= {};

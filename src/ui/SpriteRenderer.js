@@ -1,7 +1,7 @@
 import { ASSETS, SPRITES } from "../data/assets.js?v=vehicle-alpha-3";
 import { CITY, HIDEOUTS, MAPS } from "../data/maps/index.js?v=vault-1";
 import { PLAYERS } from "../data/players/index.js";
-import { CITY_NPCS } from "../data/cityNpcs/index.js?v=vault-1";
+import { CITY_NPCS } from "../data/cityNpcs/index.js?v=drugs-2";
 import { CITY_PORTALS, HIDEOUT_PORTALS } from "../data/cityPortals/index.js?v=rest-3";
 import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-7";
 
