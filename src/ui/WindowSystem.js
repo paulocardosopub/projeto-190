@@ -16,6 +16,7 @@ import { getCarConfig, getHouseConfig, getLandConfig } from "../data/balance/ind
 
 const BACKPACK_PAGE_SIZE = 36;
 const BACKPACK_PAGE_COUNT = 4;
+const ITEM_DRAG_MIME = "application/x-projeto-190-item";
 
 export function renderInventoryWindow(container, state, renderer, callbacks) {
   const player = state.player;
@@ -93,11 +94,16 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
       event.preventDefault();
       callbacks.equipFromInventory(Number(cell.dataset.index));
     });
-    cell.addEventListener("dragstart", (event) => event.dataTransfer.setData("text/plain", cell.dataset.index));
+    cell.addEventListener("dragstart", (event) => setItemDragData(event, "inventory", Number(cell.dataset.index)));
     cell.addEventListener("dragover", (event) => event.preventDefault());
     cell.addEventListener("drop", (event) => {
       event.preventDefault();
-      callbacks.moveInventory(Number(event.dataTransfer.getData("text/plain")), Number(cell.dataset.index));
+      const payload = readItemDragData(event);
+      if (callbacks.dropOnInventory) {
+        callbacks.dropOnInventory(payload, Number(cell.dataset.index));
+        return;
+      }
+      callbacks.moveInventory(payload?.index, Number(cell.dataset.index));
     });
   });
 
@@ -105,7 +111,9 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
     slot.addEventListener("dragover", (event) => event.preventDefault());
     slot.addEventListener("drop", (event) => {
       event.preventDefault();
-      callbacks.equipFromInventory(Number(event.dataTransfer.getData("text/plain")));
+      const payload = readItemDragData(event);
+      if (payload?.source !== "inventory") return;
+      callbacks.equipFromInventory(payload.index);
     });
     slot.addEventListener("contextmenu", (event) => {
       event.preventDefault();
@@ -126,6 +134,77 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
   });
 }
 
+export function renderHideoutChestWindow(container, state, callbacks) {
+  const player = state.player;
+  const chest = player.hideoutChest || [];
+  const activeChestPage = normalizeChestPage(state);
+  const pageStart = (activeChestPage - 1) * BACKPACK_PAGE_SIZE;
+  const pageItems = chest.slice(pageStart, pageStart + BACKPACK_PAGE_SIZE);
+  const pageSlots = Array.from({ length: BACKPACK_PAGE_SIZE }, (_, offset) => ({
+    item: pageItems[offset] || null,
+    index: pageStart + offset
+  }));
+  const selectedChestItem = Number.isInteger(state.selectedChestIndex)
+    ? chest[state.selectedChestIndex]
+    : null;
+  const selectedInventoryItem = Number.isInteger(state.selectedInventoryIndex)
+    ? player.inventory[state.selectedInventoryIndex]
+    : null;
+
+  container.innerHTML = `
+    ${windowHeader("Bau do Esconderijo", "hideout-chest")}
+    <div class="window-body">
+      <div class="storage-compact">
+        <div class="selected-panel">
+          ${selectedChestItem ? `
+            <div class="selected-icon gear-square ${tierClass(selectedChestItem)}">
+              ${gearIcon(selectedChestItem)}
+              <small>${tierLabel(selectedChestItem)}</small>
+            </div>
+          ` : `<div class="selected-icon gear-square tier-empty"></div>`}
+          <div class="selected-copy">
+            <span class="eyebrow">No bau</span>
+            <h3>${selectedChestItem ? selectedChestItem.name : "Nenhum item"}</h3>
+            <p>${selectedChestItem ? itemStatsText(selectedChestItem) : "Selecione um item guardado."}</p>
+          </div>
+        </div>
+        <div class="inventory-action-bar">
+          <button class="item-action primary" data-store-selected ${selectedInventoryItem ? "" : "disabled"}>Guardar</button>
+          <button class="item-action" data-take-selected ${selectedChestItem ? "" : "disabled"}>Pegar</button>
+        </div>
+        <div class="backpack-header">
+          <div class="backpack-title">
+            <span class="eyebrow">Bau</span>
+            <div class="backpack-pages" aria-label="Partes do bau">
+              ${[1, 2, 3, 4].map((page) => `<button type="button" class="${page === activeChestPage ? "active" : ""}" data-chest-page="${page}">${page}</button>`).join("")}
+            </div>
+          </div>
+          <strong>${pageItems.filter(Boolean).length} / ${BACKPACK_PAGE_SIZE}</strong>
+        </div>
+        <div class="inventory-grid compact-inventory storage-grid" id="hideout-chest-grid">
+          ${pageSlots.map(({ item, index }) => inventoryCell(item, index, state.selectedChestIndex, { inventory: chest })).join("")}
+        </div>
+      </div>
+    </div>
+  `;
+
+  bindClose(container, callbacks.close);
+  container.querySelectorAll(".inventory-cell").forEach((cell) => {
+    cell.addEventListener("click", () => callbacks.selectChestItem(Number(cell.dataset.index)));
+    cell.addEventListener("dragstart", (event) => setItemDragData(event, "chest", Number(cell.dataset.index)));
+    cell.addEventListener("dragover", (event) => event.preventDefault());
+    cell.addEventListener("drop", (event) => {
+      event.preventDefault();
+      callbacks.dropOnChest(readItemDragData(event), Number(cell.dataset.index));
+    });
+  });
+  container.querySelectorAll("[data-chest-page]").forEach((button) => {
+    button.addEventListener("click", () => callbacks.selectChestPage(Number(button.dataset.chestPage)));
+  });
+  container.querySelector("[data-store-selected]")?.addEventListener("click", callbacks.storeSelected);
+  container.querySelector("[data-take-selected]")?.addEventListener("click", callbacks.takeSelected);
+}
+
 function bindBackpackPages(container, selectBackpackPage) {
   const buttons = [...container.querySelectorAll("[data-backpack-page]")];
   if (!buttons.length) return;
@@ -141,6 +220,31 @@ function bindBackpackPages(container, selectBackpackPage) {
 function normalizeBackpackPage(state) {
   const page = Number(state.backpackPage || 1);
   return Math.min(BACKPACK_PAGE_COUNT, Math.max(1, Number.isFinite(page) ? Math.round(page) : 1));
+}
+
+function normalizeChestPage(state) {
+  const page = Number(state.chestPage || 1);
+  return Math.min(BACKPACK_PAGE_COUNT, Math.max(1, Number.isFinite(page) ? Math.round(page) : 1));
+}
+
+function setItemDragData(event, source, index) {
+  const payload = JSON.stringify({ source, index });
+  event.dataTransfer.setData(ITEM_DRAG_MIME, payload);
+  event.dataTransfer.setData("text/plain", String(index));
+}
+
+function readItemDragData(event) {
+  const raw = event.dataTransfer.getData(ITEM_DRAG_MIME);
+  if (raw) {
+    try {
+      const payload = JSON.parse(raw);
+      if (Number.isInteger(payload.index)) return payload;
+    } catch {
+      return null;
+    }
+  }
+  const fallbackIndex = Number(event.dataTransfer.getData("text/plain"));
+  return Number.isInteger(fallbackIndex) ? { source: "inventory", index: fallbackIndex } : null;
 }
 
 export function renderPanel(container, type, state, renderer, callbacks) {
@@ -182,6 +286,12 @@ export function renderPanel(container, type, state, renderer, callbacks) {
   container.querySelectorAll("[data-buy-hideout-item]").forEach((button) => {
     button.addEventListener("click", () => callbacks.buyHideoutItem(button.dataset.buyHideoutItem));
   });
+  if (callbacks.openChest) {
+    container.querySelector("[data-hideout-chest]")?.addEventListener("click", callbacks.openChest);
+  }
+  if (callbacks.openVault) {
+    container.querySelector("[data-hideout-vault]")?.addEventListener("click", callbacks.openVault);
+  }
   container.querySelector("[data-hideout-rest]")?.addEventListener("click", callbacks.restNow);
   container.querySelector("[data-vault-collect]")?.addEventListener("click", callbacks.collectVault);
   container.querySelector("#city-chat-form")?.addEventListener("submit", (event) => {
@@ -560,13 +670,14 @@ function hideoutProgressPanel(state) {
         <h3>${Math.floor(player.staminaAtual)} / ${player.staminaMax}</h3>
         <p>${stateLabel} | ${percent}% | Regen ${formatPercentless(player.staminaRegenPorMinuto)}/min</p>
         <button class="panel-action" data-hideout-rest ${house && rechargeCost > 0 && player.money >= rechargeCost ? "" : "disabled"}>
-          Descansar Agora ${rechargeCost ? money(rechargeCost) : ""}
+          Descansar ${rechargeCost ? money(rechargeCost) : ""}
         </button>
       </article>
       <article>
         <span class="eyebrow">Casa</span>
         <h3>${house?.name || "Sem casa"}</h3>
         <p>${house ? `+${house.staminaMaxBonus} stamina | +${formatPercentless(house.staminaRegenBonus)}/min` : "Compre uma casa com Seu Zeca."}</p>
+        <button class="panel-action" data-hideout-chest ${house ? "" : "disabled"}>Bau</button>
       </article>
       <article>
         <span class="eyebrow">Carro</span>
@@ -582,7 +693,7 @@ function hideoutProgressPanel(state) {
         <span class="eyebrow">Cofre</span>
         <h3>${money(vault)}</h3>
         <p>Renda ${money(getPassiveIncomePerMinute(player))}/min acumulada no esconderijo.</p>
-        <button class="panel-action" data-vault-collect ${vault > 0 ? "" : "disabled"}>Coletar</button>
+        <button class="panel-action" data-hideout-vault data-vault-collect ${vault > 0 ? "" : "disabled"}>Coletar</button>
       </article>
     </section>
   `;

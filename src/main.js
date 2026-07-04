@@ -1,7 +1,7 @@
 import { PLAYERS } from "./data/players/index.js";
 import { HIDEOUTS, MAPS } from "./data/maps/index.js?v=balance-1";
 import { NPC_TYPES } from "./data/enemies/index.js";
-import { CITY_NPCS } from "./data/cityNpcs/index.js?v=almeida-1";
+import { CITY_NPCS } from "./data/cityNpcs/index.js?v=tutorial-2";
 import { CITY_PORTALS, HIDEOUT_PORTALS } from "./data/cityPortals/index.js?v=rest-3";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
 import { CombatSystem } from "./systems/CombatSystem/index.js?v=rest-2";
@@ -25,7 +25,7 @@ import {
   sellNonFavoriteInventoryItems,
   unequipToInventory
 } from "./systems/InventorySystem/index.js?v=gloves-1";
-import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=rest-2";
+import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=tutorial-5";
 import {
   clearSave,
   clearWindowLayout,
@@ -44,6 +44,19 @@ import {
   getReceptadorRefreshSecondsLeft,
   refreshReceptadorStock
 } from "./systems/ShopSystem/index.js?v=balance-1";
+import {
+  CHARACTER_SELECT_TUTORIAL,
+  TutorialOverlay,
+  advanceTutorialStep,
+  completeTutorial,
+  expectedTutorialAssetPurchase,
+  handleTutorialEvent,
+  isTutorialTargetAllowed,
+  normalizeTutorialState,
+  skipTutorial,
+  tutorialNudgeLine,
+  tutorialStep
+} from "./systems/TutorialSystem/index.js?v=tutorial-6";
 import {
   activateCar,
   activateHouse,
@@ -67,15 +80,16 @@ import {
   staminaPercent,
   staminaState,
   updatePassiveIncome
-} from "./systems/StaminaSystem/index.js?v=balance-1";
-import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig, staminaConfig } from "./data/balance/index.js?v=balance-2";
+} from "./systems/StaminaSystem/index.js?v=balance-3";
+import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig, staminaConfig } from "./data/balance/index.js?v=balance-3";
 import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=vehicle-alpha-3";
 import {
+  renderHideoutChestWindow,
   renderCharacterSelect,
   renderConfigWindow,
   renderInventoryWindow,
   renderPanel
-} from "./ui/WindowSystem.js?v=gloves-1";
+} from "./ui/WindowSystem.js?v=tutorial-5";
 
 const elements = {
   canvas: document.querySelector("#game-canvas"),
@@ -145,6 +159,9 @@ let pendingCraftIndex = null;
 let hideoutItemDrag = null;
 let stageHoldMove = null;
 let keyboardMoveKeys = new Set();
+let tutorialOverlay = null;
+let characterTutorialVisible = false;
+let lastTutorialSideEffectStep = null;
 
 const STAGE_HOLD_DELAY_MS = 180;
 const STAGE_HOLD_MOVE_THRESHOLD = 7;
@@ -193,12 +210,14 @@ function boot() {
     elements.characterModal.classList.remove("hidden", "is-leaving");
     renderCharacterSelect(elements.characterGrid, renderer, completeCharacterSelection);
     renderer.draw(createNewGame("iris"), 0);
+    showCharacterSelectTutorial();
     return;
   }
 
   normalizeState();
   applyVisualCalibration();
   state.settings.visualPreview = previewMode;
+  if (previewMode) completeTutorial(state);
   if (previewMode) applyHideoutPreviewParams(params);
   if (previewMode && previewTool !== "hideout") ensureAnimationTestBar();
   setupCombat();
@@ -219,6 +238,7 @@ function boot() {
 }
 
 function completeCharacterSelection(playerId) {
+  hideCharacterSelectTutorial();
   state = createNewGame(playerId);
   normalizeState();
   applyVisualCalibration();
@@ -249,7 +269,8 @@ function setupCombat() {
     onChoiceTimeout: () => hideChoice(),
     onToast: (message) => showToast(message),
     onChange: () => renderAll(),
-    onRaidEnd: (message, finish) => fadeThen(message, finish)
+    onRaidEnd: (message, finish) => fadeThen(message, finish),
+    onRaidReturn: (summary) => dispatchTutorialEvent("raid_returned", { summary })
   });
   online = new OnlineSystem(state, {
     onToast: (message) => showToast(message),
@@ -270,6 +291,7 @@ function tick(now) {
     updatePendingHideoutPortalArrival();
     renderer.draw(state, playerRow());
     syncHud();
+    renderTutorial();
     saveTimer += dt;
     if (!state.settings.visualPreview && saveTimer > 8) {
       saveTimer = 0;
@@ -282,6 +304,7 @@ function tick(now) {
 
 function renderAll() {
   if (!state) return;
+  applyTutorialSideEffects();
   syncHud();
   updateMasterToggle();
   updateWindowLayerState();
@@ -298,6 +321,7 @@ function renderAll() {
   if (activeLeft) {
     renderLeftPanel(activeLeft);
   } else {
+    elements.leftWindow.classList.remove("storage-window");
     elements.leftWindow.classList.add("hidden");
   }
 
@@ -323,6 +347,7 @@ function renderAll() {
   updateHideoutItemEditorPanel();
   syncRaidSummary();
   renderCityShopPanel();
+  renderTutorial();
 }
 
 function updateWindowLayerState() {
@@ -437,17 +462,342 @@ function syncSurvivalWarning(stats, hpPercent) {
   elements.survivalWarning.textContent = "Vida ou stamina baixa: repouse no esconderijo.";
 }
 
+function ensureTutorialOverlay() {
+  if (tutorialOverlay) return tutorialOverlay;
+  tutorialOverlay = new TutorialOverlay({
+    root: document.body,
+    resolveTargetRect: resolveTutorialTargetRect,
+    resolveFrameRect: stageRect,
+    onAdvance: (step) => {
+      if (characterTutorialVisible && step?.id === CHARACTER_SELECT_TUTORIAL.id) {
+        hideCharacterSelectTutorial();
+        return;
+      }
+      advanceActiveTutorial();
+    },
+    onSkip: () => skipActiveTutorial(),
+    onPassive: () => showToast(tutorialNudgeLine())
+  });
+  return tutorialOverlay;
+}
+
+function showCharacterSelectTutorial() {
+  characterTutorialVisible = true;
+  ensureTutorialOverlay().render(CHARACTER_SELECT_TUTORIAL);
+}
+
+function hideCharacterSelectTutorial() {
+  characterTutorialVisible = false;
+  if (!state) tutorialOverlay?.hide();
+}
+
+function renderTutorial() {
+  if (characterTutorialVisible) {
+    ensureTutorialOverlay().render(CHARACTER_SELECT_TUTORIAL);
+    return;
+  }
+  ensureTutorialOverlay().render(tutorialStep(state));
+}
+
+function advanceActiveTutorial() {
+  if (!state) return;
+  commitTutorialChange(advanceTutorialStep(state));
+}
+
+function skipActiveTutorial() {
+  if (!state) return;
+  commitTutorialChange(skipTutorial(state));
+}
+
+function dispatchTutorialEvent(type, payload = {}, options = {}) {
+  if (!state) return false;
+  const result = handleTutorialEvent(state, { type, ...payload });
+  return commitTutorialChange(result, options);
+}
+
+function commitTutorialChange(result, options = {}) {
+  if (!result?.changed) return false;
+  lastTutorialSideEffectStep = null;
+  if (!state.settings?.visualPreview) saveGame(state);
+  if (options.render !== false) renderAll();
+  return true;
+}
+
+function applyTutorialSideEffects() {
+  const step = tutorialStep(state);
+  if (!step || state.settings?.visualPreview || lastTutorialSideEffectStep === step.id) return;
+  lastTutorialSideEffectStep = step.id;
+
+  if (step.id === "almeida_intro" || step.id === "almeida_click") {
+    closeCityShopPanel({ render: false });
+    closeMaster({ render: false });
+    if (state.scene === "city" && combat) combat.moveCityTo(576);
+    return;
+  }
+
+  if (step.id === "zeca_intro") {
+    closeCityShopPanel({ render: false });
+    closeMaster({ render: false });
+    if (state.scene === "city" && combat) combat.moveCityTo(772);
+    return;
+  }
+
+  if (step.id === "vendedor_intro") {
+    closeCityShopPanel({ render: false });
+    closeMaster({ render: false });
+    if (state.scene === "city" && combat) combat.moveCityTo(1152);
+    return;
+  }
+
+  if (step.id === "zeca_buy_land" && activeCityNpc?.id === "seu-zeca") {
+    shopMode = "land";
+    return;
+  }
+
+  if (step.id === "zeca_buy_house" && activeCityNpc?.id === "seu-zeca") {
+    shopMode = "house";
+    ensureTutorialAssetFunds("house", 1);
+    return;
+  }
+
+  if (step.id === "zeca_buy_car" && activeCityNpc?.id === "seu-zeca") {
+    shopMode = "car";
+    ensureTutorialAssetFunds("car", 1);
+    return;
+  }
+
+  if (step.id === "hideout_portal_intro" || step.id === "hideout_portal_click") {
+    closeCityShopPanel({ render: false });
+    closeMaster({ render: false });
+    if (state.scene === "city" && combat) combat.moveCityTo(560);
+    return;
+  }
+
+  if (step.id === "hideout_storage_intro" || step.id === "hideout_house_click") {
+    if (state.scene === "hideout" && combat) {
+      combat.moveHideoutTo(getHideoutItemPlacement("house").x);
+    }
+    return;
+  }
+
+  if (step.id === "hideout_chest" || step.id === "hideout_vault") {
+    activeCenter = true;
+    activeRight = "hideout";
+    return;
+  }
+
+  if (step.id === "hideout_return_click") {
+    closeMaster({ render: false });
+    if (state.scene === "hideout" && combat) combat.moveHideoutTo(72);
+    return;
+  }
+
+  if (step.id === "city_back_intro" || step.id === "assault_portal_click") {
+    closeCityInteractions({ render: false });
+    closeMaster({ render: false });
+    if (state.scene === "city" && combat) combat.moveCityTo(72);
+    return;
+  }
+
+  if (step.id === "assault_menu" || step.id === "assault_start_click") {
+    activeCenter = true;
+    activeLeft = "assaults";
+    return;
+  }
+
+}
+
+function ensureTutorialAssetFunds(type, tier) {
+  const asset = type === "house"
+    ? getHouseConfig(tier)
+    : type === "car"
+      ? getCarConfig(tier)
+      : getLandConfig(tier);
+  if (!asset || asset.price <= 0) return;
+  const ownsAsset = type === "house"
+    ? state.player.ownedHouses.includes(tier)
+    : type === "car"
+      ? state.player.ownedCars.includes(tier)
+      : state.player.terrenosComprados.includes(tier);
+  if (ownsAsset || state.player.money >= asset.price) return;
+
+  const missing = asset.price - state.player.money;
+  state.player.money += missing;
+  state.tutorial.funding ||= {};
+  state.tutorial.funding[`${type}:${tier}`] = (state.tutorial.funding[`${type}:${tier}`] || 0) + missing;
+  addLog(state, `Seu Zeca adiantou ${formatMoney(missing)} para o tutorial.`);
+  showToast(`Seu Zeca adiantou ${formatMoney(missing)} para o basico.`);
+}
+
+function blockWrongTutorialTarget(targetType, targetId) {
+  const step = tutorialStep(state);
+  if (!step) return false;
+  if (isTutorialRecoveryTargetAllowed(targetType, targetId)) return false;
+  if (!step.actionRequired) {
+    showToast(tutorialNudgeLine());
+    return true;
+  }
+  if (isTutorialTargetAllowed(state, targetType, targetId)) return false;
+  showToast(tutorialNudgeLine());
+  return true;
+}
+
+function blockTutorialAmbientAction() {
+  if (!tutorialStep(state)) return false;
+  showToast(tutorialNudgeLine());
+  return true;
+}
+
+function isTutorialRecoveryTargetAllowed(targetType, targetId) {
+  if (targetType !== "city_npc" || targetId !== "seu-zeca") return false;
+  return tutorialNeedsCityShopOpen();
+}
+
+function tutorialNeedsCityShopOpen() {
+  const action = tutorialStep(state)?.actionRequired;
+  return action === "open_land_shop" ||
+    action === "buy_land_1" ||
+    action === "buy_house_1" ||
+    action === "buy_car_1";
+}
+
+function tutorialNeedsAssaultPanelOpen() {
+  return tutorialStep(state)?.actionRequired === "start_first_raid";
+}
+
+function resolveTutorialTargetRect(target) {
+  const fallback = stageRect();
+  if (!target) return fallback;
+
+  const selectorTargets = {
+    character_grid: "#character-grid",
+    character_modal: "#character-modal .character-stage-panel",
+    city_shop_panel: "#city-shop-panel",
+    shop_sell_all: '#city-shop-panel [data-shop-mode="sell-all-confirm"], #city-shop-panel [data-shop-confirm-all]',
+    shop_craft: '#city-shop-panel [data-shop-mode="craft"], #city-shop-panel [data-craft-selected]',
+    shop_buy: '#city-shop-panel [data-shop-mode="buy"], #city-shop-panel [data-buy-offer]',
+    shop_land_mode: '#city-shop-panel [data-shop-mode="land"]',
+    land_t1: '#city-shop-panel [data-buy-land="1"]',
+    house_t1: '#city-shop-panel [data-buy-house="1"]',
+    car_t1: '#city-shop-panel [data-buy-car="1"]',
+    hideout_chest: '[data-hideout-chest], #hideout-chest-grid',
+    hideout_vault: '[data-hideout-vault]',
+    first_assault: "#left-window .map-row, #left-window [data-enter-map]",
+    first_assault_start: "#left-window [data-enter-map]"
+  };
+
+  if (target === "stage") return fallback;
+  if (target === "npc_almeida") return cityNpcTutorialRect("comerciante-itens") || fallback;
+  if (target === "npc_zeca") return cityNpcTutorialRect("seu-zeca") || fallback;
+  if (target === "npc_vendedor") return cityNpcTutorialRect("npc-vendedor") || fallback;
+  if (target === "city_shop_panel") return cityShopPanelTutorialRect(selectorTargets.city_shop_panel) || fallback;
+  if (target === "portal_hideout") return cityPortalTargetRect("hideout-door") || fallback;
+  if (target === "portal_assaults") return cityPortalTargetRect("assaults") || fallback;
+  if (target === "portal_city_return") return hideoutPortalTargetRect("city-return") || fallback;
+  if (target === "hideout_house") return hideoutItemTargetRect("house") || fallback;
+
+  return domTargetRect(selectorTargets[target]) || fallback;
+}
+
+function cityShopPanelTutorialRect(selector) {
+  const rect = domTargetRect(selector);
+  if (!rect) return null;
+  rect.hideTutorialMark = Boolean(activeCityNpc);
+  return rect;
+}
+
+function cityNpcTutorialRect(npcId) {
+  const rect = cityNpcTargetRect(npcId);
+  if (!rect) return null;
+  return {
+    ...rect,
+    hideTutorialMark: activeCityNpc?.id === npcId
+  };
+}
+
+function domTargetRect(selector) {
+  if (!selector) return null;
+  const node = document.querySelector(selector);
+  if (!node || node.closest(".hidden")) return null;
+  const rect = node.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  return rect;
+}
+
+function stageRect() {
+  return elements.canvas?.getBoundingClientRect() || {
+    left: window.innerWidth / 2 - 120,
+    top: window.innerHeight / 2 - 80,
+    width: 240,
+    height: 160
+  };
+}
+
+function cityNpcTargetRect(npcId) {
+  if (!state || state.scene !== "city") return null;
+  const npc = CITY_NPCS.find((candidate) => candidate.id === npcId);
+  if (!npc) return null;
+  const height = cityNpcHeight();
+  return canvasWorldTargetRect(npc.x, cityGroundY() - height - 8, 68, height + 20);
+}
+
+function cityPortalTargetRect(portalId) {
+  if (!state || state.scene !== "city") return null;
+  const portal = CITY_PORTALS.find((candidate) => candidate.id === portalId);
+  if (!portal) return null;
+  const feetY = cityGroundY() + Number(portal.yOffset || 0);
+  return canvasWorldTargetRect(portal.x, feetY - portal.height - 8, portal.width + 16, portal.height + 26);
+}
+
+function hideoutPortalTargetRect(portalId) {
+  if (!state || state.scene !== "hideout") return null;
+  const portal = HIDEOUT_PORTALS.find((candidate) => candidate.id === portalId);
+  if (!portal) return null;
+  const feetY = hideoutGroundY() + Number(portal.yOffset || 0);
+  return canvasWorldTargetRect(portal.x, feetY - portal.height - 8, portal.width + 16, portal.height + 26);
+}
+
+function hideoutItemTargetRect(typeId) {
+  if (!state || state.scene !== "hideout") return null;
+  const bounds = renderer.lastHideoutItemBounds?.find((item) => item.typeId === typeId);
+  if (bounds) return canvasRectToViewport(bounds.x, bounds.y, bounds.width, bounds.height);
+
+  const placement = getHideoutItemPlacement(typeId);
+  return canvasWorldTargetRect(placement.x, placement.y - placement.height, placement.height, placement.height);
+}
+
+function canvasWorldTargetRect(worldX, canvasTop, canvasWidth, canvasHeight) {
+  const cameraWorld = renderer.cameraWorld(state);
+  const screenX = renderer.worldToScreen(worldX, cameraWorld);
+  return canvasRectToViewport(screenX - canvasWidth / 2, canvasTop, canvasWidth, canvasHeight);
+}
+
+function canvasRectToViewport(canvasX, canvasY, canvasWidth, canvasHeight) {
+  const rect = stageRect();
+  const scaleX = rect.width / elements.canvas.width;
+  const scaleY = rect.height / elements.canvas.height;
+  return {
+    left: rect.left + canvasX * scaleX,
+    top: rect.top + canvasY * scaleY,
+    width: canvasWidth * scaleX,
+    height: canvasHeight * scaleY
+  };
+}
+
 function handleStagePointer(event) {
   if (!state || !combat) return;
   if (event.button !== undefined && event.button !== 0) return;
   if (handleHideoutItemPointerDown(event)) return;
   if (state.scene === "hideout" && state.run.mode === "hideout") {
     const point = canvasPoint(event);
+    if (handleHideoutHouseClick(point)) return;
     const portal = findClickedHideoutPortal(point.x, point.y);
     if (portal) {
+      if (blockWrongTutorialTarget("hideout_portal", portal.id)) return;
       walkToHideoutPortal(portal);
       return;
     }
+    if (blockTutorialAmbientAction()) return;
     state.run.pendingHideoutPortalId = null;
     combat.moveHideoutTo(renderer.screenToWorld(point.x, state));
     return;
@@ -507,6 +857,7 @@ function finishCityStageGesture(event) {
   }
 
   if (gesture.pendingPortal && cityStageGestureDistance(event, gesture) <= STAGE_HOLD_MOVE_THRESHOLD) {
+    if (blockWrongTutorialTarget("city_portal", gesture.pendingPortal.id)) return;
     if (activeCityPortalId === gesture.pendingPortal.id) {
       closeCityPortalPanel();
       return;
@@ -516,6 +867,7 @@ function finishCityStageGesture(event) {
   }
 
   if (gesture.pendingNpc && cityStageGestureDistance(event, gesture) <= STAGE_HOLD_MOVE_THRESHOLD) {
+    if (blockWrongTutorialTarget("city_npc", gesture.pendingNpc.id)) return;
     if (activeCityNpc?.id === gesture.pendingNpc.id) {
       closeCityShopPanel();
       return;
@@ -524,6 +876,7 @@ function finishCityStageGesture(event) {
     return;
   }
 
+  if (blockTutorialAmbientAction()) return;
   closeCityInteractions();
   combat.moveCityTo(renderer.screenToWorld(gesture.latestPoint.x, state));
 }
@@ -555,6 +908,10 @@ function cityStageGestureDistance(event, gesture = stageHoldMove) {
 
 function activateCityHoldWalk() {
   if (!stageHoldMove || stageHoldMove.isHoldWalking) return;
+  if (blockTutorialAmbientAction()) {
+    clearCityStageGesture();
+    return;
+  }
   stageHoldMove.isHoldWalking = true;
   window.clearTimeout(stageHoldMove.timerId);
   stageHoldMove.timerId = null;
@@ -587,7 +944,10 @@ function handleGameKeyDown(event) {
   const key = event.key.toLowerCase();
 
   if (key === "escape") {
-    if (closeCityInteractions()) {
+    const closed = activeCityNpc
+      ? closeCityShopPanel({ force: true })
+      : closeCityInteractions();
+    if (closed) {
       event.preventDefault();
     }
     return;
@@ -630,9 +990,17 @@ function applyKeyboardMovement() {
   const direction = KEYBOARD_MOVE_KEYS.get(lastKey);
   const targetX = direction === "left" ? HOLD_WALK_LEFT_WORLD_X : HOLD_WALK_RIGHT_WORLD_X;
   if (state.scene === "city" && state.run.mode === "city") {
+    if (blockTutorialAmbientAction()) {
+      keyboardMoveKeys.clear();
+      return;
+    }
     closeCityInteractions({ render: false });
     combat.moveCityTo(targetX);
   } else if (state.scene === "hideout" && state.run.mode === "hideout") {
+    if (blockTutorialAmbientAction()) {
+      keyboardMoveKeys.clear();
+      return;
+    }
     state.run.pendingHideoutPortalId = null;
     combat.moveHideoutTo(targetX);
   }
@@ -672,6 +1040,9 @@ function renderInventory() {
       moveItem(state.player.inventory, from, to);
       state.selectedInventoryIndex = to;
       renderAll();
+    },
+    dropOnInventory: (payload, to) => {
+      moveInventoryPayload(payload, to);
     },
     equipFromInventory: (index) => {
       const result = equipFromInventory(state.player, index);
@@ -755,6 +1126,84 @@ function renderInventory() {
   });
 }
 
+function moveInventoryPayload(payload, to) {
+  if (!payload || !Number.isInteger(to)) return;
+  if (payload.source === "chest") {
+    moveItemBetween(state.player.hideoutChest, payload.index, state.player.inventory, to);
+    state.selectedChestIndex = null;
+    state.selectedInventoryIndex = to;
+    renderAll();
+    return;
+  }
+
+  moveItem(state.player.inventory, payload.index, to);
+  state.selectedInventoryIndex = to;
+  renderAll();
+}
+
+function moveChestPayload(payload, to) {
+  if (!payload || !Number.isInteger(to)) return;
+  if (payload.source === "inventory") {
+    moveItemBetween(state.player.inventory, payload.index, state.player.hideoutChest, to);
+    state.selectedInventoryIndex = null;
+    state.selectedChestIndex = to;
+    renderAll();
+    return;
+  }
+
+  moveItem(state.player.hideoutChest, payload.index, to);
+  state.selectedChestIndex = to;
+  renderAll();
+}
+
+function moveSelectedInventoryToChest() {
+  const from = state.selectedInventoryIndex;
+  if (!Number.isInteger(from) || !state.player.inventory[from]) {
+    showToast("Selecione um item da mochila.");
+    return;
+  }
+  const to = state.player.hideoutChest.findIndex((item) => !item);
+  if (to === -1) {
+    showToast("Bau cheio.");
+    return;
+  }
+  moveItemBetween(state.player.inventory, from, state.player.hideoutChest, to);
+  state.selectedInventoryIndex = null;
+  state.selectedChestIndex = to;
+  state.chestPage = Math.floor(to / BACKPACK_PAGE_SIZE) + 1;
+  renderAll();
+}
+
+function moveSelectedChestToInventory() {
+  const from = state.selectedChestIndex;
+  if (!Number.isInteger(from) || !state.player.hideoutChest[from]) {
+    showToast("Selecione um item do bau.");
+    return;
+  }
+  const to = state.player.inventory.findIndex((item) => !item);
+  if (to === -1) {
+    showToast("Mochila cheia.");
+    return;
+  }
+  moveItemBetween(state.player.hideoutChest, from, state.player.inventory, to);
+  state.selectedChestIndex = null;
+  state.selectedInventoryIndex = to;
+  state.backpackPage = Math.floor(to / BACKPACK_PAGE_SIZE) + 1;
+  renderAll();
+}
+
+function moveItemBetween(sourceInventory, from, targetInventory, to) {
+  if (!sourceInventory?.[from] || !targetInventory || !Number.isInteger(to)) return false;
+  if (sourceInventory === targetInventory) {
+    moveItem(sourceInventory, from, to);
+    return true;
+  }
+  const next = targetInventory[to] || null;
+  targetInventory[to] = sourceInventory[from];
+  sourceInventory[from] = next;
+  return true;
+}
+
 function applyEquipmentIconTestInventory(slot) {
   const items = ICON_TEST_RARITIES.flatMap((rarity) => (
     [1, 2, 3, 4].map((tier) => createItem(`${slot}-${rarity}-t${tier}`))
@@ -772,6 +1221,35 @@ function applyEquipmentIconTestInventory(slot) {
 
 function renderLeftPanel(type) {
   elements.leftWindow.classList.remove("hidden");
+  elements.leftWindow.classList.toggle("storage-window", type === "hideoutChest");
+  if (type === "hideoutChest") {
+    renderHideoutChestWindow(elements.leftWindow, state, {
+      close: closeLeft,
+      selectChestItem: (index) => {
+        state.selectedChestIndex = index;
+        renderAll();
+      },
+      selectChestPage: (page) => {
+        state.chestPage = Math.min(BACKPACK_PAGE_COUNT, Math.max(1, Number(page) || 1));
+        const pageStart = (state.chestPage - 1) * BACKPACK_PAGE_SIZE;
+        const pageEnd = pageStart + BACKPACK_PAGE_SIZE;
+        if (state.selectedChestIndex < pageStart || state.selectedChestIndex >= pageEnd) {
+          state.selectedChestIndex = null;
+        }
+        renderAll();
+      },
+      dropOnChest: (payload, to) => {
+        moveChestPayload(payload, to);
+      },
+      storeSelected: () => {
+        moveSelectedInventoryToChest();
+      },
+      takeSelected: () => {
+        moveSelectedChestToInventory();
+      }
+    });
+    return;
+  }
   renderPanel(elements.leftWindow, type, state, renderer, panelCallbacks(closeLeft));
 }
 
@@ -793,31 +1271,45 @@ function panelCallbacks(close) {
     onlineDisconnect: () => online?.disconnect(),
     sendChat: (text) => online?.sendChat(text),
     visitShop: (shopId) => {
+      if (blockTutorialAmbientAction()) return;
       online?.visitShop(shopId);
       showToast("Visita registrada na cidade.");
     },
     selectAssaultTier: (tier) => {
+      if (blockTutorialAmbientAction()) return;
       state.activeAssaultTier = tier;
       renderAll();
     },
     enterMap: (mapId) => startRaid(mapId),
     enterCity: () => {
+      if (blockTutorialAmbientAction()) return;
       combat.enterCity();
       online?.sayHello();
       renderAll();
     },
     enterHideout: () => {
+      if (blockTutorialAmbientAction()) return;
       closeCityShopPanel({ render: false });
       combat.enterHideout();
       renderAll();
     },
     buyHideoutItem,
+    openChest: () => {
+      if (blockWrongTutorialTarget("hideout_chest", "open")) return;
+      activeCenter = true;
+      activeLeft = "hideoutChest";
+      activeRight = null;
+      showToast("Bau aberto.");
+      renderAll();
+    },
     restNow: () => {
+      if (blockTutorialAmbientAction()) return;
       const result = restNow(state.player);
       handleResult(result);
       renderAll();
     },
     collectVault: () => {
+      if (blockWrongTutorialTarget("hideout_vault", "collect")) return;
       const result = collectPassiveVault(state.player);
       handleResult(result);
       renderAll();
@@ -847,14 +1339,7 @@ function renderConfigPanel(container) {
     },
     reset: () => {
       clearSave();
-      state = createNewGame("iris");
-      normalizeState();
-      applyVisualCalibration();
-      setupCombat();
-      combat.enterCity();
-      closeMaster({ render: false });
-      showToast("Novo jogo criado.");
-      renderAll();
+      window.location.assign(`${location.pathname}?new=1`);
     },
     updateVisual: (key, value) => {
       updateVisualSetting(key, value);
@@ -874,6 +1359,7 @@ function renderConfigPanel(container) {
 }
 
 function openMaster() {
+  if (blockTutorialAmbientAction()) return;
   activeCenter = true;
   renderAll();
 }
@@ -887,6 +1373,9 @@ function toggleMaster() {
 }
 
 function openMasterTab(type) {
+  if (blockTutorialAmbientAction()) {
+    return;
+  }
   if (!activeCenter) activeCenter = true;
   if (type === "city") {
     hideChoice();
@@ -926,10 +1415,15 @@ function openConfig() {
 
 function closeMaster(options = {}) {
   const shouldRender = options.render !== false;
+  if (!options.force && tutorialNeedsAssaultPanelOpen()) {
+    showToast("A gente termina isso e tu fica livre.");
+    return;
+  }
   activeCenter = false;
   activeLeft = null;
   activeRight = null;
   activeCityPortalId = null;
+  elements.leftWindow.classList.remove("storage-window");
   elements.inventoryWindow.classList.add("hidden");
   elements.leftWindow.classList.add("hidden");
   elements.rightWindow.classList.add("hidden");
@@ -944,8 +1438,13 @@ function closeCenter() {
 
 function closeLeft(options = {}) {
   const shouldRender = options.render !== false;
+  if (!options.force && activeLeft === "assaults" && tutorialNeedsAssaultPanelOpen()) {
+    showToast("A gente termina isso e tu fica livre.");
+    return;
+  }
   if (activeLeft === "assaults") activeCityPortalId = null;
   activeLeft = null;
+  elements.leftWindow.classList.remove("storage-window");
   elements.leftWindow.classList.add("hidden");
   updateMasterToggle();
   if (shouldRender) renderAll();
@@ -963,6 +1462,7 @@ function closeRight(options = {}) {
 function closeSide() {
   activeLeft = null;
   activeRight = null;
+  elements.leftWindow.classList.remove("storage-window");
   elements.leftWindow.classList.add("hidden");
   elements.rightWindow.classList.add("hidden");
   updateMasterToggle();
@@ -1489,6 +1989,21 @@ function stepHideoutEditorScene(step) {
   showHideoutEditorScene(next);
 }
 
+function handleHideoutHouseClick(point) {
+  if (state?.settings?.visualPreview || state.scene !== "hideout") return false;
+  const hit = renderer.hitTestHideoutItem(point.x, point.y);
+  if (hit?.typeId !== "house") return false;
+  if (blockWrongTutorialTarget("hideout_item", "house")) return true;
+
+  state.run.pendingHideoutPortalId = null;
+  state.run.cityTargetX = null;
+  activeCenter = true;
+  activeRight = "hideout";
+  dispatchTutorialEvent("hideout_house_opened", {}, { render: false });
+  renderAll();
+  return true;
+}
+
 function handleHideoutItemPointerDown(event) {
   if (!state?.settings?.visualPreview || state.scene !== "hideout") return false;
   const point = canvasPoint(event);
@@ -1602,6 +2117,7 @@ function selectedHideoutItemTier(typeId) {
 }
 
 function buyHideoutItem(typeId) {
+  if (blockTutorialAmbientAction()) return;
   const type = hideoutItemType(typeId);
   const currentTier = state.player.hideoutItems?.[type.id] || 0;
   if (currentTier >= 9) {
@@ -1796,6 +2312,8 @@ function defaultWindowLayout() {
 }
 
 function startRaid(mapId, options = {}) {
+  const selectedMap = MAPS.find((candidate) => candidate.id === mapId);
+  if (selectedMap && blockWrongTutorialTarget("assault", `map-${selectedMap.index}`)) return;
   if (!canStartRaid(state.player)) {
     showToast(staminaConfig.emptyMessage);
     addLog(state, staminaConfig.emptyMessage);
@@ -1809,10 +2327,11 @@ function startRaid(mapId, options = {}) {
     renderAll();
     return;
   }
-  if (!options.keepMenus) closeMaster({ render: false });
+  if (!options.keepMenus) closeMaster({ render: false, force: true });
   closeCityShopPanel();
   fadeThen("Roube o maximo que conseguir!", () => {
     combat.enterMap(mapId);
+    dispatchTutorialEvent("raid_started", { mapId, mapIndex: selectedMap?.index || 1 }, { render: false });
     online?.sayHello();
     if (options.keepMenus) {
       activeCenter = true;
@@ -1872,7 +2391,7 @@ function walkToCityPortal(portal) {
   const defaultOffset = portal.x < 90 ? portal.width / 2 + 8 : -portal.width / 2 - 12;
   const approachX = Math.max(64, Math.round(portal.x + Number(portal.approachOffset ?? defaultOffset)));
   combat.moveCityTo(approachX);
-  showToast(portal.action === "hideout" ? "Indo até o esconderijo." : "Indo ate o portal.");
+  showToast(portal.action === "hideout" ? "Indo ate o esconderijo." : "Indo ate o portal.");
 }
 
 function walkToHideoutPortal(portal) {
@@ -1880,7 +2399,7 @@ function walkToHideoutPortal(portal) {
   const defaultOffset = portal.x < 90 ? portal.width / 2 + 8 : -portal.width / 2 - 12;
   const approachX = Math.max(64, Math.round(portal.x + Number(portal.approachOffset ?? defaultOffset)));
   combat.moveHideoutTo(approachX);
-  showToast("Indo até a cidade.");
+  showToast("Indo ate a cidade.");
 }
 
 function openCityPortalPanel(portal) {
@@ -1892,6 +2411,7 @@ function openCityPortalPanel(portal) {
     state.run.cityTargetX = null;
     fadeThen("Entrando no esconderijo.", () => {
       combat.enterHideout();
+      dispatchTutorialEvent("scene_entered", { scene: "hideout", from: "city" }, { render: false });
     });
     return;
   }
@@ -1904,6 +2424,7 @@ function openCityPortalPanel(portal) {
   activeCenter = true;
   activeLeft = "assaults";
   showToast("Portal de assaltos aberto.");
+  dispatchTutorialEvent("assaults_opened", {}, { render: false });
   renderAll();
 }
 
@@ -1926,12 +2447,17 @@ function updatePendingHideoutPortalArrival() {
   state.run.cityTargetX = null;
   fadeThen("Voltando para a cidade.", () => {
     combat.enterCity();
+    dispatchTutorialEvent("scene_entered", { scene: "city", from: "hideout" }, { render: false });
   });
 }
 
 function closeCityPortalPanel(options = {}) {
   const shouldRender = options.render !== false;
   const hadPortal = Boolean(activeCityPortalId || activeLeft === "assaults");
+  if (hadPortal && !options.force && tutorialNeedsAssaultPanelOpen()) {
+    showToast("A gente termina isso e tu fica livre.");
+    return false;
+  }
   activeCityPortalId = null;
   state.run.pendingCityPortalId = null;
   if (activeLeft === "assaults") activeLeft = null;
@@ -1958,6 +2484,7 @@ function interactWithNearestCityNpc() {
     .map((npc) => ({ npc, distance: Math.abs((state.run.playerX || 0) - npc.x) }))
     .sort((a, b) => a.distance - b.distance)[0];
   if (!nearest) return;
+  if (blockWrongTutorialTarget("city_npc", nearest.npc.id)) return;
 
   if (nearest.distance > 86) {
     walkToCityNpc(nearest.npc);
@@ -1992,8 +2519,10 @@ function openCityNpcPanel(npc) {
   closeCityPortalPanel({ render: false });
   activeCityNpc = npc;
   shopMode = "talk";
+  restoreTutorialNpcShopMode(npc);
   pendingSellIndexes.clear();
   pendingCraftIndex = null;
+  dispatchTutorialEvent("npc_opened", { npcId: npc.id }, { render: false });
   renderAll();
 }
 
@@ -2043,18 +2572,22 @@ function renderCityShopPanel() {
     <p>${activeCityNpc.greeting}</p>
     <div class="city-shop-actions">
       ${activeCityNpc.role === "oldman" ? `
-        <button type="button" class="primary-action" data-shop-mode="buy">Itens Aleatorios</button>
+        <button type="button" class="secondary-action" data-shop-mode="land">Comprar Terreno</button>
         <button type="button" class="secondary-action" data-shop-mode="house">Comprar Casa</button>
         <button type="button" class="secondary-action" data-shop-mode="car">Comprar Carro</button>
-        <button type="button" class="secondary-action" data-shop-mode="land">Comprar Terreno</button>
-        <button type="button" class="primary-action" data-shop-mode="craft">Fundir</button>
+      ` : ""}
+      ${activeCityNpc.role === "vendor" ? `
+        <button type="button" class="primary-action" data-shop-mode="buy">Itens Aleatorios</button>
         <button type="button" class="primary-action" data-shop-mode="sell">Vender</button>
+        <button type="button" class="secondary-action" data-shop-mode="sell-all-confirm">Vender Tudo</button>
+        <button type="button" class="primary-action" data-shop-mode="craft">Fundir</button>
       ` : ""}
       ${activeCityNpc.role === "buyer" ? `
         <button type="button" class="primary-action" data-shop-mode="sell">Vender</button>
         <button type="button" class="secondary-action" data-shop-mode="sell-all-confirm">Vender Tudo</button>
       ` : ""}
-      ${activeCityNpc.role !== "oldman" && activeCityNpc.role !== "buyer" ? `<button type="button" class="secondary-action" disabled>Em breve</button>` : ""}
+      ${activeCityNpc.role !== "oldman" && activeCityNpc.role !== "vendor" && activeCityNpc.role !== "buyer" ? `<button type="button" class="secondary-action" disabled>Em breve</button>` : ""}
+      <button type="button" class="secondary-action" data-shop-close>Cancelar</button>
     </div>
   `;
   bindShopPanel(panel);
@@ -2114,19 +2647,32 @@ function renderAssetPanel(panel, npc, type) {
   `;
   bindShopPanel(panel);
   panel.querySelectorAll("[data-buy-house]").forEach((button) => {
-    button.addEventListener("click", () => handleAssetBuy(buyHouse(state.player, Number(button.dataset.buyHouse))));
+    button.addEventListener("click", () => {
+      const tier = Number(button.dataset.buyHouse);
+      if (blockWrongTutorialTarget("asset", `house:${tier}`)) return;
+      handleAssetBuy(buyHouse(state.player, tier), "house", tier);
+    });
   });
   panel.querySelectorAll("[data-buy-car]").forEach((button) => {
-    button.addEventListener("click", () => handleAssetBuy(buyCar(state.player, Number(button.dataset.buyCar))));
+    button.addEventListener("click", () => {
+      const tier = Number(button.dataset.buyCar);
+      if (blockWrongTutorialTarget("asset", `car:${tier}`)) return;
+      handleAssetBuy(buyCar(state.player, tier), "car", tier);
+    });
   });
   panel.querySelectorAll("[data-buy-land]").forEach((button) => {
-    button.addEventListener("click", () => handleAssetBuy(buyLand(state.player, Number(button.dataset.buyLand))));
+    button.addEventListener("click", () => {
+      const tier = Number(button.dataset.buyLand);
+      if (blockWrongTutorialTarget("asset", `land:${tier}`)) return;
+      handleAssetBuy(buyLand(state.player, tier), "land", tier);
+    });
   });
 }
 
-function handleAssetBuy(result) {
+function handleAssetBuy(result, assetType, tier) {
   handleResult(result);
   if (result.ok) normalizeProgressionSystems(state.player);
+  if (result.ok) dispatchTutorialEvent("asset_bought", { assetType, tier }, { render: false });
   renderAll();
 }
 
@@ -2250,20 +2796,37 @@ function renderSellAllConfirm(panel, npc) {
 }
 
 function bindShopPanel(panel) {
-  panel.querySelector("[data-shop-close]")?.addEventListener("click", () => closeCityShopPanel());
+  panel.querySelectorAll("[data-shop-close]").forEach((button) => {
+    button.addEventListener("click", () => closeCityShopPanel({ force: true }));
+  });
   panel.querySelectorAll("[data-shop-mode]").forEach((button) => {
     button.addEventListener("click", () => {
+      if (blockWrongTutorialTarget("shop_mode", button.dataset.shopMode)) return;
       shopMode = button.dataset.shopMode;
       if (shopMode !== "sell") pendingSellIndexes.clear();
       if (shopMode !== "craft") pendingCraftIndex = null;
+      dispatchTutorialEvent("shop_mode", { mode: shopMode }, { render: false });
       renderCityShopPanel();
+      renderTutorial();
     });
   });
+}
+
+function restoreTutorialNpcShopMode(npc) {
+  if (npc?.id !== "seu-zeca") return;
+  const action = tutorialStep(state)?.actionRequired;
+  if (action === "buy_land_1") shopMode = "land";
+  if (action === "buy_house_1") shopMode = "house";
+  if (action === "buy_car_1") shopMode = "car";
 }
 
 function closeCityShopPanel(options = {}) {
   const panel = document.querySelector("#city-shop-panel");
   const hadShop = Boolean(activeCityNpc || (panel && !panel.classList.contains("hidden")));
+  if (hadShop && !options.force && tutorialNeedsCityShopOpen()) {
+    showToast("Sem fugir da explicacao.");
+    return false;
+  }
   activeCityNpc = null;
   shopMode = "talk";
   pendingSellIndexes.clear();
@@ -2378,7 +2941,10 @@ function assetShopRow(asset, type) {
       : state.player.terrenoAtual === asset.tier;
   const unlocked = canUnlockAsset(state.player, asset);
   const action = type === "house" ? "data-buy-house" : type === "car" ? "data-buy-car" : "data-buy-land";
-  const disabled = active || !unlocked || (!owned && state.player.money < asset.price);
+  const expected = expectedTutorialAssetPurchase(state);
+  const isTutorialTarget = expected?.type === type && expected?.tier === asset.tier;
+  const blockedByTutorial = Boolean(expected && !isTutorialTarget);
+  const disabled = blockedByTutorial || (!isTutorialTarget && (active || !unlocked || (!owned && state.player.money < asset.price)));
   return `
     <article class="asset-shop-row">
       <div>
@@ -2387,7 +2953,7 @@ function assetShopRow(asset, type) {
         <small>${unlocked ? "Disponivel" : assetRequirementText(asset)}</small>
       </div>
       <button type="button" class="panel-action" ${action}="${asset.tier}" ${disabled ? "disabled" : ""}>
-        ${active ? "Ativo" : owned ? "Ativar" : formatMoney(asset.price)}
+        ${active && isTutorialTarget ? "Confirmar" : active ? "Ativo" : owned ? "Ativar" : formatMoney(asset.price)}
       </button>
     </article>
   `;
@@ -2553,6 +3119,7 @@ function normalizeState() {
   state.settings.hideoutEditor ||= {};
   state.settings.hideoutEditor.selectedType ||= "house";
   state.settings.hideoutEditor.previewTiers ||= {};
+  normalizeTutorialState(state, { startIfMissing: false });
   state.activeAssaultTier ||= 1;
   state.player.highestMapUnlocked ||= 1;
   state.player.hideoutTier ||= 1;
@@ -2572,6 +3139,17 @@ function normalizeState() {
   }
   state.player.inventory = state.player.inventory.map((item) => normalizeInventoryItem(item));
   state.backpackPage = Math.min(BACKPACK_PAGE_COUNT, Math.max(1, Number(state.backpackPage || 1) || 1));
+  state.player.hideoutChest ||= [];
+  if (state.player.hideoutChest.length < BACKPACK_TOTAL_SLOTS) {
+    state.player.hideoutChest.push(...Array.from({ length: BACKPACK_TOTAL_SLOTS - state.player.hideoutChest.length }, () => null));
+  }
+  if (state.player.hideoutChest.length > BACKPACK_TOTAL_SLOTS) {
+    state.player.hideoutChest = state.player.hideoutChest.slice(0, BACKPACK_TOTAL_SLOTS);
+  }
+  state.player.hideoutChest = state.player.hideoutChest.map((item) => normalizeInventoryItem(item));
+  state.chestPage = Math.min(BACKPACK_PAGE_COUNT, Math.max(1, Number(state.chestPage || 1) || 1));
+  if (!state.player.inventory[state.selectedInventoryIndex]) state.selectedInventoryIndex = null;
+  if (!state.player.hideoutChest[state.selectedChestIndex]) state.selectedChestIndex = null;
   state.player.equipment ||= {};
   const legacyEquipped = [
     state.player.equipment.feet,
@@ -2725,6 +3303,7 @@ elements.canvas.addEventListener("pointerdown", handleStagePointer);
 document.addEventListener("keydown", handleGameKeyDown);
 document.addEventListener("keyup", handleGameKeyUp);
 window.addEventListener("blur", clearKeyboardMovement);
+window.addEventListener("resize", renderTutorial);
 document.addEventListener("contextmenu", (event) => {
   event.preventDefault();
 }, { capture: true });

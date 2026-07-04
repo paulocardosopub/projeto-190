@@ -17,7 +17,7 @@ export const CITY_NPCS = [
     role: "future",
     sheet: "enemies2",
     row: 0,
-    x: 820,
+    x: 1760,
     direction: "front",
     greeting: "Volta depois que eu vou ter algo pra voce."
   },
@@ -35,13 +35,13 @@ export const CITY_NPCS = [
   {
     id: "npc-vendedor",
     name: "Vendedor",
-    shopName: "Barraca Fechada",
-    role: "future",
+    shopName: "Banca do Vendedor",
+    role: "vendor",
     sheet: "enemies2",
     row: 2,
     x: 1200,
     direction: "front",
-    greeting: "Minha loja abre em breve."
+    greeting: "Tenho itens aleatorios, compro tralha e faco fusao de equipamentos."
   },
   {
     id: "npc-seguranca",
@@ -72,7 +72,7 @@ export const CITY_NPCS = [
     role: "oldman",
     sheet: "enemies2",
     row: 6,
-    x: 1760,
+    x: 820,
     direction: "front",
     greeting: "Tenho uns contatos, uns terrenos e compro seus achados. O que voce precisa?"
   }

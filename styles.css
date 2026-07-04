@@ -1331,6 +1331,27 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
   min-height: 0;
 }
 
+.storage-window .window-body {
+  overflow: hidden;
+  padding: 6px 8px;
+}
+
+.storage-compact {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  gap: 5px;
+  min-height: 0;
+}
+
+.storage-compact .selected-panel {
+  grid-template-columns: calc(42px * var(--window-ui-scale)) minmax(0, 1fr);
+}
+
+.storage-compact .inventory-grid.compact-inventory {
+  min-height: 0;
+}
+
 .master-tabs {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1740,8 +1761,9 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 }
 
 .hideout-status-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-bottom: 9px;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  margin-bottom: 6px;
 }
 
 .hideout-status-grid article,
@@ -1751,11 +1773,38 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
   background: rgba(0, 0, 0, 0.26);
 }
 
+.hideout-status-grid article {
+  min-height: 31px;
+  display: grid;
+  grid-template-columns: 58px minmax(70px, 0.85fr) minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 5px;
+}
+
+.hideout-status-grid .eyebrow {
+  min-width: 0;
+  font-size: 8px;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .hideout-status-grid h3,
 .asset-shop-row h3 {
-  margin: 2px 0 4px;
+  margin: 0;
   color: #ffe19d;
   font-size: 12px;
+}
+
+.hideout-status-grid h3 {
+  min-width: 0;
+  font-size: 10px;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hideout-status-grid p,
@@ -1765,6 +1814,25 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
   color: #d6c5a1;
   font-size: 10px;
   line-height: 1.35;
+}
+
+.hideout-status-grid p {
+  min-width: 0;
+  margin: 0;
+  font-size: 9px;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hideout-status-grid .panel-action {
+  min-width: 48px;
+  min-height: 22px;
+  padding: 2px 5px;
+  font-size: 8px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .asset-shop-row {
@@ -1787,27 +1855,30 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 }
 
 .hideout-upgrade-list {
-  margin-bottom: calc(7px * var(--window-ui-scale));
+  gap: 4px;
+  margin-bottom: calc(6px * var(--window-ui-scale));
 }
 
 .hideout-upgrade-row {
   grid-template-columns: 1fr auto;
   align-items: center;
-  gap: calc(6px * var(--window-ui-scale));
-  min-height: calc(42px * var(--window-ui-scale));
-  padding: calc(5px * var(--window-ui-scale));
+  gap: calc(5px * var(--window-ui-scale));
+  min-height: calc(32px * var(--window-ui-scale));
+  padding: calc(4px * var(--window-ui-scale)) calc(5px * var(--window-ui-scale));
 }
 
 .hideout-upgrade-row h3 {
   margin: 0;
   color: #f1d58a;
-  font-size: calc(12px * var(--window-ui-scale));
+  font-size: calc(10px * var(--window-ui-scale));
+  line-height: 1;
 }
 
 .hideout-upgrade-row p {
   margin: 1px 0 0;
   color: #b9ac94;
-  font-size: calc(9px * var(--window-ui-scale));
+  font-size: calc(8px * var(--window-ui-scale));
+  line-height: 1;
 }
 
 .tier-selector {
@@ -2228,11 +2299,10 @@ body.character-selecting .window-layer {
 
 .toast-region {
   position: absolute;
-  left: 50%;
-  bottom: 78px;
+  bottom: 8px;
+  left: calc(50% + 34px);
   z-index: 7;
-  width: min(430px, calc(100% - 20px));
-  transform: translateX(-50%);
+  width: min(430px, calc(50% - 42px));
   display: grid;
   gap: 6px;
   pointer-events: none;
@@ -2247,10 +2317,134 @@ body.character-selecting .window-layer {
   font-size: 12px;
 }
 
+.tutorial-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.tutorial-layer.hidden {
+  display: none;
+}
+
+.tutorial-highlight {
+  position: fixed;
+  border: 2px solid #ffd45f;
+  background: rgba(255, 212, 95, 0.08);
+  box-shadow:
+    0 0 0 9999px rgba(0, 0, 0, 0.28),
+    0 0 22px rgba(255, 212, 95, 0.72);
+  animation: tutorial-pulse 1.15s ease-in-out infinite;
+}
+
+.tutorial-highlight.hidden,
+.tutorial-arrow.hidden {
+  display: none;
+}
+
+.tutorial-arrow {
+  position: fixed;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-top: 14px solid #ffd45f;
+  filter: drop-shadow(0 4px 0 rgba(0, 0, 0, 0.45));
+}
+
+.tutorial-arrow.up {
+  border-top: 0;
+  border-bottom: 14px solid #ffd45f;
+}
+
+.tutorial-bubble {
+  position: fixed;
+  pointer-events: auto;
+  padding: 12px;
+  color: #fff2c4;
+  border: 2px solid #0e0d0c;
+  outline: 1px solid #f0bd55;
+  background:
+    linear-gradient(180deg, rgba(130, 33, 24, 0.26), transparent 42%),
+    rgba(18, 16, 13, 0.98);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.72);
+}
+
+.tutorial-bubble.stage-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 10px 12px;
+}
+
+.tutorial-bubble p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.tutorial-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tutorial-primary,
+.tutorial-skip {
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid #0d0b08;
+  color: #1b1209;
+  background: #ffd45f;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.tutorial-skip {
+  color: #f3d8a2;
+  background: rgba(45, 35, 24, 0.94);
+  border-color: #8d6a32;
+}
+
+.tutorial-skip.hidden {
+  display: none;
+}
+
+@keyframes tutorial-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.035);
+  }
+}
+
+@media (max-width: 680px) {
+  .tutorial-bubble.stage-top {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .tutorial-actions {
+    justify-content: flex-start;
+  }
+}
+
 .scene-transition {
   position: fixed;
   inset: 0;
-  z-index: 25;
+  z-index: 40;
   display: grid;
   place-items: center;
   background: rgba(0, 0, 0, 0.82);

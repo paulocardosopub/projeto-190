@@ -7,7 +7,7 @@ import {
   housesConfig,
   passiveIncomeConfig,
   staminaConfig
-} from "../../data/balance/index.js";
+} from "../../data/balance/index.js?v=balance-3";
 
 export function normalizeProgressionSystems(player) {
   player.staminaMax = calculateStaminaMax(player);

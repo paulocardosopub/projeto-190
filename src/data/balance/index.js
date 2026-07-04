@@ -453,7 +453,7 @@ export const npcShopConfig = {
 };
 
 export const staminaConfig = {
-  staminaMaxBase: 120,
+  staminaMaxBase: 30,
   staminaRegenBaseNoEsconderijo: 2,
   states: [
     { id: "descansado", label: "Descansado", minPercent: 60, maxPercent: 100, effect: "Sem penalidade" },
@@ -528,7 +528,7 @@ export const passiveIncomeConfig = {
 export const cityOldManNpcConfig = {
   id: "seu-zeca",
   name: "Seu Zeca, o Velho da Cidade",
-  tabs: ["Itens Aleatorios", "Comprar Casa", "Comprar Carro", "Comprar Terreno", "Fundir Equipamentos", "Vender Itens"],
+  tabs: ["Comprar Terreno", "Comprar Casa", "Comprar Carro"],
   canSellHousesAndCarsBack: false
 };
 

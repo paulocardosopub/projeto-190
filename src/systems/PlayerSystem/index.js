@@ -9,6 +9,13 @@ export function createNewGame(playerId) {
     activeAssaultTier: 1,
     selectedInventoryIndex: null,
     log: ["Cidade inicial desbloqueada."],
+    tutorial: {
+      version: 3,
+      active: true,
+      completed: false,
+      step: "character_selected",
+      skipped: false
+    },
     player: {
       level: 1,
       highestMapUnlocked: 1,
@@ -21,8 +28,8 @@ export function createNewGame(playerId) {
       nextXp: 100,
       money: 0,
       hp: 0,
-      staminaAtual: 120,
-      staminaMax: 120,
+      staminaAtual: 30,
+      staminaMax: 30,
       staminaRegenPorMinuto: 2,
       needsHideoutRest: false,
       nivelJogador: 1,
@@ -39,7 +46,8 @@ export function createNewGame(playerId) {
         lastUpdatedAt: Date.now()
       },
       equipment: createStarterEquipment(),
-      inventory: createStarterInventory()
+      inventory: createStarterInventory(),
+      hideoutChest: Array.from({ length: 144 }, () => null)
     },
     run: {
       mode: "city",

@@ -602,8 +602,10 @@ export class CombatSystem {
   }
 
   returnFromSummary() {
+    const summary = this.state.run.summary;
     addLog(this.state, "Voltando para a cidade.");
     this.enterCity();
+    this.hooks.onRaidReturn?.(summary);
   }
 
   updateRaidSummary(dt) {
