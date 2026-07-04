@@ -2019,6 +2019,52 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
   color: #f2c96c;
 }
 
+.city-shop-panel.drug-shop-panel {
+  width: min(430px, calc(100% - 24px));
+  padding: 8px;
+}
+
+.drug-shop-panel h2 {
+  margin-bottom: 3px;
+  font-size: 15px;
+}
+
+.drug-shop-panel p {
+  margin: 2px 0 6px;
+  line-height: 1.2;
+}
+
+.drug-shop-panel .drug-shop-list {
+  gap: 4px;
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.drug-shop-panel .drug-shop-row {
+  gap: 6px;
+  padding: 5px 6px;
+}
+
+.drug-shop-panel .drug-shop-row h3 {
+  margin: 0 0 2px;
+  font-size: 11px;
+}
+
+.drug-shop-panel .drug-shop-row p,
+.drug-shop-panel .drug-shop-row small {
+  margin-bottom: 2px;
+  font-size: 9px;
+  line-height: 1.12;
+}
+
+.drug-shop-panel .drug-shop-row .panel-action {
+  min-width: 58px;
+  min-height: 24px;
+  padding: 4px 7px;
+  font-size: 9px;
+}
+
 .asset-shop-row {
   display: grid;
   grid-template-columns: 1fr auto;

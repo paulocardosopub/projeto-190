@@ -5,7 +5,7 @@ import { CITY_NPCS } from "../data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "../data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-7";
-import { PETS, PET_FRAME_BOUNDS, getEquippedPet, getPetById } from "../data/pets/index.js?v=pets-1";
+import { PETS, PET_FRAME_BOUNDS, getEquippedPet, getPetById } from "../data/pets/index.js?v=pets-manual-1";
 
 export class SpriteRenderer {
   constructor(canvas) {
@@ -1824,7 +1824,7 @@ function isPlayerWalking(state) {
   if (state.scene === "city" || state.scene === "hideout" || state.scene === "idle") {
     return Number.isFinite(run.cityTargetX) && Math.abs(run.cityTargetX - (run.playerX || 0)) > 2;
   }
-  return run.mode === "approaching" || run.mode === "seeking" || run.mode === "collectingLoot";
+  return run.mode === "approaching" || run.mode === "seeking" || run.mode === "collectingLoot" || run.mode === "fleeing";
 }
 
 function alphaAt(pixels, imageWidth, x, y) {

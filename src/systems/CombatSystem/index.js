@@ -11,13 +11,15 @@ import { applyHospitalFee, applyPrisonFee } from "../PenaltySystem/index.js?v=ho
 import { canStartRaid, consumeStaminaForMap, staminaRaidBlockedMessage } from "../StaminaSystem/index.js?v=phase1-1";
 import { confiscateDrugItems } from "../DrugSystem/index.js?v=drugs-2";
 import { theftConfig } from "../../data/balance/index.js?v=phase1-1";
-import { getEquippedPet, normalizePets, petDamageForAttack } from "../../data/pets/index.js?v=pets-1";
+import { getEquippedPet, normalizePets, petDamageForAttack } from "../../data/pets/index.js?v=pets-manual-1";
 
 const CHOICE_AUTO_FIGHT_SECONDS = 5;
 const ITEM_THEFT_CHAT_SECONDS = 5.5;
 const POLICE_RISK_STARTS_AFTER_FIGHTS = 2;
 const GROUND_LOOT_PICKUP_DISTANCE = 22;
 const GROUND_LOOT_PICKUP_DELAY = 0.4;
+const FLEE_SPEED = 520;
+const FLEE_MAX_SECONDS = 2.2;
 const CITY_SPAWN_X = 190;
 const HIDEOUT_SPAWN_X = 260;
 
@@ -401,6 +403,10 @@ export class CombatSystem {
       this.updateChoiceTimer(dt);
       return;
     }
+    if (run.mode === "fleeing") {
+      this.updateFleeing(dt);
+      return;
+    }
     if (run.mode === "returning") return;
     if (this.state.scene !== "map") return;
 
@@ -480,17 +486,24 @@ export class CombatSystem {
   chooseFlee() {
     const target = this.targetNpc();
     if (target) {
-      target.done = true;
       target.alerted = false;
       setNpcDirection(target, "right");
     }
-    this.state.run.choiceTimer = 0;
-    this.state.run.targetId = null;
-    this.state.run.enemy = null;
-    this.state.run.enemyHp = 0;
-    this.state.run.enemyMaxHp = 0;
-    addLog(this.state, "Voce fugiu do combate e voltou para a cidade.");
-    this.enterCity();
+    const run = this.state.run;
+    run.choiceTimer = 0;
+    run.targetId = null;
+    run.enemy = null;
+    run.enemyHp = 0;
+    run.enemyMaxHp = 0;
+    run.mode = "fleeing";
+    run.fleeTimer = 0;
+    run.playerDirection = "left";
+    run.playerAction = null;
+    run.playerActionTimer = 0;
+    run.playerActionDuration = 0;
+    addLog(this.state, "Voce saiu correndo do combate.");
+    this.hooks.onToast?.("Fugindo do mapa.");
+    this.emit();
   }
 
   chooseFight() {
@@ -1168,6 +1181,18 @@ export class CombatSystem {
     const direction = Math.sign(distance);
     run.playerDirection = direction >= 0 ? "right" : "left";
     run.playerX += direction * Math.min(Math.abs(distance), dt * 150);
+  }
+
+  updateFleeing(dt) {
+    const run = this.state.run;
+    run.playerDirection = "left";
+    run.fleeTimer = Number(run.fleeTimer || 0) + dt;
+    run.playerX -= dt * FLEE_SPEED;
+    if (run.playerX > -90 && run.fleeTimer < FLEE_MAX_SECONDS) return;
+
+    addLog(this.state, "Voce fugiu do mapa e voltou para a cidade.");
+    this.enterCity();
+    this.hooks.onToast?.("Voce voltou para a cidade.");
   }
 
   emit() {

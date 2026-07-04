@@ -53,19 +53,16 @@ export function normalizePets(player, options = {}) {
   const shouldUnlock = level >= PET_UNLOCK_LEVEL;
 
   player.petSystemUnlocked = Boolean(player.petSystemUnlocked || shouldUnlock);
-  if (shouldUnlock && !owned.has(STARTER_PET_ID)) {
-    owned.add(STARTER_PET_ID);
-    if (!options.silent) messages.push("Pinscher liberado de graca no petshop.");
+  if (!player.petStarterClaimed && owned.has(STARTER_PET_ID)) {
+    owned.delete(STARTER_PET_ID);
   }
   if (shouldUnlock && player.petSystemUnlocked && !options.silent && !player.petUnlockNoticeShown) {
-    messages.push("Pets liberados no nivel 5.");
+    messages.push("Pets liberados no nivel 5. Fale com o responsavel do petshop.");
     player.petUnlockNoticeShown = true;
   }
 
   player.petsOwned = [...owned];
-  if (!shouldUnlock || !owned.has(player.equippedPetId)) {
-    player.equippedPetId = shouldUnlock && owned.has(STARTER_PET_ID) ? STARTER_PET_ID : null;
-  }
+  if (!shouldUnlock || !owned.has(player.equippedPetId)) player.equippedPetId = null;
   player.lastPetFollowDirection = player.lastPetFollowDirection === "left" ? "left" : "right";
   return messages;
 }
@@ -82,6 +79,11 @@ export function buyPet(player, petId) {
   if (price > 0 && Number(player.money || 0) < price) return { ok: false, reason: `Dinheiro insuficiente para ${pet.name}.` };
   player.money = Math.max(0, Number(player.money || 0) - price);
   player.petsOwned.push(pet.id);
+  if (pet.id === STARTER_PET_ID) {
+    player.petStarterClaimed = true;
+    player.petStarterAdoptedAt ||= Date.now();
+  }
+  if (!player.equippedPetId) player.equippedPetId = pet.id;
   return { ok: true, message: `${pet.name} agora acompanha voce.` };
 }
 

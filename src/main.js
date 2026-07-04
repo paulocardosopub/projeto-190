@@ -4,7 +4,7 @@ import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem } from "./systems/CombatSystem/index.js?v=spawn-height-1";
+import { CombatSystem } from "./systems/CombatSystem/index.js?v=flee-pets-1";
 import { calculateStats, calculateStealChancePercent, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -120,8 +120,8 @@ import {
   updatePassiveIncome
 } from "./systems/StaminaSystem/index.js?v=phase1-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=phase1-1";
-import { PETS, PET_UNLOCK_LEVEL, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=pets-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=viewport-width-1";
+import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=pets-manual-1";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=flee-pets-1";
 import {
   renderCharacterSelect,
   renderConfigWindow,
@@ -249,6 +249,49 @@ const HIDEOUT_REST_SLOW_STAMINA_PER_SECOND = HIDEOUT_STAMINA_RECOVERY_CONFIG.awa
 const BACKGROUND_TICK_MS = 1000;
 const DETAILED_GAME_STEP_SECONDS = 0.05;
 const SIMPLE_GAME_STEP_SECONDS = 1;
+const PET_TUTORIAL_FIRST_STEP = "pet_city";
+const PET_TUTORIAL_STEPS = [
+  {
+    id: "pet_city",
+    message: "Pets liberados no nivel 5. Fala com o Dr. Rubens no petshop para adotar teu primeiro parceiro.",
+    buttonLabel: "Ir ao petshop",
+    target: "npc_petshop",
+    actionRequired: "visit_petshop_city",
+    passiveButton: true,
+    allowSkip: true,
+    next: "pet_enter"
+  },
+  {
+    id: "pet_enter",
+    message: "O atendente te leva para dentro do petshop. Entra la antes que a oportunidade fuja.",
+    buttonLabel: "Entrar",
+    target: "city_shop_panel",
+    actionRequired: "enter_petshop",
+    passiveButton: true,
+    allowSkip: true,
+    next: "pet_inside"
+  },
+  {
+    id: "pet_inside",
+    message: "La dentro, fala com o Dr. Rubens. Ele cuida das adocoes.",
+    buttonLabel: "Falar",
+    target: "idle_petshop_npc",
+    actionRequired: "talk_petshop_owner",
+    passiveButton: true,
+    allowSkip: true,
+    next: "pet_buy"
+  },
+  {
+    id: "pet_buy",
+    message: "Adota o Pinscher no balcao. Ele so aparece contigo depois disso.",
+    buttonLabel: "Adotar",
+    target: "pet_shop_starter",
+    actionRequired: "buy_starter_pet",
+    passiveButton: true,
+    allowSkip: true
+  }
+];
+const PET_TUTORIAL_STEP_BY_ID = Object.fromEntries(PET_TUTORIAL_STEPS.map((step) => [step.id, step]));
 
 await renderer.load();
 await boot();
@@ -824,11 +867,33 @@ function ensureTutorialOverlay() {
         hideCharacterSelectTutorial();
         return;
       }
+      if (isPetTutorialStep(step)) {
+        advancePetTutorial();
+        return;
+      }
       advanceActiveTutorial();
     },
-    onBack: () => rewindActiveTutorial(),
-    onSkip: () => skipActiveTutorial(),
-    onPassive: (step) => performTutorialPrimaryAction(step)
+    onBack: (step) => {
+      if (isPetTutorialStep(step)) {
+        rewindPetTutorial();
+        return;
+      }
+      rewindActiveTutorial();
+    },
+    onSkip: (step) => {
+      if (isPetTutorialStep(step)) {
+        skipPetTutorial();
+        return;
+      }
+      skipActiveTutorial();
+    },
+    onPassive: (step) => {
+      if (isPetTutorialStep(step)) {
+        performPetTutorialAction(step);
+        return;
+      }
+      performTutorialPrimaryAction(step);
+    }
   });
   return tutorialOverlay;
 }
@@ -852,7 +917,15 @@ function renderTutorial() {
     tutorialOverlay?.hide();
     return;
   }
-  ensureTutorialOverlay().render(tutorialStep(state), { canGoBack: canRewindTutorialStep(state) });
+  const mainStep = tutorialStep(state);
+  if (mainStep) {
+    ensureTutorialOverlay().render(mainStep, { canGoBack: canRewindTutorialStep(state) });
+    return;
+  }
+
+  maybeStartPetTutorial();
+  const petStep = activePetTutorialStep();
+  ensureTutorialOverlay().render(petStep, { canGoBack: canRewindPetTutorial() });
 }
 
 function advanceActiveTutorial() {
@@ -920,6 +993,57 @@ function performTutorialPrimaryAction(step) {
   showToast(tutorialNudgeLine());
 }
 
+function performPetTutorialAction(step) {
+  if (!state || !combat || !step?.actionRequired) {
+    showToast("Siga o marcador do petshop.");
+    return;
+  }
+
+  const action = step.actionRequired;
+  if (action === "visit_petshop_city") {
+    moveToTutorialCityNpc("npc-petshop");
+    return;
+  }
+  if (action === "enter_petshop") {
+    if (state.scene === "city" && activeCityNpc?.id === "npc-petshop") {
+      enterPetshopFromCityNpc();
+      return;
+    }
+    moveToTutorialCityNpc("npc-petshop");
+    return;
+  }
+  if (action === "talk_petshop_owner") {
+    if (state.scene !== "idle" || state.currentMapId !== "petshop") {
+      showToast("Entre no petshop para falar com o Dr. Rubens.");
+      return;
+    }
+    const npc = (state.run?.npcs || []).find((candidate) => candidate.id === "petshop-responsavel");
+    if (!npc) return;
+    if (activeCityNpc?.id === npc.id) {
+      dispatchPetTutorialEvent("petshop_owner_opened");
+      return;
+    }
+    walkToIdleNpc(npc);
+    return;
+  }
+  if (action === "buy_starter_pet") {
+    if (activeCityNpc?.id !== "petshop-responsavel" || shopMode !== "pets") {
+      const npc = (state.run?.npcs || []).find((candidate) => candidate.id === "petshop-responsavel");
+      if (state.scene === "idle" && state.currentMapId === "petshop" && npc) {
+        walkToIdleNpc(npc);
+      } else {
+        showToast("Fale com o Dr. Rubens no petshop.");
+      }
+      return;
+    }
+    const result = buyPet(state.player, STARTER_PET_ID);
+    handlePetResult(result, { action: "buy", petId: STARTER_PET_ID });
+    return;
+  }
+
+  showToast("Siga o marcador do petshop.");
+}
+
 function skipActiveTutorial() {
   if (!state) return;
   commitTutorialChange(skipTutorial(state));
@@ -937,6 +1061,112 @@ function commitTutorialChange(result, options = {}) {
   if (!state.settings?.visualPreview) persistGame();
   if (options.render !== false) renderAll();
   return true;
+}
+
+function isPetTutorialStep(step) {
+  return Boolean(step?.id && PET_TUTORIAL_STEP_BY_ID[step.id]);
+}
+
+function maybeStartPetTutorial() {
+  if (!state?.player || tutorialStep(state) || characterTutorialVisible) return;
+  normalizePets(state.player, { silent: true });
+  if (starterPetOwned()) {
+    completePetTutorial({ render: false, persist: false });
+    return;
+  }
+  if (state.player.petTutorialCompleted || state.player.petTutorialSkipped) return;
+  if (!petsUnlocked(state.player)) return;
+  if (state.player.petTutorialActive) {
+    if (!PET_TUTORIAL_STEP_BY_ID[state.player.petTutorialStep]) {
+      state.player.petTutorialStep = PET_TUTORIAL_FIRST_STEP;
+    }
+    return;
+  }
+  if (state.scene !== "city" || state.run?.mode !== "city") return;
+  state.player.petTutorialActive = true;
+  state.player.petTutorialStep = activeCityNpc?.id === "npc-petshop" ? "pet_enter" : PET_TUTORIAL_FIRST_STEP;
+  addLog(state, "Pets liberados. Fale com o responsavel do petshop.");
+  if (!state.settings?.visualPreview) persistGame();
+}
+
+function activePetTutorialStep() {
+  if (!state?.player?.petTutorialActive) return null;
+  if (starterPetOwned()) {
+    completePetTutorial({ render: false, persist: true });
+    return null;
+  }
+  const step = PET_TUTORIAL_STEP_BY_ID[state.player.petTutorialStep] || PET_TUTORIAL_STEP_BY_ID[PET_TUTORIAL_FIRST_STEP];
+  state.player.petTutorialStep = step.id;
+  return step;
+}
+
+function advancePetTutorial(options = {}) {
+  const step = activePetTutorialStep();
+  if (!step) return false;
+  if (!step.next) return completePetTutorial(options);
+  state.player.petTutorialStep = step.next;
+  return commitPetTutorialChange(options);
+}
+
+function rewindPetTutorial(options = {}) {
+  const step = activePetTutorialStep();
+  if (!step) return false;
+  const index = PET_TUTORIAL_STEPS.findIndex((candidate) => candidate.id === step.id);
+  if (index <= 0) return false;
+  state.player.petTutorialStep = PET_TUTORIAL_STEPS[index - 1].id;
+  return commitPetTutorialChange(options);
+}
+
+function canRewindPetTutorial() {
+  const step = activePetTutorialStep();
+  return PET_TUTORIAL_STEPS.findIndex((candidate) => candidate.id === step?.id) > 0;
+}
+
+function skipPetTutorial(options = {}) {
+  if (!state?.player) return false;
+  state.player.petTutorialActive = false;
+  state.player.petTutorialSkipped = true;
+  state.player.petTutorialStep = null;
+  return commitPetTutorialChange(options);
+}
+
+function completePetTutorial(options = {}) {
+  if (!state?.player) return false;
+  state.player.petTutorialActive = false;
+  state.player.petTutorialCompleted = true;
+  state.player.petTutorialStep = null;
+  return commitPetTutorialChange(options);
+}
+
+function commitPetTutorialChange(options = {}) {
+  if (!state?.settings?.visualPreview && options.persist !== false) persistGame();
+  if (options.render !== false) renderAll();
+  return true;
+}
+
+function dispatchPetTutorialEvent(type, payload = {}, options = {}) {
+  const step = activePetTutorialStep();
+  if (!step) return false;
+  const nextByEvent = {
+    petshop_city_opened: { from: "pet_city", next: "pet_enter" },
+    petshop_entered: { from: "pet_enter", next: "pet_inside" },
+    petshop_owner_opened: { from: "pet_inside", next: "pet_buy" }
+  }[type];
+  if (nextByEvent && step.id === nextByEvent.from) {
+    state.player.petTutorialStep = nextByEvent.next;
+    return commitPetTutorialChange(options);
+  }
+  if (type === "starter_pet_bought" && step.id === "pet_buy") {
+    return completePetTutorial(options);
+  }
+  return false;
+}
+
+function starterPetOwned() {
+  return Boolean(
+    state?.player?.petStarterClaimed ||
+    (Array.isArray(state?.player?.petsOwned) && state.player.petsOwned.includes(STARTER_PET_ID))
+  );
 }
 
 function applyTutorialSideEffects() {
@@ -1176,13 +1406,17 @@ function resolveTutorialTargetRect(target) {
     hideout_chest: "#right-window .vault-grid, #right-window .vault-cell",
     hideout_vault: "#right-window .vault-money-panel, #vault-money-input",
     first_assault: "#left-window .map-row, #left-window [data-enter-map]",
-    first_assault_start: "#left-window [data-enter-map]"
+    first_assault_start: "#left-window [data-enter-map]",
+    pet_shop_starter: `#city-shop-panel [data-buy-pet="${STARTER_PET_ID}"], #city-shop-panel [data-equip-pet="${STARTER_PET_ID}"]`
   };
 
   if (target === "stage") return fallback;
   if (target === "npc_almeida") return cityNpcTutorialRect("comerciante-itens") || fallback;
   if (target === "npc_zeca") return cityNpcTutorialRect("seu-zeca") || fallback;
   if (target === "npc_vendedor") return cityNpcTutorialRect("npc-vendedor") || fallback;
+  if (target === "npc_petshop") return cityNpcTutorialRect("npc-petshop") || fallback;
+  if (target === "idle_petshop_npc") return idleNpcTutorialRect("petshop-responsavel") || fallback;
+  if (target === "pet_shop_starter") return domTargetRect(selectorTargets.pet_shop_starter) || cityShopPanelTutorialRect(selectorTargets.city_shop_panel) || fallback;
   if (target === "city_shop_panel") return cityShopPanelTutorialRect(selectorTargets.city_shop_panel) || fallback;
   if (target === "portal_hideout") return cityPortalTargetRect("hideout-door") || fallback;
   if (target === "portal_assaults") return cityPortalTargetRect("assaults") || fallback;
@@ -1202,6 +1436,18 @@ function cityShopPanelTutorialRect(selector) {
 function cityNpcTutorialRect(npcId) {
   const rect = cityNpcTargetRect(npcId);
   if (!rect) return null;
+  return {
+    ...rect,
+    hideTutorialMark: activeCityNpc?.id === npcId
+  };
+}
+
+function idleNpcTutorialRect(npcId) {
+  if (!state || state.scene !== "idle") return null;
+  const npc = (state.run?.npcs || []).find((candidate) => candidate.id === npcId);
+  if (!npc) return null;
+  const height = cityNpcHeight();
+  const rect = canvasWorldTargetRect(npc.x, idleGroundY() - height - 8, 68, height + 20);
   return {
     ...rect,
     hideTutorialMark: activeCityNpc?.id === npcId
@@ -3366,6 +3612,9 @@ function openIdleNpcPanel(npc) {
   shopMode = "pets";
   pendingSellIndexes.clear();
   pendingCraftIndex = null;
+  if (npc?.id === "petshop-responsavel") {
+    dispatchPetTutorialEvent("petshop_owner_opened", { npcId: npc.id }, { render: false });
+  }
   renderAll();
 }
 
@@ -3492,17 +3741,22 @@ function openCityNpcPanel(npc) {
   pendingSellIndexes.clear();
   pendingCraftIndex = null;
   dispatchTutorialEvent("npc_opened", { npcId: npc.id }, { render: false });
+  if (npc?.id === "npc-petshop") {
+    dispatchPetTutorialEvent("petshop_city_opened", { npcId: npc.id }, { render: false });
+  }
   renderAll();
 }
 
 function renderCityShopPanel() {
   const panel = ensureCityShopPanel();
   if (!activeCityNpc) {
+    panel.classList.remove("drug-shop-panel");
     panel.classList.add("hidden");
     return;
   }
 
   panel.classList.remove("hidden");
+  panel.classList.toggle("drug-shop-panel", shopMode === "drugs");
   if (shopMode === "drugs") {
     renderDrugPanel(panel, activeCityNpc);
     return;
@@ -3621,7 +3875,10 @@ function renderPetShopPanel(panel, npc) {
     renderer.drawPetPreview(canvas, canvas.dataset.petPreview);
   });
   panel.querySelectorAll("[data-buy-pet]").forEach((button) => {
-    button.addEventListener("click", () => handlePetResult(buyPet(state.player, button.dataset.buyPet)));
+    button.addEventListener("click", () => {
+      const petId = button.dataset.buyPet;
+      handlePetResult(buyPet(state.player, petId), { action: "buy", petId });
+    });
   });
   panel.querySelectorAll("[data-equip-pet]").forEach((button) => {
     button.addEventListener("click", () => handlePetResult(equipPet(state.player, button.dataset.equipPet)));
@@ -3658,7 +3915,7 @@ function petShopRow(pet) {
 function petShopAction(pet, status, price) {
   if (status === "equipped") return `<button type="button" class="panel-action" data-unequip-pet>Desequipar</button>`;
   if (status === "owned") return `<button type="button" class="panel-action" data-equip-pet="${pet.id}">Equipar</button>`;
-  if (status === "claimable") return `<button type="button" class="panel-action" data-buy-pet="${pet.id}">Resgatar gratis</button>`;
+  if (status === "claimable") return `<button type="button" class="panel-action" data-buy-pet="${pet.id}">Adotar gratis</button>`;
   if (status === "available") return `<button type="button" class="panel-action" data-buy-pet="${pet.id}" ${state.player.money >= price ? "" : "disabled"}>${formatMoney(price)}</button>`;
   return `<button type="button" class="panel-action" disabled>Bloqueado</button>`;
 }
@@ -3982,20 +4239,25 @@ function bindShopPanel(panel) {
     renderAll();
   });
   panel.querySelector("[data-enter-petshop]")?.addEventListener("click", () => {
-    if (state.run?.mode === "temporary") {
-      showToast(temporaryStayText());
-      return;
-    }
-    closeCityShopPanel({ render: false });
-    closeCityPortalPanel({ render: false });
-    closeMaster({ render: false, force: true });
-    combat.enterIdleMap("petshop", {
-      playerX: 620,
-      logMessage: `Voce entrou em ${idleMapName("petshop")}.`,
-      returnToCity: petshopCityReturnPoint()
-    });
-    renderAll();
+    enterPetshopFromCityNpc();
   });
+}
+
+function enterPetshopFromCityNpc() {
+  if (state.run?.mode === "temporary") {
+    showToast(temporaryStayText());
+    return;
+  }
+  closeCityShopPanel({ render: false });
+  closeCityPortalPanel({ render: false });
+  closeMaster({ render: false, force: true });
+  combat.enterIdleMap("petshop", {
+    playerX: 620,
+    logMessage: `Voce entrou em ${idleMapName("petshop")}.`,
+    returnToCity: petshopCityReturnPoint()
+  });
+  dispatchPetTutorialEvent("petshop_entered", {}, { render: false });
+  renderAll();
 }
 
 function restoreTutorialNpcShopMode(npc) {
@@ -4212,8 +4474,11 @@ function handleResult(result) {
   }
 }
 
-function handlePetResult(result) {
+function handlePetResult(result, options = {}) {
   handleResult(result);
+  if ((result?.ok || starterPetOwned()) && options.action === "buy" && options.petId === STARTER_PET_ID) {
+    dispatchPetTutorialEvent("starter_pet_bought", {}, { render: false, persist: false });
+  }
   if (result?.ok) persistGame();
   renderAll();
 }
@@ -4448,6 +4713,10 @@ function normalizeState() {
   }
   normalizeProgressionSystems(state.player);
   normalizePets(state.player, { silent: true });
+  state.player.petTutorialCompleted = Boolean(state.player.petTutorialCompleted || starterPetOwned());
+  state.player.petTutorialSkipped = Boolean(state.player.petTutorialSkipped);
+  state.player.petTutorialActive = Boolean(state.player.petTutorialActive && !state.player.petTutorialCompleted && !state.player.petTutorialSkipped);
+  if (!PET_TUTORIAL_STEP_BY_ID[state.player.petTutorialStep]) state.player.petTutorialStep = state.player.petTutorialActive ? PET_TUTORIAL_FIRST_STEP : null;
   applyOfflinePassiveIncome(state);
   state.run ||= createNewGame(state.selectedPlayerId || "iris").run;
   state.run.playerDirection ||= "right";
@@ -4582,6 +4851,7 @@ function modeLabel(mode) {
     stealing: "Tentativa de roubo",
     choice: "Alvo percebeu",
     combat: "Briga em andamento",
+    fleeing: "Fugindo",
     returning: "Voltando",
     summary: "Resumo do assalto",
     "npc-test": "Teste visual"
@@ -4598,6 +4868,7 @@ function actionLabel(mode, map) {
   if (mode === "stealing") return "Chance base de roubo com bonus de equipamentos";
   if (mode === "choice") return "Escolha fugir ou brigar";
   if (mode === "combat") return `Combate idle no mapa ${map?.code || ""}`;
+  if (mode === "fleeing") return "Correndo para fora do mapa";
   if (mode === "returning") return "Voltando para o esconderijo";
   if (mode === "summary") return "Confira o loot ou repita o assalto";
   if (mode === "npc-test") return "Conferindo mapa, recorte e posicionamento dos NPCs";
