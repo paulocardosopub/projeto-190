@@ -78,6 +78,7 @@ export function createNewGame(playerId) {
       battlesStarted: 0,
       damageNumbers: [],
       itemTheftChats: [],
+      raidDogs: [],
       nearHideoutHouse: false,
       hideoutRestHint: null,
       policeTimer: 0,

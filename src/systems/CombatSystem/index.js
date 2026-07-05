@@ -23,6 +23,13 @@ const FLEE_MAX_SECONDS = 2.2;
 const POLICE_SIREN_SECONDS = 3.2;
 const CITY_SPAWN_X = 190;
 const HIDEOUT_SPAWN_X = 260;
+const RAID_DOG_ATTACK_CHANCE = 0.1;
+const RAID_DOG_TRIGGER_DISTANCE = 52;
+const RAID_DOG_ATTACK_SECONDS = 0.42;
+const RAID_DOG_HIT_AT_SECONDS = 0.2;
+const RAID_DOG_ATTACK_SPEED = 250;
+const RAID_DOG_FLEE_SPEED = 340;
+const RAID_DOG_PET_IDS = ["boxer", "doberman", "rottweiler", "cane-corso", "american-bully", "bull-terrier"];
 
 const POLICE_WARNINGS = [
   "Dessa vez ficou so no prejuizo. Na proxima, voce vai junto.",
@@ -136,6 +143,7 @@ export class CombatSystem {
       returnToCity: null,
       damageNumbers: [],
       itemTheftChats: [],
+      raidDogs: [],
       groundLoots: [],
       decorativeNpcs: [],
       summary: null,
@@ -195,6 +203,7 @@ export class CombatSystem {
       returnToCity: options.returnToCity || null,
       damageNumbers: [],
       itemTheftChats: [],
+      raidDogs: [],
       groundLoots: [],
       decorativeNpcs: decorativeNpcsForIdleMap(map.id),
       policeTimer: 0,
@@ -287,6 +296,7 @@ export class CombatSystem {
       returnToCity: null,
       damageNumbers: [],
       itemTheftChats: [],
+      raidDogs: [],
       groundLoots: [],
       decorativeNpcs: [],
       summary: null,
@@ -326,6 +336,7 @@ export class CombatSystem {
     this.state.scene = "map";
     this.state.currentMapId = map.id;
     const npcs = createNpcWave(map);
+    const raidDogs = createRaidDogs(map, npcs);
     this.state.run = {
       mode: "seeking",
       playerX: 82,
@@ -355,6 +366,7 @@ export class CombatSystem {
       returnToCity: null,
       damageNumbers: [],
       itemTheftChats: [],
+      raidDogs,
       groundLoots: [],
       decorativeNpcs: [],
       targetDropId: null,
@@ -413,6 +425,8 @@ export class CombatSystem {
 
     const map = this.currentMap();
     if (!map) return;
+
+    if (this.updateRaidDogs(dt, map)) return;
 
     run.raidTimeLeft = Math.max(0, (run.raidTimeLeft ?? 0) - dt);
     if (run.raidTimeLeft <= 0) {
@@ -844,6 +858,83 @@ export class CombatSystem {
     }
   }
 
+  updateRaidDogs(dt, map) {
+    const run = this.state.run;
+    if (!Array.isArray(run.raidDogs) || !run.raidDogs.length) return false;
+
+    const playerX = Number(run.playerX || 0);
+    let flowChanged = false;
+
+    for (const dog of run.raidDogs) {
+      if (!dog || dog.done) continue;
+      dog.x = Number.isFinite(Number(dog.x)) ? Number(dog.x) : playerX + 120;
+      dog.walkPhase = Number(dog.walkPhase || 0) + dt;
+
+      if (dog.state === "attacking") {
+        dog.direction = dog.x >= playerX ? "left" : "right";
+        dog.attackTimer = Math.max(0, Number(dog.attackTimer || 0) - dt);
+        dog.hitTimer = Math.max(0, Number(dog.hitTimer || 0) - dt);
+        dog.x += Math.sign(playerX - dog.x || (dog.direction === "right" ? 1 : -1)) * dt * RAID_DOG_ATTACK_SPEED;
+
+        if (!dog.hitApplied && dog.hitTimer <= 0) {
+          dog.hitApplied = true;
+          flowChanged = this.applyRaidDogHit(dog, map);
+          if (flowChanged) break;
+        }
+
+        if (dog.attackTimer <= 0) startRaidDogFlee(dog, playerX);
+        continue;
+      }
+
+      if (dog.state === "fleeing") {
+        dog.direction = dog.fleeDirection || "right";
+        dog.x += (dog.direction === "left" ? -1 : 1) * dt * RAID_DOG_FLEE_SPEED;
+        if (dog.x < -140 || dog.x > SPRITES.background.width + 140) dog.done = true;
+        continue;
+      }
+
+      const drift = Math.sin(dog.walkPhase * 0.9) * dt * 9;
+      dog.x = clamp(dog.x + drift, 120, SPRITES.background.width - 90);
+      if (Math.abs(drift) > 0.02) dog.direction = drift >= 0 ? "right" : "left";
+
+      if (!canRaidDogTrigger(run.mode) || dog.checked) continue;
+      if (Math.abs(playerX - dog.x) > RAID_DOG_TRIGGER_DISTANCE) continue;
+
+      dog.checked = true;
+      if (Math.random() <= RAID_DOG_ATTACK_CHANCE) {
+        startRaidDogAttack(dog, playerX);
+        addLog(this.state, "Um cachorro de guarda avancou em voce!");
+        this.hooks.onToast?.("Cachorro de guarda atacando!");
+      }
+    }
+
+    run.raidDogs = run.raidDogs.filter((dog) => dog && !dog.done);
+    return flowChanged;
+  }
+
+  applyRaidDogHit(dog, map) {
+    const player = this.state.player;
+    const run = this.state.run;
+    const damage = Math.max(1, Math.round(Number(dog.damage || averageEnemyDamage(map, run.npcs || [])) || 1));
+    player.hp = Math.max(0, Number(player.hp || 0) - damage);
+    this.pushDamageNumber(damage, run.playerX, "player");
+    this.triggerPlayerAction("hurt", 0.38);
+    addLog(this.state, `Cachorro de guarda causou ${damage} de dano.`);
+    this.hooks.onToast?.(`Cachorro de guarda: -${damage} HP.`);
+
+    if (player.hp > 0) return false;
+
+    player.hp = 0;
+    player.needsHideoutRest = true;
+    const hospitalBill = applyHospitalFee(player);
+    addLog(this.state, "Voce caiu no assalto e foi levado para o hospital.");
+    addLog(this.state, `Taxa hospitalar: R$ ${hospitalBill.charged}.`);
+    this.hooks.onToast?.("Ferimento grave. Tratamento iniciado no hospital.");
+    this.enterHospital();
+    this.hooks.onHospitalBill?.(hospitalBill);
+    return true;
+  }
+
   updatePet(dt) {
     const run = this.state.run;
     const player = this.state.player;
@@ -1238,6 +1329,61 @@ function createRaidSummary(map, totalTargets = 0) {
   };
 }
 
+function createRaidDogs(map, npcs = []) {
+  const count = Math.random() < 0.52 ? 1 : 2;
+  const damage = averageEnemyDamage(map, npcs);
+  const firstNpcX = Math.min(...npcs.map((npc) => Number(npc.x)).filter(Number.isFinite));
+  const lastNpcX = Math.max(...npcs.map((npc) => Number(npc.x)).filter(Number.isFinite));
+  const minX = Number.isFinite(firstNpcX) ? Math.max(230, firstNpcX - 120) : 310;
+  const maxX = Number.isFinite(lastNpcX) ? Math.min(SPRITES.background.width - 120, lastNpcX - 40) : 1640;
+  const span = Math.max(220, maxX - minX);
+
+  return Array.from({ length: count }, (_, index) => {
+    const lane = (index + 1) / (count + 1);
+    const jitter = randomBetween(-95, 95);
+    const x = clamp(minX + span * lane + jitter, 210, SPRITES.background.width - 110);
+    return {
+      id: `${map.id}-dog-${index}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      petId: RAID_DOG_PET_IDS[(Number(map.index || 1) + index) % RAID_DOG_PET_IDS.length],
+      x: Math.round(x),
+      direction: index % 2 === 0 ? "left" : "right",
+      state: "idle",
+      checked: false,
+      hitApplied: false,
+      damage,
+      walkPhase: Math.random() * 10
+    };
+  });
+}
+
+function averageEnemyDamage(map, npcs = []) {
+  const attacks = (npcs || [])
+    .map((npc) => createEnemyStats(npc, map).attack)
+    .filter(Number.isFinite);
+  if (attacks.length) {
+    return Math.max(1, Math.round(attacks.reduce((total, value) => total + value, 0) / attacks.length));
+  }
+  return Math.max(1, Math.round(Number(map?.enemyDamage ?? map?.danoInimigo ?? (Number(map?.index || 1) * 5 + 6))));
+}
+
+function canRaidDogTrigger(mode) {
+  return mode === "seeking" || mode === "approaching" || mode === "collectingLoot";
+}
+
+function startRaidDogAttack(dog, playerX) {
+  dog.state = "attacking";
+  dog.attackTimer = RAID_DOG_ATTACK_SECONDS;
+  dog.hitTimer = RAID_DOG_HIT_AT_SECONDS;
+  dog.hitApplied = false;
+  dog.direction = dog.x >= playerX ? "left" : "right";
+}
+
+function startRaidDogFlee(dog, playerX) {
+  dog.state = "fleeing";
+  dog.fleeDirection = dog.x >= playerX ? "right" : "left";
+  dog.direction = dog.fleeDirection;
+}
+
 function randomAlertLine() {
   return NPC_ALERT_LINES[Math.floor(Math.random() * NPC_ALERT_LINES.length)] || "O que pensa que esta fazendo?";
 }
@@ -1292,6 +1438,14 @@ function calculateStealChanceForMap(map, stats) {
 function clampWorldX(value) {
   const number = Math.round(Number(value || 120));
   return Math.max(64, Math.min(SPRITES.background.width - 64, number));
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function randomBetween(min, max) {
+  return Math.random() * (max - min) + min;
 }
 
 function cloneIdleNpcs(npcs = []) {

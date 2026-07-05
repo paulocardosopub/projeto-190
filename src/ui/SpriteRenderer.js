@@ -88,6 +88,7 @@ export class SpriteRenderer {
       );
       if (npc.alerted) this.drawSpeech(screenX, npcFeetY - visual.npcHeight - 18, npc.alertLine);
     }
+    this.drawRaidDogs(state, cameraWorld, visual);
     this.drawAmbientPets(state, cameraWorld, visual);
     this.drawItemTheftChats(state, cameraWorld, visual);
     this.drawGroundLoots(state, cameraWorld, visual);
@@ -300,6 +301,22 @@ export class SpriteRenderer {
       const direction = drift >= 0 ? "right" : "left";
       const height = visual.playerHeight * Number(pet.heightRatio || 0.55) * 0.96;
       this.drawPetSprite(pet, "walk", `ambient-${state.scene}-${state.currentMapId || "hideout"}-${pet.id}-${index}`, x, feetY, height, direction);
+    });
+  }
+
+  drawRaidDogs(state, cameraWorld, visual) {
+    if (state.scene !== "map" || !Array.isArray(state.run?.raidDogs) || !state.run.raidDogs.length) return;
+
+    const feetY = visual.groundY + visual.playerYOffset + 3;
+    state.run.raidDogs.forEach((dog, index) => {
+      if (!dog || dog.done) return;
+      const pet = getPetById(dog.petId) || getPetById("boxer");
+      if (!pet) return;
+      const x = this.worldToScreen(Number(dog.x || 0), cameraWorld);
+      if (x < -130 || x > this.canvas.width + 130) return;
+      const action = dog.state === "attacking" ? "attack" : dog.state === "idle" ? "idle" : "walk";
+      const height = visual.playerHeight * Number(pet.heightRatio || 0.55) * (dog.state === "attacking" ? 1.05 : 0.98);
+      this.drawPetSprite(pet, action, `raid-dog-${dog.id || index}`, x, feetY, height, dog.direction || "right");
     });
   }
 

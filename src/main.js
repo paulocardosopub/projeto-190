@@ -4,7 +4,7 @@ import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem } from "./systems/CombatSystem/index.js?v=police-choice-1";
+import { CombatSystem } from "./systems/CombatSystem/index.js?v=raid-dogs-1";
 import { calculateStats, calculateStealChancePercent, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -121,7 +121,7 @@ import {
 } from "./systems/StaminaSystem/index.js?v=phase1-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=icons-3";
 import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=pets-manual-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=flee-pets-1";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=raid-dogs-1";
 import {
   renderCharacterSelect,
   renderConfigWindow,
@@ -4748,6 +4748,7 @@ function normalizeState() {
   state.run.choiceTimer ||= 0;
   state.run.damageNumbers ||= [];
   state.run.itemTheftChats ||= [];
+  state.run.raidDogs ||= [];
   state.run.groundLoots ||= [];
   state.run.decorativeNpcs ||= [];
   state.run.policeTimer ||= 0;
