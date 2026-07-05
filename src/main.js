@@ -4,7 +4,7 @@ import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem } from "./systems/CombatSystem/index.js?v=raid-dogs-1";
+import { CombatSystem, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=prison-risk-1";
 import { calculateStats, calculateStealChancePercent, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -15,7 +15,7 @@ import {
   normalizeDrugInventoryItem,
   useDrugInventoryItem,
   normalizeDrugState
-} from "./systems/DrugSystem/index.js?v=drugs-2";
+} from "./systems/DrugSystem/index.js?v=drugs-3";
 import { applyHospitalFee } from "./systems/PenaltySystem/index.js?v=hospital-fee-1";
 import {
   createItem,
@@ -35,12 +35,13 @@ import {
   sellInventoryItems,
   sellNonFavoriteInventoryItems,
   unequipToInventory
-} from "./systems/InventorySystem/index.js?v=icons-3";
+} from "./systems/InventorySystem/index.js?v=inventory-filter-1";
 import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=phase1-1";
 import {
   applyProfileToState,
   createAccount,
   createGuestSession,
+  clearActiveSession,
   getActiveProfile,
   loginAccount,
   activeSessionToken,
@@ -128,7 +129,7 @@ import {
   renderInventoryWindow,
   renderVaultWindow,
   renderPanel
-} from "./ui/WindowSystem.js?v=petshop-portal-1";
+} from "./ui/WindowSystem.js?v=equipped-select-1";
 
 const elements = {
   canvas: document.querySelector("#game-canvas"),
@@ -141,6 +142,7 @@ const elements = {
   action: document.querySelector("#action-label"),
   enemy: document.querySelector("#enemy-label"),
   raidTimer: document.querySelector("#raid-timer"),
+  raidMapLabel: document.querySelector("#raid-map-label"),
   raidTimerLabel: document.querySelector("#raid-timer-label"),
   raidCountLabel: document.querySelector("#raid-count-label"),
   raidCaughtRiskLabel: document.querySelector("#raid-caught-risk-label"),
@@ -168,6 +170,7 @@ const elements = {
   choiceModal: document.querySelector("#choice-modal"),
   choiceText: document.querySelector("#choice-text"),
   choiceWarning: document.querySelector("#choice-warning"),
+  choicePrisonRisk: document.querySelector("#choice-prison-risk"),
   fleeButton: document.querySelector("#flee-button"),
   fightButton: document.querySelector("#fight-button"),
   fightAutoTimer: document.querySelector("#fight-auto-timer"),
@@ -225,6 +228,9 @@ let lastTutorialSideEffectStep = null;
 let cloudSavePending = false;
 let sessionCheckTimer = 0;
 let sessionCheckInFlight = false;
+let inventoryPointerX = 0;
+let inventoryPointerY = 0;
+let inventoryCursorGhost = null;
 
 const STAGE_HOLD_DELAY_MS = 180;
 const STAGE_HOLD_MOVE_THRESHOLD = 7;
@@ -695,6 +701,13 @@ function persistBeforeExit(event = null) {
 
 window.addEventListener("pagehide", () => persistGame({ keepalive: true }));
 window.addEventListener("beforeunload", persistBeforeExit);
+document.addEventListener("pointerdown", updateInventoryPointer);
+document.addEventListener("pointermove", updateInventoryPointer);
+function updateInventoryPointer(event) {
+  inventoryPointerX = event.clientX;
+  inventoryPointerY = event.clientY;
+  syncInventoryCursorGhost();
+}
 document.addEventListener("visibilitychange", () => {
   runGameClock(performance.now(), { render: document.visibilityState !== "hidden" });
   if (document.visibilityState === "hidden") persistGame({ keepalive: true });
@@ -850,6 +863,7 @@ function renderAll() {
   syncRaidSummary();
   renderCityShopPanel();
   renderTutorial();
+  syncInventoryCursorGhost();
 }
 
 function updateWindowLayerState() {
@@ -1616,6 +1630,7 @@ function syncHud() {
   elements.raidTimer.classList.toggle("hidden", !isRaid);
   elements.raidCaughtRiskLabel?.classList.toggle("hidden", !isRaid);
   if (isRaid) {
+    if (elements.raidMapLabel) elements.raidMapLabel.textContent = map ? `${map.code || map.index || ""} ${map.name}`.trim() : "Assalto";
     elements.raidTimerLabel.textContent = formatTime(state.run.raidTimeLeft);
     elements.raidCountLabel.textContent = `${remainingTargets(state)} / ${totalTargets(state)} alvos`;
     const caughtRisk = Math.max(0, Math.min(100, 100 - calculateStealChancePercent(map, stats)));
@@ -1935,7 +1950,27 @@ function renderInventory() {
     activeLeft,
     activeRight,
     selectInventory: (index) => {
+      state.selectedEquipmentSlot = null;
+      const selectedIndex = state.selectedInventoryIndex;
+      const selectedItem = Number.isInteger(selectedIndex) ? state.player.inventory[selectedIndex] : null;
+      if (selectedItem && selectedIndex === index) {
+        state.selectedInventoryIndex = null;
+        renderAll();
+        return;
+      }
+      if (selectedItem && selectedIndex !== index) {
+        moveItem(state.player.inventory, selectedIndex, index);
+        state.selectedInventoryIndex = null;
+        renderAll();
+        return;
+      }
       state.selectedInventoryIndex = index;
+      renderAll();
+    },
+    selectEquipment: (slot) => {
+      if (!state.player.equipment?.[slot]) return;
+      state.selectedInventoryIndex = null;
+      state.selectedEquipmentSlot = state.selectedEquipmentSlot === slot ? null : slot;
       renderAll();
     },
     toggleInventoryLock: (index) => {
@@ -1985,16 +2020,13 @@ function renderInventory() {
     filterInventory: () => {
       sortInventoryByTier(state.player);
       state.selectedInventoryIndex = null;
-      addLog(state, "Mochila filtrada por tier.");
+      state.selectedEquipmentSlot = null;
+      syncInventoryCursorGhost();
+      addLog(state, "Mochila filtrada por uso e tier.");
       renderAll();
     },
     selectBackpackPage: (page) => {
       state.backpackPage = Math.min(BACKPACK_PAGE_COUNT, Math.max(1, Number(page) || 1));
-      const pageStart = (state.backpackPage - 1) * BACKPACK_PAGE_SIZE;
-      const pageEnd = pageStart + BACKPACK_PAGE_SIZE;
-      if (state.selectedInventoryIndex < pageStart || state.selectedInventoryIndex >= pageEnd) {
-        state.selectedInventoryIndex = null;
-      }
       renderAll();
     },
     sellSelected: () => {
@@ -2284,62 +2316,71 @@ function handleFactionResult(result) {
 
 function renderConfigPanel(container) {
   renderConfigWindow(container, state, {
+    account: {
+      isLoggedIn: Boolean(activeProfile?.id),
+      isGuest: Boolean(activeProfile?.isGuest || state.player?.isGuest),
+      displayName: activeProfile?.displayName || state.player?.displayName || "",
+      username: activeProfile?.username || state.player?.username || ""
+    },
     close: closeRight,
     save: () => {
       if (state.settings.visualPreview) {
         saveVisualCalibration(state.settings.visual);
-        showToast("Calibracao visual salva para o jogo.");
-        return;
       }
       persistGame();
-      showToast("Jogo salvo.");
+      showToast("Salvamento forcado.");
     },
-    toggleSound: () => {
-      state.settings.sound = !state.settings.sound;
-      renderAll();
+    createAccount: (event) => {
+      event.preventDefault();
+      createAccountFromConfig(new FormData(event.currentTarget));
     },
-    toggleMusic: () => {
-      state.settings.music = !state.settings.music;
-      renderAll();
-    },
-    reset: () => {
-      if (activeProfile?.id) {
-        clearProfileSave(activeProfile.id);
-        activeProfile = updateProfile(activeProfile.id, { characterId: null }) || activeProfile;
-      } else {
-        clearSave();
-      }
-      state = null;
-      closeMaster({ render: false });
-      showToast("Novo jogo: escolha seu personagem.");
-      showCharacterSelection("new");
-    },
-    updateOnlineProvider: (provider) => {
-      state.settings.onlineProvider = provider === "local" ? "local" : "supabase";
-      online?.disconnect();
-      persistGame();
-      renderAll();
-    },
-    updateOnlineSetting: (key, value) => {
-      if (!["supabaseUrl", "supabaseKey", "onlineUrl"].includes(key)) return;
-      state.settings[key] = String(value || "").trim();
-      persistGame();
-    },
-    updateVisual: (key, value) => {
-      updateVisualSetting(key, value);
-      const input = container.querySelector(`[data-visual-control="${key}"]`);
-      input?.closest(".range-control")?.querySelector("strong").replaceChildren(String(value));
-      renderer.draw(state, playerRow());
-    },
-    previewMap: (mapId) => {
-      activeRight = "configs";
-      startRaid(mapId, { keepMenus: true });
-    },
-    previewPlayer: (playerId) => {
-      state.selectedPlayerId = playerId;
-      renderAll();
+    logout: () => {
+      disconnectActiveAccount("Conta desconectada.");
     }
   });
+}
+
+async function createAccountFromConfig(formData) {
+  if (!state?.player) return;
+  const result = await createAccount(Object.fromEntries(formData.entries()));
+  if (!result.ok) {
+    showToast(result.reason);
+    return;
+  }
+
+  activeProfile = result.profile;
+  const displayName = state.player.displayName || activeProfile.displayName || activeProfile.username || "";
+  activeProfile = updateProfile(activeProfile.id, {
+    displayName,
+    characterId: state.selectedPlayerId || state.player.characterId || null,
+    factionId: state.player.factionId || null
+  }) || activeProfile;
+  applyProfileToState(state, activeProfile);
+  persistGame();
+  online?.disconnect();
+  if (!state.settings.visualPreview) online?.connect();
+  showToast("Conta criada e progresso salvo.");
+  renderAll();
+}
+
+function disconnectActiveAccount(message) {
+  persistGame({ keepalive: true });
+  clearActiveSession();
+  online?.disconnect();
+  combat = null;
+  online = null;
+  state = null;
+  activeProfile = null;
+  activeCenter = false;
+  activeLeft = null;
+  activeRight = null;
+  syncInventoryCursorGhost();
+  document.body.classList.add("auth-pending");
+  elements.inventoryWindow.classList.add("hidden");
+  elements.leftWindow.classList.add("hidden");
+  elements.rightWindow.classList.add("hidden");
+  elements.configWindow.classList.add("hidden");
+  showAuthScreen("home", message);
 }
 
 function openMaster() {
@@ -3970,6 +4011,11 @@ function handleInventoryDrugUse(index) {
   }
 
   state.selectedInventoryIndex = null;
+  if (result.badDrugHospital) {
+    handleDrugHospital(result, "ish... usou coisa zoada?");
+    return;
+  }
+
   addLog(state, result.message);
   showToast(result.message);
   if (result.died) {
@@ -3983,11 +4029,16 @@ function handleInventoryDrugUse(index) {
 }
 
 function handleDrugDeath(result) {
+  handleDrugHospital(result, `${result.drug.name}: voce apagou e foi levado para o hospital.`);
+}
+
+function handleDrugHospital(result, message) {
   const bill = applyHospitalFee(state.player);
   state.player.hp = 0;
   state.player.needsHideoutRest = true;
-  addLog(state, `${result.drug.name}: voce apagou e foi levado para o hospital.`);
+  addLog(state, message);
   addLog(state, `Taxa hospitalar: ${formatMoney(bill.charged || 0)}.`);
+  showToast(message);
   closeCityShopPanel({ render: false });
   closeMaster({ render: false, force: true });
   combat.enterHospital();
@@ -4456,14 +4507,15 @@ function cityNpcHeight() {
 
 function showChoice(target) {
   elements.choiceText.textContent = `${target.name}: "${target.alertLine || "O que pensa que esta fazendo?"}"`;
-  const nextFightNumber = (state.run?.battlesStarted || 0) + 1;
-  elements.choiceWarning?.classList.toggle("hidden", nextFightNumber < 2);
+  const prisonChance = policePrisonChanceForFight(state.run?.battlesStarted || 0);
+  elements.choiceWarning?.classList.toggle("hidden", prisonChance <= 0);
   elements.choiceModal.classList.remove("hidden");
   syncChoiceTimer();
 }
 
 function hideChoice() {
   elements.choiceWarning?.classList.add("hidden");
+  elements.choicePrisonRisk?.classList.remove("danger");
   elements.choiceModal.classList.add("hidden");
 }
 
@@ -4472,6 +4524,14 @@ function syncChoiceTimer() {
   const seconds = Math.max(0, Math.ceil(Number(state?.run?.choiceTimer || 0)));
   elements.fightAutoTimer.textContent = `Auto em ${seconds}s`;
   elements.fightButton?.classList.toggle("auto-soon", seconds <= 2);
+  syncChoicePrisonRisk();
+}
+
+function syncChoicePrisonRisk() {
+  if (!elements.choicePrisonRisk) return;
+  const chance = policePrisonChanceForFight(state?.run?.battlesStarted || 0) * 100;
+  elements.choicePrisonRisk.textContent = `Chance de ir preso: ${formatPercent(chance)}`;
+  elements.choicePrisonRisk.classList.toggle("danger", chance > 0);
 }
 
 function handleResult(result) {
@@ -4610,6 +4670,52 @@ function remainingTargets(sourceState = state) {
 
 function totalTargets(sourceState = state) {
   return sourceState.run?.summary?.targetsTotal || sourceState.run?.npcs?.length || 0;
+}
+
+function syncInventoryCursorGhost() {
+  const item = activeCenter && !state?.selectedEquipmentSlot && Number.isInteger(state?.selectedInventoryIndex)
+    ? state.player?.inventory?.[state.selectedInventoryIndex]
+    : null;
+
+  if (!item) {
+    inventoryCursorGhost?.remove();
+    inventoryCursorGhost = null;
+    document.body.classList.remove("inventory-carrying-item");
+    return;
+  }
+
+  if (!inventoryCursorGhost) {
+    inventoryCursorGhost = document.createElement("div");
+    inventoryCursorGhost.className = "inventory-cursor-ghost";
+    inventoryCursorGhost.setAttribute("aria-hidden", "true");
+    document.body.appendChild(inventoryCursorGhost);
+  }
+
+  inventoryCursorGhost.className = `inventory-cursor-ghost gear-square ${inventoryTierClass(item)}`;
+  inventoryCursorGhost.innerHTML = `
+    ${inventoryGhostIcon(item)}
+    <small>${inventoryTierLabel(item)}</small>
+  `;
+  inventoryCursorGhost.style.left = `${inventoryPointerX + 14}px`;
+  inventoryCursorGhost.style.top = `${inventoryPointerY + 14}px`;
+  document.body.classList.add("inventory-carrying-item");
+}
+
+function inventoryGhostIcon(item) {
+  if (item?.iconPath) {
+    return `<img class="gear-icon-image" src="${escapeHtml(item.iconPath)}" alt="" draggable="false">`;
+  }
+  return `<span class="gear-glyph icon-${escapeHtml(item?.slot || "weapon")}" aria-hidden="true"></span>`;
+}
+
+function inventoryTierClass(item) {
+  const tier = Math.max(1, Math.min(4, Number(item?.tier) || 1));
+  return `rarity-${item?.rarity || "comum"} tier-${tier}`;
+}
+
+function inventoryTierLabel(item) {
+  if (item?.slot === "drug") return "uso";
+  return `t${Math.max(1, Math.min(4, Number(item?.tier) || 1))}`;
 }
 
 function playerRow() {

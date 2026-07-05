@@ -363,6 +363,8 @@ function bestItem(items, slot, used) {
 }
 
 function compareInventoryItems(a, b) {
+  const groupDiff = inventorySortGroup(a) - inventorySortGroup(b);
+  if (groupDiff) return groupDiff;
   const rarityDiff = RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity);
   if (rarityDiff) return rarityDiff;
   const tierDiff = Number(b.tier || 0) - Number(a.tier || 0);
@@ -370,4 +372,21 @@ function compareInventoryItems(a, b) {
   const powerDiff = itemPower(b) - itemPower(a);
   if (powerDiff) return powerDiff;
   return String(a.name || "").localeCompare(String(b.name || ""));
+}
+
+function inventorySortGroup(item) {
+  return isUseOrUtilityItem(item) ? 0 : 1;
+}
+
+function isUseOrUtilityItem(item) {
+  const slot = String(item?.slot || "").toLowerCase();
+  const label = String(item?.slotLabel || item?.category || item?.type || "").toLowerCase();
+  return (
+    slot === "drug" ||
+    slot === "utility" ||
+    slot === "util" ||
+    slot === "consumable" ||
+    label.includes("util") ||
+    label.includes("uso")
+  );
 }

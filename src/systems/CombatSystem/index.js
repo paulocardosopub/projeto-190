@@ -1101,10 +1101,7 @@ export class CombatSystem {
   }
 
   shouldTriggerPoliceBeforeFight() {
-    const battlesStarted = this.state.run.battlesStarted || 0;
-    if (battlesStarted < POLICE_RISK_STARTS_AFTER_FIGHTS) return false;
-    const chance = Math.min(1, (battlesStarted - POLICE_RISK_STARTS_AFTER_FIGHTS + 1) * 0.1);
-    return Math.random() < chance;
+    return Math.random() < policePrisonChanceForFight(this.state.run.battlesStarted || 0);
   }
 
   triggerPoliceConfiscation() {
@@ -1327,6 +1324,12 @@ function createRaidSummary(map, totalTargets = 0) {
     finished: false,
     finishedAt: null
   };
+}
+
+export function policePrisonChanceForFight(battlesStarted = 0) {
+  const count = Math.max(0, Number(battlesStarted || 0));
+  if (count < POLICE_RISK_STARTS_AFTER_FIGHTS) return 0;
+  return Math.min(1, (count - POLICE_RISK_STARTS_AFTER_FIGHTS + 1) * 0.1);
 }
 
 function createRaidDogs(map, npcs = []) {

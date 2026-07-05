@@ -24,6 +24,7 @@ export const DRUG_BALANCE = {
 };
 
 const DRUG_ITEM_PREFIX = "drug-";
+const BAD_DRUG_HOSPITAL_CHANCE = 0.05;
 let drugUidCounter = 1;
 
 export const DRUG_ITEMS = [
@@ -162,6 +163,8 @@ export function applyDrugEffect(player, drugId, stats, now = Date.now()) {
   const abuseTriggered = drugState.useHistory.length >= DRUG_BALANCE.abuseUseLimit;
   if (abuseTriggered) drugState.blockUntil = now + DRUG_BALANCE.abuseBlockMs;
 
+  const badDrugHospital = Math.random() < BAD_DRUG_HOSPITAL_CHANCE;
+  if (badDrugHospital) player.hp = 0;
   const died = player.hp <= 0;
   const effects = {
     hpDelta,
@@ -177,8 +180,9 @@ export function applyDrugEffect(player, drugId, stats, now = Date.now()) {
     drug,
     effects,
     died,
+    badDrugHospital,
     abuseTriggered,
-    message: drugUseMessage(drug, effects, abuseTriggered)
+    message: badDrugHospital ? "ish... usou coisa zoada?" : drugUseMessage(drug, effects, abuseTriggered)
   };
 }
 

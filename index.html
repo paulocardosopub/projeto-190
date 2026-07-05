@@ -117,7 +117,7 @@
       return checkVersion();
     })();
   </script>
-  <link rel="stylesheet" href="./styles.css?v=cache-check-3">
+  <link rel="stylesheet" href="./styles.css?v=cache-check-6">
   <title>Projeto 190</title>
   <script>
     const bootParams = new URLSearchParams(window.location.search);
@@ -174,6 +174,7 @@
           </div>
           <div class="raid-timer hidden" id="raid-timer">
             <span>Tempo</span>
+            <b class="raid-map-label" id="raid-map-label">Mapa</b>
             <strong id="raid-timer-label">01:00</strong>
             <small id="raid-count-label">0 / 0 alvos</small>
             <small id="raid-caught-risk-label">Ser pego: 0%</small>
@@ -266,6 +267,7 @@
       <span class="eyebrow">Roubo falhou</span>
       <h2 id="choice-title">"O que pensa que esta fazendo?"</h2>
       <p id="choice-text">O alvo percebeu a tentativa.</p>
+      <p class="choice-prison-risk" id="choice-prison-risk">Chance de ir preso: 0%</p>
       <p class="choice-warning hidden" id="choice-warning">Caso você seja pego novamente poderá ir preso, tem certeza?</p>
       <div class="modal-actions">
         <button class="secondary-action" id="flee-button">Fugir</button>
@@ -295,6 +297,6 @@
   <div class="death-flash hidden" id="death-flash" aria-hidden="true"></div>
 
   <script src="./src/config/publicOnlineConfig.js?v=cache-check-1"></script>
-  <script type="module" src="./src/main.js?v=cache-check-5"></script>
+  <script type="module" src="./src/main.js?v=cache-check-11"></script>
 </body>
 </html>

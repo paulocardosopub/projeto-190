@@ -28,9 +28,12 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
     item: pageItems[offset] || null,
     index: pageStart + offset
   }));
-  const selectedItem = Number.isInteger(state.selectedInventoryIndex)
+  const selectedEquipmentSlot = state.selectedEquipmentSlot || null;
+  const selectedInventoryItem = Number.isInteger(state.selectedInventoryIndex)
     ? player.inventory[state.selectedInventoryIndex]
     : null;
+  const selectedEquipmentItem = selectedEquipmentSlot ? player.equipment?.[selectedEquipmentSlot] : null;
+  const selectedItem = selectedInventoryItem || selectedEquipmentItem;
 
   container.innerHTML = `
     ${windowHeader("Equipamento/Mochila", "inventory", { config: true, pets: true })}
@@ -38,7 +41,7 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
       <div class="equipment-compact">
         <div class="equipment-summary">
           <div class="slot-list compact-slots">
-            ${EQUIPMENT_SLOTS.map((slot) => slotTemplate(slot, player.equipment[slot])).join("")}
+            ${EQUIPMENT_SLOTS.map((slot) => slotTemplate(slot, player.equipment[slot], null, selectedEquipmentSlot)).join("")}
           </div>
           <div class="mini-profile">
             <canvas id="inventory-avatar" width="72" height="86"></canvas>
@@ -126,6 +129,10 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
   });
 
   container.querySelectorAll(".slot").forEach((slot) => {
+    slot.addEventListener("click", () => {
+      if (slot.classList.contains("tier-empty")) return;
+      callbacks.selectEquipment?.(slot.dataset.slot);
+    });
     slot.addEventListener("dragover", (event) => event.preventDefault());
     slot.addEventListener("drop", (event) => {
       event.preventDefault();
@@ -323,93 +330,45 @@ export function renderPanel(container, type, state, renderer, callbacks) {
 }
 
 export function renderConfigWindow(container, state, callbacks) {
-  const visual = state.settings.visual || {};
-  const preview = previewVisualValues(state, visual);
+  const account = callbacks.account || {};
+  const isGuest = Boolean(account.isGuest ?? state.player?.isGuest);
+  const isLoggedIn = Boolean(account.isLoggedIn ?? state.player?.playerId);
+  const accountName = account.displayName || account.username || state.player?.displayName || state.player?.username || "jogador";
   container.innerHTML = `
     ${windowHeader("Configs", "configs")}
     <div class="window-body">
-      ${state.player?.isGuest ? `
+      ${isGuest ? `
         <section class="guest-warning-panel">
-          Voce esta jogando sem login. Seu progresso pode ser perdido.
+          Voce esta jogando sem login. Crie uma conta para proteger seu progresso.
         </section>
       ` : ""}
-      <div class="inventory-tools">
-        <button class="panel-action" id="config-save">Salvar</button>
-        <button class="panel-action" id="config-reset">Novo jogo</button>
-      </div>
-      <section class="online-config-panel">
-        <span class="eyebrow">Servidor online</span>
-        <div class="online-provider-tabs">
-          <button type="button" class="item-action ${state.settings.onlineProvider !== "local" ? "active" : ""}" data-online-provider="supabase">Nuvem</button>
-          <button type="button" class="item-action ${state.settings.onlineProvider === "local" ? "active" : ""}" data-online-provider="local">Local</button>
-        </div>
-        <label>
-          <span>URL do servidor</span>
-          <input data-online-setting="supabaseUrl" value="${escapeAttribute(state.settings.supabaseUrl || "")}" placeholder="https://servidor-online">
-        </label>
-        <label>
-          <span>Chave do servidor</span>
-          <input data-online-setting="supabaseKey" value="${escapeAttribute(state.settings.supabaseKey || "")}" placeholder="chave publica do servidor">
-        </label>
-        <label>
-          <span>WebSocket local</span>
-          <input data-online-setting="onlineUrl" value="${escapeAttribute(state.settings.onlineUrl || "ws://localhost:4191")}" placeholder="ws://localhost:4191">
-        </label>
+      <section class="account-config-panel">
+        <span class="eyebrow">Conta</span>
+        ${isGuest ? `
+          <form class="account-create-form" data-config-create-account>
+            <label><span>Usuario</span><input name="username" autocomplete="username"></label>
+            <label><span>Senha</span><input name="password" type="password" autocomplete="new-password"></label>
+            <label><span>Confirmar senha</span><input name="confirmation" type="password" autocomplete="new-password"></label>
+            <button type="submit" class="panel-action">Criar conta</button>
+          </form>
+        ` : isLoggedIn ? `
+          <p>Conectado como <strong>${escapeHtml(accountName)}</strong>.</p>
+          <button type="button" class="panel-action" data-config-logout>Desconectar</button>
+        ` : `
+          <p>Preview local sem conta conectada.</p>
+        `}
       </section>
-      ${state.settings.visualPreview ? `
-        <section class="log-panel visual-tuner">
-          <h3>Ajuste visual do mapa</h3>
-          <p class="tuner-note">Esses controles existem so no preview. O jogo normal usa o ajuste salvo, sem mostrar este menu.</p>
-          <div class="tuner-group">
-            <span class="eyebrow">Mapa</span>
-            <div class="tuner-buttons">
-              ${MAPS.map((map) => `
-                <button class="item-action ${state.currentMapId === map.id ? "active" : ""}" data-preview-map="${map.id}">
-                  ${map.code}
-                </button>
-              `).join("")}
-            </div>
-          </div>
-          <div class="tuner-group">
-            <span class="eyebrow">Personagem</span>
-            <div class="tuner-buttons">
-              ${PLAYERS.map((player) => `
-                <button class="item-action ${state.selectedPlayerId === player.id ? "active" : ""}" data-preview-player="${player.id}">
-                  ${player.name}
-                </button>
-              `).join("")}
-            </div>
-          </div>
-          ${rangeControl("playerHeight", "Tamanho do player", preview.playerHeight, 48, 130)}
-          ${rangeControl("npcHeight", "Tamanho dos NPCs", preview.npcHeight, 48, 145)}
-          ${rangeControl("groundY", `Chao deste mapa (${preview.mapLabel})`, preview.groundY, 190, 298)}
-          ${rangeControl("playerYOffset", "Ajuste vertical do player", preview.playerYOffset, -40, 40)}
-          ${rangeControl("npcYOffset", "Ajuste vertical dos NPCs", preview.npcYOffset, -40, 40)}
-          ${rangeControl("cameraLead", "Distancia da camera", preview.cameraLead, 120, 520)}
-        </section>
-      ` : ""}
+      <div class="inventory-tools">
+        <button class="panel-action primary-action" id="config-save">Forcar salvamento</button>
+      </div>
     </div>
   `;
 
   bindClose(container, callbacks.close);
   attachScrollControls(container);
-  container.querySelector("#config-save").addEventListener("click", callbacks.save);
-  container.querySelector("#config-reset").addEventListener("click", callbacks.reset);
-  container.querySelectorAll("[data-online-provider]").forEach((button) => {
-    button.addEventListener("click", () => callbacks.updateOnlineProvider(button.dataset.onlineProvider));
-  });
-  container.querySelectorAll("[data-online-setting]").forEach((input) => {
-    input.addEventListener("change", () => callbacks.updateOnlineSetting(input.dataset.onlineSetting, input.value));
-  });
-  container.querySelectorAll("[data-visual-control]").forEach((input) => {
-    input.addEventListener("input", () => callbacks.updateVisual(input.dataset.visualControl, Number(input.value)));
-  });
-  container.querySelectorAll("[data-preview-map]").forEach((button) => {
-    button.addEventListener("click", () => callbacks.previewMap(button.dataset.previewMap));
-  });
-  container.querySelectorAll("[data-preview-player]").forEach((button) => {
-    button.addEventListener("click", () => callbacks.previewPlayer(button.dataset.previewPlayer));
-  });
+  container.querySelector("#config-save")?.addEventListener("click", callbacks.save);
+  container.querySelector("[data-config-create-account]")?.addEventListener("submit", callbacks.createAccount);
+  container.querySelector("[data-config-logout]")?.addEventListener("click", callbacks.logout);
 }
 
 export function renderCharacterSelect(container, renderer, onSelect) {
@@ -791,12 +750,13 @@ function masterTab(id, label, activeLeft, activeRight) {
   return `<button type="button" class="master-tab${active}" data-master-tab="${id}">${label}</button>`;
 }
 
-function slotTemplate(slot, item, accessoryIndex = null) {
+function slotTemplate(slot, item, accessoryIndex = null, selectedSlot = null) {
   const label = slot === "accessory"
     ? `${SLOT_LABELS[slot]} ${accessoryIndex + 1}`
     : SLOT_LABELS[slot];
+  const selected = selectedSlot === slot ? " selected" : "";
   return `
-    <div class="slot gear-square ${item ? tierClass(item) : "tier-empty"}" title="${item ? `${label}: ${item.name}` : `${label}: Vazio`}" data-slot="${slot}" ${accessoryIndex !== null ? `data-accessory-index="${accessoryIndex}"` : ""}>
+    <div class="slot gear-square${selected} ${item ? tierClass(item) : "tier-empty"}" title="${item ? `${label}: ${item.name}` : `${label}: Vazio`}" data-slot="${slot}" ${accessoryIndex !== null ? `data-accessory-index="${accessoryIndex}"` : ""}>
       ${gearIcon(item || slot)}
       <small>${item ? tierLabel(item) : shortSlotLabel(slot, accessoryIndex)}</small>
     </div>
