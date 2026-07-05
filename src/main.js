@@ -35,7 +35,7 @@ import {
   sellInventoryItems,
   sellNonFavoriteInventoryItems,
   unequipToInventory
-} from "./systems/InventorySystem/index.js?v=inventory-filter-1";
+} from "./systems/InventorySystem/index.js?v=inventory-filter-2";
 import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=phase1-1";
 import {
   applyProfileToState,
@@ -119,8 +119,8 @@ import {
   staminaPercent,
   staminaState,
   updatePassiveIncome
-} from "./systems/StaminaSystem/index.js?v=phase1-1";
-import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=icons-3";
+} from "./systems/StaminaSystem/index.js?v=asset-lock-1";
+import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=asset-lock-1";
 import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=pets-manual-1";
 import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=raid-dogs-1";
 import {
@@ -129,7 +129,7 @@ import {
   renderInventoryWindow,
   renderVaultWindow,
   renderPanel
-} from "./ui/WindowSystem.js?v=equipped-select-1";
+} from "./ui/WindowSystem.js?v=asset-lock-1";
 
 const elements = {
   canvas: document.querySelector("#game-canvas"),
@@ -4462,7 +4462,6 @@ function assetShopRow(asset, type) {
       ? state.player.carroAtual === asset.tier
       : state.player.terrenoAtual === asset.tier;
   const unlocked = canUnlockAsset(state.player, asset);
-  const missingLand = (type === "house" || type === "car") && !playerHasOwnedLand();
   const action = type === "house" ? "data-buy-house" : type === "car" ? "data-buy-car" : "data-buy-land";
   const expected = expectedTutorialAssetPurchase(state);
   const isTutorialTarget = expected?.type === type && expected?.tier === asset.tier;
@@ -4473,7 +4472,7 @@ function assetShopRow(asset, type) {
       <div>
         <h3>T${asset.tier} ${asset.name}</h3>
         <p>${assetStatsText(asset, type)}</p>
-        <small>${missingLand ? "Voce precisa de um terreno mocado antes." : unlocked ? "Disponivel" : assetRequirementText(asset)}</small>
+        <small>${unlocked ? "Disponivel" : assetRequirementText(asset, state.player)}</small>
       </div>
       <button type="button" class="panel-action" ${action}="${asset.tier}" ${disabled ? "disabled" : ""}>
         ${active && isTutorialTarget ? "Confirmar" : active ? "Ativo" : owned ? "Ativar" : formatMoney(asset.price)}

@@ -12,8 +12,8 @@ import {
   getStaminaRechargeCost,
   staminaPercent,
   staminaState
-} from "../systems/StaminaSystem/index.js?v=phase1-1";
-import { getCarConfig, getHouseConfig, getLandConfig } from "../data/balance/index.js?v=phase1-1";
+} from "../systems/StaminaSystem/index.js?v=asset-lock-1";
+import { getCarConfig, getHouseConfig, getLandConfig } from "../data/balance/index.js?v=asset-lock-1";
 
 const BACKPACK_PAGE_SIZE = 36;
 const BACKPACK_PAGE_COUNT = 4;

@@ -7,7 +7,7 @@ import {
   housesConfig,
   passiveIncomeConfig,
   staminaConfig
-} from "../../data/balance/index.js?v=phase1-1";
+} from "../../data/balance/index.js?v=asset-lock-1";
 
 export function normalizeProgressionSystems(player) {
   player.staminaMax = calculateStaminaMax(player);
@@ -123,7 +123,7 @@ export function buyHouse(player, tier) {
   const house = getHouseConfig(tier);
   if (!house) return { ok: false, reason: "Casa nao encontrada." };
   if (!hasOwnedLand(player)) return { ok: false, reason: "Voce precisa de um terreno mocado antes." };
-  if (!canUnlockAsset(player, house)) return { ok: false, reason: assetRequirementText(house) };
+  if (!canUnlockAsset(player, house)) return { ok: false, reason: assetRequirementText(house, player) };
   if (player.ownedHouses.includes(house.tier)) return activateHouse(player, house.tier);
   if (player.money < house.price) return { ok: false, reason: "Moedas insuficientes para comprar essa casa." };
 
@@ -140,7 +140,7 @@ export function buyCar(player, tier) {
   const car = getCarConfig(tier);
   if (!car) return { ok: false, reason: "Carro nao encontrado." };
   if (!hasOwnedLand(player)) return { ok: false, reason: "Voce precisa de um terreno mocado antes." };
-  if (!canUnlockAsset(player, car)) return { ok: false, reason: assetRequirementText(car) };
+  if (!canUnlockAsset(player, car)) return { ok: false, reason: assetRequirementText(car, player) };
   if (player.ownedCars.includes(car.tier)) return activateCar(player, car.tier);
   if (player.money < car.price) return { ok: false, reason: "Moedas insuficientes para comprar esse carro." };
 
@@ -155,7 +155,7 @@ export function buyCar(player, tier) {
 export function buyLand(player, tier) {
   const land = getLandConfig(tier);
   if (!land) return { ok: false, reason: "Terreno nao encontrado." };
-  if (!canUnlockAsset(player, land)) return { ok: false, reason: assetRequirementText(land) };
+  if (!canUnlockAsset(player, land)) return { ok: false, reason: assetRequirementText(land, player) };
   if (player.terrenosComprados.includes(land.tier)) return activateLand(player, land.tier);
   if (player.money < land.price) return { ok: false, reason: "Moedas insuficientes para comprar esse terreno." };
 
@@ -192,7 +192,11 @@ export function activateLand(player, tier) {
 }
 
 export function canUnlockAsset(player, asset) {
-  return (player.highestMapUnlocked || 1) >= asset.requiredMap && (player.level || 1) >= asset.requiredLevel;
+  return (
+    (player.highestMapUnlocked || 1) >= asset.requiredMap &&
+    (player.level || 1) >= asset.requiredLevel &&
+    hasRequiredLandTier(player, asset)
+  );
 }
 
 export function getPassiveIncomePerMinute(player) {
@@ -257,7 +261,10 @@ export function landOptions() {
   return hideoutLandConfig;
 }
 
-export function assetRequirementText(asset) {
+export function assetRequirementText(asset, player = null) {
+  if (player && !hasRequiredLandTier(player, asset)) {
+    return `Bloqueado: compre um terreno T${asset.requiredLandTier} ou superior.`;
+  }
   return `Bloqueado: alcance o Mapa ${asset.requiredMap} e Nivel ${asset.requiredLevel}.`;
 }
 
@@ -275,4 +282,10 @@ function highestUnlockedLandTier(player) {
 
 function hasOwnedLand(player) {
   return Array.isArray(player.terrenosComprados) && player.terrenosComprados.length > 0;
+}
+
+function hasRequiredLandTier(player, asset) {
+  const requiredTier = Number(asset?.requiredLandTier || 0);
+  if (!requiredTier) return true;
+  return (player.terrenosComprados || []).some((tier) => Number(tier) >= requiredTier);
 }

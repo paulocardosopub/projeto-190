@@ -478,21 +478,24 @@ const unlockRequirements = [
   { tier: 9, requiredMap: 24, requiredLevel: 150 }
 ];
 
+const requiredLandByAssetTier = [1, 2, 2, 3, 4, 4, 5, 6, 6];
+
 export const housesConfig = [
   ["Barraca de Camping", 0, 5, 10, 0.5, 1],
-  ["Barraco de Madeira", 7500, 20, 25, 0.8, 0.95],
-  ["Casa Simples", 30000, 75, 45, 1.2, 0.9],
-  ["Casa de Alvenaria", 150000, 250, 70, 1.7, 0.85],
-  ["Sobrado Urbano", 750000, 850, 100, 2.3, 0.8],
-  ["Casa Moderna com Garagem", 3500000, 2800, 135, 3, 0.75],
-  ["Casa Premium com Piscina", 15000000, 8000, 175, 4, 0.7],
-  ["Mansao de Luxo", 60000000, 22000, 220, 5.2, 0.65],
-  ["Mansao de Vidro Blindada", 200000000, 55000, 280, 6.8, 0.6]
+  ["Barraco de Madeira", 85000, 20, 25, 0.8, 0.95],
+  ["Casa Simples", 180000, 75, 45, 1.2, 0.9],
+  ["Casa de Alvenaria", 900000, 250, 70, 1.7, 0.85],
+  ["Sobrado Urbano", 6500000, 850, 100, 2.3, 0.8],
+  ["Casa Moderna com Garagem", 14000000, 2800, 135, 3, 0.75],
+  ["Casa Premium com Piscina", 55000000, 8000, 175, 4, 0.7],
+  ["Mansao de Luxo", 220000000, 22000, 220, 5.2, 0.65],
+  ["Mansao de Vidro Blindada", 480000000, 55000, 280, 6.8, 0.6]
 ].map(([name, price, passiveIncomePerMinute, staminaMaxBonus, staminaRegenBonus, rechargeMultiplier], index) => ({
   id: `house-t${index + 1}`,
   tier: index + 1,
   name,
   price,
+  requiredLandTier: requiredLandByAssetTier[index],
   passiveIncomePerMinute,
   staminaMaxBonus,
   staminaRegenBonus,
@@ -502,19 +505,20 @@ export const housesConfig = [
 
 export const carsConfig = [
   ["Carroca de Madeira", 0, 3, 0.3],
-  ["Charrete Simples", 5000, 12, 0.6],
-  ["Fusca Velho", 25000, 45, 1],
-  ["Hatch Popular", 120000, 150, 1.5],
-  ["Sedan Arrumado", 600000, 500, 2.1],
-  ["Caminhonete Reforcada", 2500000, 1800, 2.8],
-  ["SUV Blindada", 10000000, 5000, 3.5],
-  ["Esportivo Importado", 45000000, 14000, 4.3],
-  ["Lamborghini 190", 150000000, 35000, 5]
+  ["Charrete Simples", 65000, 12, 0.6],
+  ["Fusca Velho", 150000, 45, 1],
+  ["Hatch Popular", 750000, 150, 1.5],
+  ["Sedan Arrumado", 5200000, 500, 2.1],
+  ["Caminhonete Reforcada", 11500000, 1800, 2.8],
+  ["SUV Blindada", 42000000, 5000, 3.5],
+  ["Esportivo Importado", 175000000, 14000, 4.3],
+  ["Lamborghini 190", 360000000, 35000, 5]
 ].map(([name, price, passiveIncomePerMinute, furtoBonus], index) => ({
   id: `car-t${index + 1}`,
   tier: index + 1,
   name,
   price,
+  requiredLandTier: requiredLandByAssetTier[index],
   passiveIncomePerMinute,
   furtoBonus,
   ...unlockRequirements[index]

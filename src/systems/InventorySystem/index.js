@@ -8,6 +8,11 @@ import {
 import { itemPower } from "../EquipmentSystem/index.js";
 
 let uidCounter = 1;
+const INVENTORY_SLOT_ORDER = {
+  weapon: 0,
+  body: 1,
+  hands: 2
+};
 
 export function createItem(baseId) {
   const base = getEquipmentById(baseId);
@@ -365,10 +370,12 @@ function bestItem(items, slot, used) {
 function compareInventoryItems(a, b) {
   const groupDiff = inventorySortGroup(a) - inventorySortGroup(b);
   if (groupDiff) return groupDiff;
-  const rarityDiff = RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity);
-  if (rarityDiff) return rarityDiff;
+  const slotDiff = inventorySlotOrder(a) - inventorySlotOrder(b);
+  if (slotDiff) return slotDiff;
   const tierDiff = Number(b.tier || 0) - Number(a.tier || 0);
   if (tierDiff) return tierDiff;
+  const rarityDiff = RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity);
+  if (rarityDiff) return rarityDiff;
   const powerDiff = itemPower(b) - itemPower(a);
   if (powerDiff) return powerDiff;
   return String(a.name || "").localeCompare(String(b.name || ""));
@@ -376,6 +383,10 @@ function compareInventoryItems(a, b) {
 
 function inventorySortGroup(item) {
   return isUseOrUtilityItem(item) ? 0 : 1;
+}
+
+function inventorySlotOrder(item) {
+  return INVENTORY_SLOT_ORDER[item?.slot] ?? 99;
 }
 
 function isUseOrUtilityItem(item) {

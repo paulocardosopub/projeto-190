@@ -1592,16 +1592,16 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 
 .gear-square small {
   position: absolute;
-  left: 2px;
-  top: 2px;
+  left: 1px;
+  top: 1px;
   z-index: 4;
-  min-width: 18px;
-  padding: 2px 3px 1px;
+  min-width: 15px;
+  padding: 1px 2px;
   color: #fff3b8;
-  background: rgba(0, 0, 0, 0.78);
-  border: 1px solid rgba(255, 223, 137, 0.72);
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 223, 137, 0.58);
   border-radius: 2px;
-  font-size: calc(9px * var(--window-ui-scale));
+  font-size: calc(7px * var(--window-ui-scale));
   line-height: 1;
   font-weight: 900;
   letter-spacing: 0;
@@ -1925,16 +1925,16 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 
 .craft-count {
   position: absolute;
-  left: 2px;
-  bottom: 2px;
+  right: 1px;
+  bottom: 1px;
   z-index: 4;
-  min-width: 24px;
-  padding: 2px 3px 1px;
+  min-width: 19px;
+  padding: 1px 2px;
   color: #eaffef;
-  background: rgba(3, 30, 12, 0.88);
-  border: 1px solid rgba(115, 255, 151, 0.78);
+  background: rgba(3, 30, 12, 0.8);
+  border: 1px solid rgba(115, 255, 151, 0.62);
   border-radius: 2px;
-  font-size: 10px;
+  font-size: 8px;
   font-style: normal;
   font-weight: 900;
   line-height: 1;
