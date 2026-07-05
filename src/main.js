@@ -4,7 +4,7 @@ import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=prison-risk-1";
+import { CombatSystem, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=stack-1";
 import { calculateStats, calculateStealChancePercent, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -15,9 +15,11 @@ import {
   normalizeDrugInventoryItem,
   useDrugInventoryItem,
   normalizeDrugState
-} from "./systems/DrugSystem/index.js?v=drugs-3";
+} from "./systems/DrugSystem/index.js?v=stack-1";
 import { applyHospitalFee } from "./systems/PenaltySystem/index.js?v=hospital-fee-1";
 import {
+  addItem,
+  compactInventoryStacks,
   createItem,
   craftAllInventory,
   craftInventoryItem,
@@ -35,8 +37,8 @@ import {
   sellInventoryItems,
   sellNonFavoriteInventoryItems,
   unequipToInventory
-} from "./systems/InventorySystem/index.js?v=inventory-filter-2";
-import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=phase1-1";
+} from "./systems/InventorySystem/index.js?v=stack-1";
+import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=stack-1";
 import {
   applyProfileToState,
   createAccount,
@@ -79,7 +81,7 @@ import {
   getReceptadorRefreshCost,
   getReceptadorRefreshSecondsLeft,
   refreshReceptadorStock
-} from "./systems/ShopSystem/index.js?v=balance-1";
+} from "./systems/ShopSystem/index.js?v=stack-1";
 import {
   CHARACTER_SELECT_TUTORIAL,
   TutorialOverlay,
@@ -129,7 +131,7 @@ import {
   renderInventoryWindow,
   renderVaultWindow,
   renderPanel
-} from "./ui/WindowSystem.js?v=asset-lock-1";
+} from "./ui/WindowSystem.js?v=stack-1";
 
 const elements = {
   canvas: document.querySelector("#game-canvas"),
@@ -2158,6 +2160,7 @@ function ensurePersonalVault() {
     state.player.personalVault.items = state.player.personalVault.items.slice(0, PERSONAL_VAULT_SLOTS);
   }
   state.player.personalVault.items = state.player.personalVault.items.map((item) => normalizeDrugInventoryItem(normalizeInventoryItem(item)));
+  state.player.personalVault.items = compactInventoryStacks(state.player.personalVault.items);
   return state.player.personalVault;
 }
 
@@ -2168,10 +2171,13 @@ function moveInventoryItemToVault(index, targetIndex = null) {
 
   const target = Number.isInteger(targetIndex) && targetIndex >= 0 && targetIndex < vault.items.length && !vault.items[targetIndex]
     ? targetIndex
-    : vault.items.findIndex((cell) => !cell);
-  if (target === -1) return { ok: false, reason: "Cofre cheio." };
+    : null;
 
-  vault.items[target] = item;
+  if (target !== null) {
+    vault.items[target] = item;
+  } else if (!addItem({ inventory: vault.items }, item)) {
+    return { ok: false, reason: "Cofre cheio." };
+  }
   state.player.inventory[index] = null;
   state.selectedInventoryIndex = null;
   state.selectedVaultIndex = target;
@@ -2185,10 +2191,13 @@ function moveVaultItemToInventory(index, targetIndex = null) {
 
   const target = Number.isInteger(targetIndex) && targetIndex >= 0 && targetIndex < state.player.inventory.length && !state.player.inventory[targetIndex]
     ? targetIndex
-    : state.player.inventory.findIndex((cell) => !cell);
-  if (target === -1) return { ok: false, reason: "Mochila cheia." };
+    : null;
 
-  state.player.inventory[target] = item;
+  if (target !== null) {
+    state.player.inventory[target] = item;
+  } else if (!addItem(state.player, item)) {
+    return { ok: false, reason: "Mochila cheia." };
+  }
   vault.items[index] = null;
   state.selectedVaultIndex = null;
   state.selectedInventoryIndex = target;
@@ -2199,9 +2208,7 @@ function moveVaultItemWithinVault(from, to) {
   const vault = ensurePersonalVault();
   if (from === to) return null;
   if (!vault.items[from]) return { ok: false, reason: "Selecione um item do cofre." };
-  const next = vault.items[to] || null;
-  vault.items[to] = vault.items[from];
-  vault.items[from] = next;
+  moveItem(vault.items, from, to);
   state.selectedVaultIndex = to;
   return { ok: true, message: "Cofre organizado." };
 }
@@ -3971,7 +3978,7 @@ function drugShopRow(drug, stats, now) {
       <div>
         <h3>${drug.name}</h3>
         <p>${formatMoney(drug.price)} | ${effect}</p>
-        <small>Limite ${carried}/5 | Risco ${drug.risk}</small>
+        <small>Na mochila: ${carried} | Risco ${drug.risk}</small>
       </div>
       <button type="button" class="panel-action" data-buy-drug="${drug.id}">
         Comprar
@@ -4802,6 +4809,7 @@ function normalizeState() {
     state.player.inventory = state.player.inventory.slice(0, BACKPACK_TOTAL_SLOTS);
   }
   state.player.inventory = state.player.inventory.map((item) => normalizeDrugInventoryItem(normalizeInventoryItem(item)));
+  state.player.inventory = compactInventoryStacks(state.player.inventory);
   state.backpackPage = Math.min(BACKPACK_PAGE_COUNT, Math.max(1, Number(state.backpackPage || 1) || 1));
   state.selectedVaultIndex ??= null;
   state.player.equipment ||= {};
@@ -4812,8 +4820,7 @@ function normalizeState() {
     ...(state.player.equipment.accessories || [])
   ].map((item) => normalizeInventoryItem(item)).filter(Boolean);
   legacyEquipped.forEach((item) => {
-    const emptyIndex = state.player.inventory.findIndex((cell) => !cell);
-    if (emptyIndex !== -1) state.player.inventory[emptyIndex] = item;
+    addItem(state.player, item);
   });
   delete state.player.equipment.feet;
   delete state.player.equipment.head;

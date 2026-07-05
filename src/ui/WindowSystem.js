@@ -3,6 +3,7 @@ import { PLAYERS } from "../data/players/index.js?v=bruno-yellow-1";
 import { EQUIPMENT_SLOTS, SLOT_LABELS } from "../data/equipment/index.js?v=gloves-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemCost } from "../data/hideoutItems/index.js";
 import { calculateStats, formatStat, statLabel } from "../systems/EquipmentSystem/index.js?v=equipment-2";
+import { ITEM_STACK_LIMIT, itemQuantity } from "../systems/InventorySystem/index.js?v=stack-1";
 import { PETS, PET_UNLOCK_LEVEL, petsUnlocked } from "../data/pets/index.js?v=pets-1";
 import {
   assetRequirementText,
@@ -765,13 +766,13 @@ function slotTemplate(slot, item, accessoryIndex = null, selectedSlot = null) {
 
 function inventoryCell(item, index, selectedIndex, player) {
   if (!item) return `<div class="inventory-cell gear-square empty tier-empty" data-index="${index}"></div>`;
-  const count = craftCountForItem(player, item);
+  const count = stackCountForItem(item);
   return `
     <div class="inventory-cell gear-square ${selectedIndex === index ? "selected" : ""} ${item.favorite ? "locked" : ""} ${tierClass(item)}" title="${item.name}${item.favorite ? " | Bloqueado para venda" : ""}" data-index="${index}" data-rarity="${item.rarity}" draggable="true">
       ${gearIcon(item)}
       <small>${tierLabel(item)}</small>
       ${lockBadge(item)}
-      ${count >= 2 ? `<em class="craft-count">${Math.min(count, 4)}/4</em>` : ""}
+      ${count >= 2 ? `<em class="craft-count">${Math.min(count, ITEM_STACK_LIMIT)}/${ITEM_STACK_LIMIT}</em>` : ""}
     </div>
   `;
 }
@@ -785,6 +786,7 @@ function vaultCell(item, index, selectedIndex) {
       ${gearIcon(item)}
       <small>${tierLabel(item)}</small>
       ${lockBadge(item)}
+      ${stackCountForItem(item) >= 2 ? `<em class="craft-count">${Math.min(stackCountForItem(item), ITEM_STACK_LIMIT)}/${ITEM_STACK_LIMIT}</em>` : ""}
     </div>
   `;
 }
@@ -842,16 +844,8 @@ function craftPreviewLine(preview) {
   `;
 }
 
-function craftCountForItem(player, item) {
-  if (!player || !item) return 0;
-  if (item.slot === "drug") return 0;
-  return player.inventory.filter((candidate) => (
-    candidate &&
-    candidate.slot === item.slot &&
-    candidate.rarity === item.rarity &&
-    Number(candidate.tier) === Number(item.tier) &&
-    !candidate.favorite
-  )).length;
+function stackCountForItem(item) {
+  return itemQuantity(item);
 }
 
 function statLine(label, value) {

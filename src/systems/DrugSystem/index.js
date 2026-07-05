@@ -1,3 +1,5 @@
+import { addItem, itemQuantity, removeItemUnits } from "../InventorySystem/index.js?v=stack-1";
+
 export const HIDEOUT_STAMINA_RECOVERY_CONFIG = {
   restDistance: 78,
   awayPerMinute: 1,
@@ -6,7 +8,6 @@ export const HIDEOUT_STAMINA_RECOVERY_CONFIG = {
 
 export const DRUG_BALANCE = {
   referenceMax: 100,
-  maxInventoryPerDrug: 5,
   abuseWindowMs: 120000,
   abuseUseLimit: 3,
   abuseBlockMs: 60000,
@@ -18,8 +19,7 @@ export const DRUG_BALANCE = {
     abuse: "teu corpo pediu arrego",
     bought: "Comprado e guardado na mochila.",
     used: "Usado.",
-    full: "Mochila cheia.",
-    limit: "Você já está carregando 5 unidades desse item."
+    full: "Mochila cheia."
   }
 };
 
@@ -78,22 +78,15 @@ export function buyDrugItem(player, drugId) {
   const drug = drugById(drugId);
   if (!drug) return { ok: false, reason: "Produto não encontrado." };
   if (Number(player.money || 0) < drug.price) return { ok: false, reason: DRUG_BALANCE.messages.noMoney };
-  if (drugInventoryCount(player, drugId) >= DRUG_BALANCE.maxInventoryPerDrug) {
-    return { ok: false, reason: DRUG_BALANCE.messages.limit };
-  }
-
-  const inventory = Array.isArray(player.inventory) ? player.inventory : [];
-  const index = inventory.findIndex((cell) => !cell);
-  if (index === -1) return { ok: false, reason: DRUG_BALANCE.messages.full };
+  player.inventory = Array.isArray(player.inventory) ? player.inventory : [];
+  const item = createDrugInventoryItem(drug);
+  if (!addItem(player, item)) return { ok: false, reason: DRUG_BALANCE.messages.full };
 
   player.money = Math.max(0, Math.floor(Number(player.money || 0)) - drug.price);
-  inventory[index] = createDrugInventoryItem(drug);
-  player.inventory = inventory;
   return {
     ok: true,
     drug,
-    index,
-    item: inventory[index],
+    item,
     message: `${drug.name}: ${DRUG_BALANCE.messages.bought}`
   };
 }
@@ -103,7 +96,7 @@ export function useDrugInventoryItem(player, index, stats, now = Date.now()) {
   if (!isDrugInventoryItem(item)) return { ok: false, reason: "Selecione uma droga na mochila." };
   const result = applyDrugEffect(player, item.drugId, stats, now);
   if (!result.ok) return result;
-  player.inventory[index] = null;
+  removeItemUnits(player.inventory, index, 1);
   result.item = item;
   result.inventoryIndex = index;
   return result;
@@ -226,6 +219,7 @@ export function createDrugInventoryItem(drugOrId) {
     effectText: drugInventoryEffectText(drug),
     uid: `${DRUG_ITEM_PREFIX}${drug.id}-${Date.now().toString(36)}-${drugUidCounter++}`,
     favorite: false,
+    quantity: 1,
     contraband: true
   };
 }
@@ -237,7 +231,8 @@ export function normalizeDrugInventoryItem(item) {
   return {
     ...createDrugInventoryItem(drug),
     uid: item.uid || `${DRUG_ITEM_PREFIX}${drug.id}-${Date.now().toString(36)}-${drugUidCounter++}`,
-    favorite: Boolean(item.favorite)
+    favorite: Boolean(item.favorite),
+    quantity: itemQuantity(item)
   };
 }
 
@@ -249,7 +244,7 @@ export function drugInventoryCount(player, drugId) {
   return collectDrugContainers(player)
     .flatMap((items) => items || [])
     .filter((item) => isDrugInventoryItem(item) && (item.drugId || String(item.id).replace(DRUG_ITEM_PREFIX, "")) === drugId)
-    .length;
+    .reduce((sum, item) => sum + itemQuantity(item), 0);
 }
 
 export function confiscateDrugItems(player) {
@@ -258,7 +253,7 @@ export function confiscateDrugItems(player) {
     if (!Array.isArray(items)) continue;
     items.forEach((item, index) => {
       if (!isDrugInventoryItem(item)) return;
-      count += 1;
+      count += itemQuantity(item);
       items[index] = null;
     });
   }

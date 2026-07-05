@@ -4,7 +4,7 @@ import {
   lootTables,
   rarityConfig
 } from "../../data/balance/index.js?v=icons-3";
-import { createItem, addItem } from "../InventorySystem/index.js?v=vault-1";
+import { createItem, addItem } from "../InventorySystem/index.js?v=stack-1";
 
 const LOOT_SLOT_WEIGHTS = Object.values(equipmentSlotsConfig).map((slot) => ({
   id: slot.id,

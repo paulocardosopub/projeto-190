@@ -5,11 +5,11 @@ import { CITY_NPCS } from "../../data/cityNpcs/index.js?v=petshop-portal-1";
 import { decorativeNpcsForIdleMap } from "../../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { calculateStats } from "../EquipmentSystem/index.js";
 import { createNpcWave, createEnemyStats } from "../EnemySystem/index.js?v=npc-crops-1";
-import { rollLoot, applyLoot } from "../LootSystem/index.js?v=icons-3";
+import { rollLoot, applyLoot } from "../LootSystem/index.js?v=stack-1";
 import { gainXp, addLog } from "../PlayerSystem/index.js";
 import { applyHospitalFee, applyPrisonFee } from "../PenaltySystem/index.js?v=hospital-fee-1";
 import { canStartRaid, consumeStaminaForMap, staminaRaidBlockedMessage } from "../StaminaSystem/index.js?v=phase1-1";
-import { confiscateDrugItems } from "../DrugSystem/index.js?v=drugs-2";
+import { confiscateDrugItems } from "../DrugSystem/index.js?v=stack-1";
 import { theftConfig } from "../../data/balance/index.js?v=phase1-1";
 import { getEquippedPet, normalizePets, petDamageForAttack } from "../../data/pets/index.js?v=pets-manual-1";
 
@@ -1158,12 +1158,17 @@ export class CombatSystem {
       player.level = snapshot.level;
       player.xp = snapshot.xp;
       player.nextXp = snapshot.nextXp;
-      const safeUids = new Set(snapshot.itemUids || []);
-      player.inventory = (player.inventory || []).map((item) => item && safeUids.has(item.uid) ? item : null);
-      Object.keys(player.equipment || {}).forEach((slot) => {
-        const item = player.equipment[slot];
-        if (item && !safeUids.has(item.uid)) player.equipment[slot] = null;
-      });
+      if (Array.isArray(snapshot.inventory) && snapshot.equipment) {
+        player.inventory = structuredClone(snapshot.inventory);
+        player.equipment = structuredClone(snapshot.equipment);
+      } else {
+        const safeUids = new Set(snapshot.itemUids || []);
+        player.inventory = (player.inventory || []).map((item) => item && safeUids.has(item.uid) ? item : null);
+        Object.keys(player.equipment || {}).forEach((slot) => {
+          const item = player.equipment[slot];
+          if (item && !safeUids.has(item.uid)) player.equipment[slot] = null;
+        });
+      }
       this.syncHpToStats();
     } else {
       player.money = Math.max(0, (player.money || 0) - confiscated.money);
@@ -1418,6 +1423,8 @@ function createRaidStartSnapshot(player) {
     level: player.level || 1,
     xp: player.xp || 0,
     nextXp: player.nextXp || 100,
+    inventory: structuredClone(inventory),
+    equipment: structuredClone(player.equipment || {}),
     itemUids: [...inventory, ...equipped].filter((item) => item?.uid).map((item) => item.uid)
   };
 }

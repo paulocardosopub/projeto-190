@@ -1,4 +1,4 @@
-import { createEmptyInventory, createStarterEquipment, createStarterInventory } from "../InventorySystem/index.js";
+import { createEmptyInventory, createStarterEquipment, createStarterInventory } from "../InventorySystem/index.js?v=stack-1";
 
 export function createNewGame(playerId) {
   return {

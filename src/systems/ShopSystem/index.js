@@ -4,7 +4,7 @@ import {
   itemsConfig,
   npcShopConfig
 } from "../../data/balance/index.js";
-import { addItem, createItem } from "../InventorySystem/index.js";
+import { addItem, createItem } from "../InventorySystem/index.js?v=stack-1";
 
 export function ensureReceptadorStock(state, force = false) {
   const shop = state.player.receptadorShop ||= {};
