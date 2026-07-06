@@ -227,9 +227,9 @@ export const TUTORIAL_STEPS = [
   },
   {
     id: "first_raid_running",
-    message: "Faz o primeiro corre e volta com algo no bolso. Sem novela.",
-    buttonLabel: "No corre",
-    target: "stage",
+    message: "Termina o primeiro corre. Quando aparecer o resumo, aperta Retornar para voltar pra cidade.",
+    buttonLabel: "Retornar",
+    target: "first_raid_return",
     actionRequired: "complete_first_raid",
     passiveButton: true,
     allowSkip: true
@@ -461,7 +461,6 @@ function tutorialProgressStepForEvent(step, event) {
 
 function tutorialProgressStepForCurrentState(step, state) {
   if (state?.scene === "map") return tutorialProgressStepForRaidStarted(step);
-  if (state?.run?.summary) return tutorialProgressStepForRaidReturned(step);
   if (state?.scene === "city" && state?.activeLeft === "assaults") return tutorialProgressStepForAssaultsOpen(step);
   return null;
 }

@@ -12,6 +12,7 @@ import {
   drugEffectText,
   drugInventoryCount,
   HIDEOUT_STAMINA_RECOVERY_CONFIG,
+  isDrugInventoryItem,
   normalizeDrugInventoryItem,
   useDrugInventoryItem,
   normalizeDrugState
@@ -26,6 +27,7 @@ import {
   equipBestAvailable,
   equipFromInventory,
   getCraftPreview,
+  itemQuantity,
   itemSellValue,
   moveItem,
   normalizeInventoryItem,
@@ -83,8 +85,10 @@ import {
   refreshReceptadorStock
 } from "./systems/ShopSystem/index.js?v=stack-1";
 import {
+  AUTO_RAID_UNLOCK_LEVEL,
   BUSINESS_CONFIG,
   BUSINESS_MAP_ID,
+  BUSINESS_UNLOCK_LEVEL,
   SELLABLE_BUSINESS_PRODUCTS,
   businessProductConfig
 } from "./data/business/index.js";
@@ -217,6 +221,13 @@ const elements = {
   deathFlash: document.querySelector("#death-flash"),
   saveButton: document.querySelector("#save-button"),
   masterToggle: document.querySelector("#master-toggle"),
+  autoRaidToggle: document.querySelector("#auto-raid-toggle"),
+  autoRaidPanel: document.querySelector("#auto-raid-panel"),
+  autoRaidTitle: document.querySelector("#auto-raid-title"),
+  autoRaidMapLabel: document.querySelector("#auto-raid-map-label"),
+  autoRaidRepeatToggle: document.querySelector("#auto-raid-repeat-toggle"),
+  autoRaidCancel: document.querySelector("#auto-raid-cancel"),
+  autoRaidConfirm: document.querySelector("#auto-raid-confirm"),
   bottomDock: document.querySelector(".bottom-dock"),
   authModal: document.querySelector("#auth-modal"),
   authPanel: document.querySelector("#auth-panel"),
@@ -335,6 +346,55 @@ const PET_TUTORIAL_STEPS = [
   }
 ];
 const PET_TUTORIAL_STEP_BY_ID = Object.fromEntries(PET_TUTORIAL_STEPS.map((step) => [step.id, step]));
+const BUSINESS_TUTORIAL_FIRST_STEP = "business_city";
+const BUSINESS_TUTORIAL_STEPS = [
+  {
+    id: "business_city",
+    message: "Nivel 10 liberou negocios. Fala com o Mendigo Fumante para conhecer o esquema.",
+    buttonLabel: "Ir ao contato",
+    target: "npc_business_contact",
+    actionRequired: "visit_business_contact",
+    passiveButton: true,
+    allowSkip: true,
+    next: "business_enter"
+  },
+  {
+    id: "business_enter",
+    message: "Ele conhece um lugar onde ficam fazendas, laboratorios e lojinhas de jogadores.",
+    buttonLabel: "Entrar",
+    target: "city_shop_panel",
+    actionRequired: "enter_business_map",
+    passiveButton: true,
+    allowSkip: true,
+    next: "business_owner"
+  },
+  {
+    id: "business_owner",
+    message: "La dentro, fala com o Empresario. Ele abre o painel dos negocios.",
+    buttonLabel: "Falar",
+    target: "idle_business_npc",
+    actionRequired: "talk_business_owner",
+    passiveButton: true,
+    allowSkip: true,
+    next: "business_panel"
+  },
+  {
+    id: "business_panel",
+    message: "Aqui voce compra fazenda, laboratorio, inicia producao e organiza tua lojinha.",
+    buttonLabel: "Entendi",
+    target: "business_panel",
+    allowSkip: true,
+    next: "business_shops"
+  },
+  {
+    id: "business_shops",
+    message: "Lojas de jogadores aparecem como NPCs nesse mapa. Se tiver uma aberta, toque nela para ver e comprar.",
+    buttonLabel: "Fechou",
+    target: "player_shop_panel",
+    allowSkip: true
+  }
+];
+const BUSINESS_TUTORIAL_STEP_BY_ID = Object.fromEntries(BUSINESS_TUTORIAL_STEPS.map((step) => [step.id, step]));
 
 await renderer.load();
 await boot();
@@ -933,11 +993,19 @@ function ensureTutorialOverlay() {
         advancePetTutorial();
         return;
       }
+      if (isBusinessTutorialStep(step)) {
+        advanceBusinessTutorial();
+        return;
+      }
       advanceActiveTutorial();
     },
     onBack: (step) => {
       if (isPetTutorialStep(step)) {
         rewindPetTutorial();
+        return;
+      }
+      if (isBusinessTutorialStep(step)) {
+        rewindBusinessTutorial();
         return;
       }
       rewindActiveTutorial();
@@ -947,11 +1015,19 @@ function ensureTutorialOverlay() {
         skipPetTutorial();
         return;
       }
+      if (isBusinessTutorialStep(step)) {
+        skipBusinessTutorial();
+        return;
+      }
       skipActiveTutorial();
     },
     onPassive: (step) => {
       if (isPetTutorialStep(step)) {
         performPetTutorialAction(step);
+        return;
+      }
+      if (isBusinessTutorialStep(step)) {
+        performBusinessTutorialAction(step);
         return;
       }
       performTutorialPrimaryAction(step);
@@ -987,7 +1063,14 @@ function renderTutorial() {
 
   maybeStartPetTutorial();
   const petStep = activePetTutorialStep();
-  ensureTutorialOverlay().render(petStep, { canGoBack: canRewindPetTutorial() });
+  if (petStep) {
+    ensureTutorialOverlay().render(petStep, { canGoBack: canRewindPetTutorial() });
+    return;
+  }
+
+  maybeStartBusinessTutorial();
+  const businessStep = activeBusinessTutorialStep();
+  ensureTutorialOverlay().render(businessStep, { canGoBack: canRewindBusinessTutorial() });
 }
 
 function advanceActiveTutorial() {
@@ -1048,7 +1131,16 @@ function performTutorialPrimaryAction(step) {
     return;
   }
   if (action === "start_first_raid") {
-    startRaid(MAPS[0]?.id);
+    startRaid(MAPS[0]?.id, { tutorialFirstRaid: true });
+    return;
+  }
+  if (action === "complete_first_raid") {
+    if (state.run?.mode === "summary" && state.run?.summary) {
+      combat.returnFromSummary();
+      renderAll();
+      return;
+    }
+    showToast("Termine o primeiro assalto e retorne para a cidade.");
     return;
   }
 
@@ -1104,6 +1196,48 @@ function performPetTutorialAction(step) {
   }
 
   showToast("Siga o marcador do petshop.");
+}
+
+function performBusinessTutorialAction(step) {
+  if (!state || !combat || !step?.actionRequired) {
+    showToast("Siga o marcador dos negocios.");
+    return;
+  }
+
+  const action = step.actionRequired;
+  if (action === "visit_business_contact") {
+    moveToTutorialCityNpc("npc-mendigo-fumante");
+    return;
+  }
+  if (action === "enter_business_map") {
+    if (state.scene === "city" && activeCityNpc?.id === "npc-mendigo-fumante") {
+      enterBusinessMapFromCityNpc();
+      return;
+    }
+    moveToTutorialCityNpc("npc-mendigo-fumante");
+    return;
+  }
+  if (action === "talk_business_owner") {
+    if (state.scene !== "idle" || state.currentMapId !== BUSINESS_MAP_ID) {
+      if (state.scene === "city" && activeCityNpc?.id === "npc-mendigo-fumante") {
+        enterBusinessMapFromCityNpc();
+      } else {
+        moveToTutorialCityNpc("npc-mendigo-fumante");
+      }
+      return;
+    }
+    const npc = (state.run?.npcs || []).find((candidate) => candidate.id === "npc-empresario-negocios");
+    if (!npc) return;
+    if (activeCityNpc?.id === npc.id) {
+      openBusinessPanels(npc);
+      dispatchBusinessTutorialEvent("business_owner_opened", {}, { render: false });
+      return;
+    }
+    walkToIdleNpc(npc);
+    return;
+  }
+
+  showToast("Siga o marcador dos negocios.");
 }
 
 function skipActiveTutorial() {
@@ -1229,6 +1363,94 @@ function starterPetOwned() {
     state?.player?.petStarterClaimed ||
     (Array.isArray(state?.player?.petsOwned) && state.player.petsOwned.includes(STARTER_PET_ID))
   );
+}
+
+function isBusinessTutorialStep(step) {
+  return Boolean(step?.id && BUSINESS_TUTORIAL_STEP_BY_ID[step.id]);
+}
+
+function maybeStartBusinessTutorial() {
+  if (!state?.player || tutorialStep(state) || characterTutorialVisible) return;
+  if (!businessUnlocked(state.player)) return;
+  if (state.player.businessTutorialCompleted || state.player.businessTutorialSkipped) return;
+  if (state.player.businessTutorialActive) {
+    if (!BUSINESS_TUTORIAL_STEP_BY_ID[state.player.businessTutorialStep]) {
+      state.player.businessTutorialStep = BUSINESS_TUTORIAL_FIRST_STEP;
+    }
+    return;
+  }
+  if (state.scene !== "city" || state.run?.mode !== "city") return;
+  state.player.businessTutorialActive = true;
+  state.player.businessTutorialStep = activeCityNpc?.id === "npc-mendigo-fumante" ? "business_enter" : BUSINESS_TUTORIAL_FIRST_STEP;
+  addLog(state, "Negocios liberados. Fale com o Mendigo Fumante.");
+  if (!state.settings?.visualPreview) persistGame();
+}
+
+function activeBusinessTutorialStep() {
+  if (!state?.player?.businessTutorialActive) return null;
+  if (!businessUnlocked(state.player)) return null;
+  const step = BUSINESS_TUTORIAL_STEP_BY_ID[state.player.businessTutorialStep] || BUSINESS_TUTORIAL_STEP_BY_ID[BUSINESS_TUTORIAL_FIRST_STEP];
+  state.player.businessTutorialStep = step.id;
+  return step;
+}
+
+function advanceBusinessTutorial(options = {}) {
+  const step = activeBusinessTutorialStep();
+  if (!step) return false;
+  if (!step.next) return completeBusinessTutorial(options);
+  state.player.businessTutorialStep = step.next;
+  return commitBusinessTutorialChange(options);
+}
+
+function rewindBusinessTutorial(options = {}) {
+  const step = activeBusinessTutorialStep();
+  if (!step) return false;
+  const index = BUSINESS_TUTORIAL_STEPS.findIndex((candidate) => candidate.id === step.id);
+  if (index <= 0) return false;
+  state.player.businessTutorialStep = BUSINESS_TUTORIAL_STEPS[index - 1].id;
+  return commitBusinessTutorialChange(options);
+}
+
+function canRewindBusinessTutorial() {
+  const step = activeBusinessTutorialStep();
+  return BUSINESS_TUTORIAL_STEPS.findIndex((candidate) => candidate.id === step?.id) > 0;
+}
+
+function skipBusinessTutorial(options = {}) {
+  if (!state?.player) return false;
+  state.player.businessTutorialActive = false;
+  state.player.businessTutorialSkipped = true;
+  state.player.businessTutorialStep = null;
+  return commitBusinessTutorialChange(options);
+}
+
+function completeBusinessTutorial(options = {}) {
+  if (!state?.player) return false;
+  state.player.businessTutorialActive = false;
+  state.player.businessTutorialCompleted = true;
+  state.player.businessTutorialStep = null;
+  return commitBusinessTutorialChange(options);
+}
+
+function commitBusinessTutorialChange(options = {}) {
+  if (!state?.settings?.visualPreview && options.persist !== false) persistGame();
+  if (options.render !== false) renderAll();
+  return true;
+}
+
+function dispatchBusinessTutorialEvent(type, payload = {}, options = {}) {
+  const step = activeBusinessTutorialStep();
+  if (!step) return false;
+  const nextByEvent = {
+    business_contact_opened: { from: "business_city", next: "business_enter" },
+    business_map_entered: { from: "business_enter", next: "business_owner" },
+    business_owner_opened: { from: "business_owner", next: "business_panel" }
+  }[type];
+  if (nextByEvent && step.id === nextByEvent.from) {
+    state.player.businessTutorialStep = nextByEvent.next;
+    return commitBusinessTutorialChange(options);
+  }
+  return false;
 }
 
 function applyTutorialSideEffects() {
@@ -1469,7 +1691,10 @@ function resolveTutorialTargetRect(target) {
     hideout_vault: "#right-window .vault-money-panel, #vault-money-input",
     first_assault: "#left-window .map-row, #left-window [data-enter-map]",
     first_assault_start: "#left-window [data-enter-map]",
-    pet_shop_starter: `#city-shop-panel [data-buy-pet="${STARTER_PET_ID}"], #city-shop-panel [data-equip-pet="${STARTER_PET_ID}"]`
+    first_raid_return: "#raid-return-button",
+    pet_shop_starter: `#city-shop-panel [data-buy-pet="${STARTER_PET_ID}"], #city-shop-panel [data-equip-pet="${STARTER_PET_ID}"]`,
+    business_panel: "#right-window .business-window-body, #right-window [data-business-buy-farm]",
+    player_shop_panel: "#left-window .player-shop-window-body, #city-shop-panel .player-shop-buy-list"
   };
 
   if (target === "stage") return fallback;
@@ -1477,7 +1702,9 @@ function resolveTutorialTargetRect(target) {
   if (target === "npc_zeca") return cityNpcTutorialRect("seu-zeca") || fallback;
   if (target === "npc_vendedor") return cityNpcTutorialRect("npc-vendedor") || fallback;
   if (target === "npc_petshop") return cityNpcTutorialRect("npc-petshop") || fallback;
+  if (target === "npc_business_contact") return cityNpcTutorialRect("npc-mendigo-fumante") || fallback;
   if (target === "idle_petshop_npc") return idleNpcTutorialRect("petshop-responsavel") || fallback;
+  if (target === "idle_business_npc") return idleNpcTutorialRect("npc-empresario-negocios") || fallback;
   if (target === "pet_shop_starter") return domTargetRect(selectorTargets.pet_shop_starter) || cityShopPanelTutorialRect(selectorTargets.city_shop_panel) || fallback;
   if (target === "city_shop_panel") return cityShopPanelTutorialRect(selectorTargets.city_shop_panel) || fallback;
   if (target === "portal_hideout") return cityPortalTargetRect("hideout-door") || fallback;
@@ -1686,7 +1913,61 @@ function syncHud() {
   }
   elements.playerHpFill.style.width = `${Math.round(hpPercent * 100)}%`;
   elements.playerHp.textContent = `HP ${state.player.hp} / ${stats.maxHp}`;
+  syncAutoRaidButton();
   syncRaidSummary();
+}
+
+function syncAutoRaidButton() {
+  if (!elements.autoRaidToggle) return;
+  const visible = canShowAutoRaidButton();
+  elements.autoRaidToggle.classList.toggle("hidden", !visible);
+  elements.autoRaidToggle.setAttribute("aria-expanded", String(visible && !elements.autoRaidPanel?.classList.contains("hidden")));
+  if (!visible) hideAutoRaidConfirm();
+}
+
+function canShowAutoRaidButton() {
+  if (!state?.player || state.settings?.visualPreview) return false;
+  if (playerLevelValue(state.player) < AUTO_RAID_UNLOCK_LEVEL) return false;
+  if (guidedTutorialActive()) return false;
+  if (state.scene === "map" || state.run?.summary) return false;
+  if (state.run?.mode === "temporary") return false;
+  return Boolean(lastUnlockedRaidMap());
+}
+
+function lastUnlockedRaidMap() {
+  if (!state?.player) return null;
+  const highest = Math.max(1, Math.floor(Number(state.player.highestMapUnlocked || 1)));
+  return [...MAPS]
+    .filter((map) => Number(map.index || 0) <= highest)
+    .sort((a, b) => Number(b.index || 0) - Number(a.index || 0))[0] || MAPS[0] || null;
+}
+
+function showAutoRaidConfirm() {
+  if (!canShowAutoRaidButton()) return;
+  const map = lastUnlockedRaidMap();
+  if (!map) return;
+  elements.autoRaidTitle.textContent = "Auto assalto";
+  elements.autoRaidMapLabel.textContent = `${map.code || map.index || ""} ${map.name}`.trim();
+  elements.autoRaidRepeatToggle.checked = Boolean(state.settings.autoRepeatRaid);
+  elements.autoRaidPanel.classList.remove("hidden");
+  elements.autoRaidToggle?.setAttribute("aria-expanded", "true");
+}
+
+function hideAutoRaidConfirm() {
+  elements.autoRaidPanel?.classList.add("hidden");
+  elements.autoRaidToggle?.setAttribute("aria-expanded", "false");
+}
+
+function startAutoRaidFromConfirm() {
+  const map = lastUnlockedRaidMap();
+  if (!map) {
+    hideAutoRaidConfirm();
+    return;
+  }
+  state.settings.autoRepeatRaid = Boolean(elements.autoRaidRepeatToggle?.checked);
+  hideAutoRaidConfirm();
+  showToast(`Auto assalto: ${map.name}.`);
+  startRaid(map.id);
 }
 
 function syncSurvivalWarning(stats, hpPercent) {
@@ -1927,6 +2208,10 @@ function handleGameKeyDown(event) {
 }
 
 function handleGameKeyUp(event) {
+  if (isTypingTarget(event.target)) {
+    keyboardMoveKeys.delete(event.key.toLowerCase());
+    return;
+  }
   const key = event.key.toLowerCase();
   if (!KEYBOARD_MOVE_KEYS.has(key)) return;
   keyboardMoveKeys.delete(key);
@@ -1983,7 +2268,7 @@ function clearKeyboardMovement() {
 }
 
 function isTypingTarget(target) {
-  return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
+  return Boolean(target?.isContentEditable || target?.closest?.("input, textarea, select, [contenteditable='true'], [contenteditable='']"));
 }
 
 function renderInventory() {
@@ -2446,6 +2731,7 @@ function openMaster() {
   if (isMobileWindowLayout()) {
     closeCityShopPanel({ render: false });
   }
+  hideAutoRaidConfirm();
   activeCenter = true;
   renderAll();
 }
@@ -3497,6 +3783,8 @@ function defaultWindowLayout() {
 
 function startRaid(mapId, options = {}) {
   const map = MAPS.find((candidate) => candidate.id === mapId);
+  hideAutoRaidConfirm();
+  if (options.tutorialFirstRaid) state.settings.autoRepeatRaid = false;
   if (state.run?.mode === "temporary") {
     showToast(temporaryStayText());
     renderAll();
@@ -3521,7 +3809,7 @@ function startRaid(mapId, options = {}) {
   closeCityShopPanel({ force: true });
   tutorialOverlay?.hide();
   fadeThen("Roube o maximo que conseguir!", () => {
-    combat.enterMap(mapId);
+    combat.enterMap(mapId, { tutorialFirstRaid: Boolean(options.tutorialFirstRaid) });
     dispatchTutorialEvent("raid_started", { mapId, mapIndex: map?.index || 1 }, { render: false });
     online?.sayHello();
     if (options.keepMenus) {
@@ -3782,6 +4070,10 @@ function openIdleNpcPanel(npc) {
 }
 
 function openBusinessPanels(npc = null) {
+  if (!businessUnlocked(state.player)) {
+    showToast(businessLockedMessage());
+    return;
+  }
   closeCityShopPanel({ render: false, force: true });
   closeCityPortalPanel({ render: false, force: true });
   activeCityNpc = null;
@@ -3792,6 +4084,7 @@ function openBusinessPanels(npc = null) {
   activeRight = "business";
   syncShopNpcsForBusinessMap(state);
   if (npc) showToast(cityNpcGreeting(npc));
+  dispatchBusinessTutorialEvent("business_owner_opened", { npcId: npc?.id }, { render: false });
   renderAll();
 }
 
@@ -3924,6 +4217,9 @@ function openCityNpcPanel(npc) {
   if (npc?.id === "npc-petshop") {
     dispatchPetTutorialEvent("petshop_city_opened", { npcId: npc.id }, { render: false });
   }
+  if (npc?.id === "npc-mendigo-fumante") {
+    dispatchBusinessTutorialEvent("business_contact_opened", { npcId: npc.id }, { render: false });
+  }
   renderAll();
 }
 
@@ -4020,6 +4316,7 @@ function renderCityShopPanel() {
 
 function renderBusinessInvitePanel(panel, npc) {
   const greeting = activeCityNpcGreeting || cityNpcGreeting(npc);
+  const unlocked = businessUnlocked(state.player);
   panel.innerHTML = `
     <header>
       <span class="eyebrow">${escapeHtml(npc.name)}</span>
@@ -4027,8 +4324,9 @@ function renderBusinessInvitePanel(panel, npc) {
       <button type="button" class="close-button" data-shop-close aria-label="Fechar">X</button>
     </header>
     <p>${escapeHtml(greeting)}</p>
+    ${unlocked ? "" : `<p>${businessLockedMessage()}</p>`}
     <div class="city-shop-actions">
-      <button type="button" class="primary-action" data-enter-business-map>Sim</button>
+      <button type="button" class="primary-action" data-enter-business-map ${unlocked ? "" : "disabled"}>Sim</button>
       <button type="button" class="secondary-action" data-shop-close>Agora nao</button>
     </div>
   `;
@@ -4128,6 +4426,7 @@ function petShopAction(pet, status, price) {
 function drugShopRow(drug, stats, now) {
   const effect = drugEffectText(drug, state.player, stats);
   const carried = drugInventoryCount(state.player, drug.id);
+  const locked = !businessUnlocked(state.player);
   return `
     <article class="drug-shop-row">
       <div>
@@ -4135,8 +4434,8 @@ function drugShopRow(drug, stats, now) {
         <p>${formatMoney(drug.price)} | ${effect}</p>
         <small>Na mochila: ${carried} | Risco ${drug.risk}</small>
       </div>
-      <button type="button" class="panel-action" data-buy-drug="${drug.id}">
-        Comprar
+      <button type="button" class="panel-action" data-buy-drug="${drug.id}" ${locked ? "disabled" : ""}>
+        ${locked ? `Nivel ${BUSINESS_UNLOCK_LEVEL}` : "Comprar"}
       </button>
     </article>
   `;
@@ -4149,6 +4448,11 @@ function cityNpcGreeting(npc) {
 
 function handleDrugPurchase(drugId) {
   if (!state?.player) return;
+  if (!businessUnlocked(state.player)) {
+    showToast(businessLockedMessage());
+    renderCityShopPanel();
+    return;
+  }
   const result = buyDrugItem(state.player, drugId);
   if (!result.ok) {
     showToast(result.reason);
@@ -4212,6 +4516,22 @@ function handleDrugHospital(result, message) {
 function renderBusinessPanel(container) {
   normalizeBusinessState(state.player);
   calculateProduction(state.player);
+  if (!businessUnlocked(state.player)) {
+    container.innerHTML = `
+      ${businessWindowHeader("Negocios", "business")}
+      <div class="window-body business-window-body">
+        <section class="business-stock-panel">
+          <div class="business-section-title">
+            <span class="eyebrow">Bloqueado</span>
+            <strong>Nivel ${BUSINESS_UNLOCK_LEVEL}</strong>
+          </div>
+          <p>${businessLockedMessage()}</p>
+        </section>
+      </div>
+    `;
+    bindClose(container, closeRight);
+    return;
+  }
   container.innerHTML = `
     ${businessWindowHeader("Negocios", "business")}
     <div class="window-body business-window-body">
@@ -4235,6 +4555,22 @@ function renderBusinessPanel(container) {
 function renderPlayerShopPanel(container) {
   normalizePlayerShopState(state);
   const activeShop = getPlayerActiveShop(state, state.player.playerId);
+  if (!businessUnlocked(state.player)) {
+    container.innerHTML = `
+      ${businessWindowHeader("Minha Lojinha", "player-shop")}
+      <div class="window-body player-shop-window-body">
+        <section class="business-stock-panel">
+          <div class="business-section-title">
+            <span class="eyebrow">Bloqueado</span>
+            <strong>Nivel ${BUSINESS_UNLOCK_LEVEL}</strong>
+          </div>
+          <p>${businessLockedMessage()}</p>
+        </section>
+      </div>
+    `;
+    bindClose(container, closeLeft);
+    return;
+  }
   container.innerHTML = `
     ${businessWindowHeader("Minha Lojinha", "player-shop")}
     <div class="window-body player-shop-window-body">
@@ -4247,6 +4583,18 @@ function renderPlayerShopPanel(container) {
 
 function renderPlayerShopBuyPanel(panel, npc) {
   const shop = getShopById(state, npc.shopId);
+  if (!businessUnlocked(state.player)) {
+    panel.innerHTML = `
+      <header>
+        <span class="eyebrow">Lojinha</span>
+        <h2>Bloqueado</h2>
+        <button type="button" class="close-button" data-shop-close aria-label="Fechar">X</button>
+      </header>
+      <p>${businessLockedMessage()}</p>
+    `;
+    bindShopPanel(panel);
+    return;
+  }
   if (!shop?.active) {
     panel.innerHTML = `
       <header>
@@ -4368,12 +4716,14 @@ function playerShopCreateTemplate() {
 
 function playerShopListingRow(productType) {
   const product = businessProductConfig(productType);
-  const available = stockAmount(state.player, productType);
+  const stockAvailable = stockAmount(state.player, productType);
+  const inventoryAvailable = playerShopInventoryAmount(productType);
+  const available = stockAvailable + inventoryAvailable;
   return `
     <article class="player-shop-listing-row">
       <div>
         <h3>${escapeHtml(product.label)}</h3>
-        <small>Estoque ${available}</small>
+        <small>Disponivel ${available} | estoque ${stockAvailable} | mochila ${inventoryAvailable}</small>
       </div>
       <label>
         <span>Qtd</span>
@@ -4386,6 +4736,14 @@ function playerShopListingRow(productType) {
       <small>${formatMoney(product.suggestedPrice)} | ${formatMoney(product.minPrice)}-${formatMoney(product.maxPrice)}</small>
     </article>
   `;
+}
+
+function playerShopInventoryAmount(productType) {
+  const product = businessProductConfig(productType);
+  if (!product?.inventoryDrugId) return 0;
+  return (state.player.inventory || [])
+    .filter((item) => isDrugInventoryItem(item) && (item.drugId || String(item.id || "").replace(/^drug-/, "")) === product.inventoryDrugId)
+    .reduce((sum, item) => sum + itemQuantity(item), 0);
 }
 
 function activePlayerShopTemplate(shop) {
@@ -4421,6 +4779,7 @@ function activeShopListingRow(listing) {
 
 function playerShopBuyRow(shop, listing, isOwnShop) {
   const product = businessProductConfig(listing.drugType);
+  const locked = !businessUnlocked(state.player);
   return `
     <article class="player-shop-buy-row">
       <div>
@@ -4428,9 +4787,9 @@ function playerShopBuyRow(shop, listing, isOwnShop) {
         <p>${formatMoney(listing.pricePerUnit)} un.</p>
         <small>Disponivel ${listing.quantity}</small>
       </div>
-      <input type="number" min="1" max="${listing.quantity}" step="1" value="1" data-buy-player-shop-qty="${listing.drugType}" ${isOwnShop ? "disabled" : ""}>
-      <button type="button" class="panel-action" data-buy-player-shop="${listing.drugType}" ${isOwnShop ? "disabled" : ""}>
-        ${isOwnShop ? "Propria" : "Comprar"}
+      <input type="number" min="1" max="${listing.quantity}" step="1" value="1" data-buy-player-shop-qty="${listing.drugType}" ${isOwnShop || locked ? "disabled" : ""}>
+      <button type="button" class="panel-action" data-buy-player-shop="${listing.drugType}" ${isOwnShop || locked ? "disabled" : ""}>
+        ${locked ? `Nivel ${BUSINESS_UNLOCK_LEVEL}` : isOwnShop ? "Propria" : "Comprar"}
       </button>
     </article>
   `;
@@ -4789,6 +5148,10 @@ function enterBusinessMapFromCityNpc() {
     showToast(temporaryStayText());
     return;
   }
+  if (!businessUnlocked(state.player)) {
+    showToast(businessLockedMessage());
+    return;
+  }
   closeCityShopPanel({ render: false });
   closeCityPortalPanel({ render: false });
   closeMaster({ render: false, force: true });
@@ -4798,6 +5161,7 @@ function enterBusinessMapFromCityNpc() {
     returnToCity: businessCityReturnPoint()
   });
   syncShopNpcsForBusinessMap(state);
+  dispatchBusinessTutorialEvent("business_map_entered", {}, { render: false });
   renderAll();
 }
 
@@ -4930,12 +5294,19 @@ function shopSellCell(item, index, selected) {
 function shopBuyCell(offer, index) {
   const item = getItemConfigById(offer.baseId);
   if (!item) return `<button type="button" class="shop-sell-cell empty" disabled></button>`;
+  const recommended = !offer.sold && isRecommendedShopOffer(item);
   return `
-    <button type="button" class="shop-sell-cell ${offer.sold ? "empty" : ""}" data-buy-offer="${index}" title="${item.name}" ${offer.sold ? "disabled" : ""}>
+    <button type="button" class="shop-sell-cell ${offer.sold ? "empty" : ""} ${recommended ? "recommended-offer" : ""}" data-buy-offer="${index}" title="${item.name}" ${offer.sold ? "disabled" : ""}>
+      ${recommended ? `<i class="shop-recommend-badge" aria-label="Melhor que equipado" title="Melhor que equipado"></i>` : ""}
       <span>${offer.sold ? "Vendido" : item.name}</span>
       <small>${item.rarityLabel} T${item.tier} | ${formatMoney(item.precoNPCVende)}</small>
     </button>
   `;
+}
+
+function isRecommendedShopOffer(item) {
+  const equipped = state?.player?.equipment?.[item?.slot];
+  return Boolean(item?.slot && (!equipped || itemPower(item) > itemPower(equipped)));
 }
 
 function assetShopRow(asset, type) {
@@ -4994,7 +5365,7 @@ function cityNpcHeight() {
 
 function showChoice(target) {
   elements.choiceText.textContent = `${target.name}: "${target.alertLine || "O que pensa que esta fazendo?"}"`;
-  const prisonChance = policePrisonChanceForFight(state.run?.battlesStarted || 0);
+  const prisonChance = currentPrisonChance();
   elements.choiceWarning?.classList.toggle("hidden", prisonChance <= 0);
   elements.choiceModal.classList.remove("hidden");
   syncChoiceTimer();
@@ -5016,9 +5387,14 @@ function syncChoiceTimer() {
 
 function syncChoicePrisonRisk() {
   if (!elements.choicePrisonRisk) return;
-  const chance = policePrisonChanceForFight(state?.run?.battlesStarted || 0) * 100;
+  const chance = currentPrisonChance() * 100;
   elements.choicePrisonRisk.textContent = `Chance de ir preso: ${formatPercent(chance)}`;
   elements.choicePrisonRisk.classList.toggle("danger", chance > 0);
+}
+
+function currentPrisonChance() {
+  if (state?.run?.tutorialFirstRaid) return 0;
+  return policePrisonChanceForFight(state?.run?.battlesStarted || 0);
 }
 
 function handleResult(result) {
@@ -5135,6 +5511,7 @@ function syncRaidSummary() {
   elements.raidSummary?.classList.toggle("hidden", !visible);
   if (!visible) return;
 
+  const guidedFirstRaid = isGuidedFirstRaidSummary();
   elements.raidSummaryTitle.textContent = summary.mapName || "Resumo do roubo";
   elements.raidSummaryMoney.textContent = formatMoney(summary.money || 0);
   elements.raidSummaryXp.textContent = String(summary.xp || 0);
@@ -5145,10 +5522,20 @@ function syncRaidSummary() {
     ...(summary.lostItems || []).map((item) => `${item} perdido: mochila cheia`)
   ];
   elements.raidSummaryItems.textContent = items.length ? items.join(" | ") : "Nenhum item obtido.";
-  elements.autoRepeatToggle.checked = Boolean(state.settings.autoRepeatRaid);
+  if (guidedFirstRaid) state.settings.autoRepeatRaid = false;
+  elements.autoRepeatToggle.checked = guidedFirstRaid ? false : Boolean(state.settings.autoRepeatRaid);
+  elements.autoRepeatToggle.disabled = guidedFirstRaid;
+  elements.autoRepeatToggle.closest("label")?.classList.toggle("hidden", guidedFirstRaid);
+  elements.raidRepeatButton?.classList.toggle("hidden", guidedFirstRaid);
+  elements.raidNextButton?.classList.toggle("hidden", guidedFirstRaid);
   if (elements.raidNextButton) {
-    elements.raidNextButton.disabled = !nextRaidMapFromSummary();
+    elements.raidNextButton.disabled = guidedFirstRaid || !nextRaidMapFromSummary();
   }
+  if (elements.raidRepeatButton) elements.raidRepeatButton.disabled = guidedFirstRaid;
+}
+
+function isGuidedFirstRaidSummary() {
+  return Boolean(state?.run?.mode === "summary" && state.run?.tutorialFirstRaid);
 }
 
 function remainingTargets(sourceState = state) {
@@ -5321,6 +5708,17 @@ function normalizeState() {
   state.player.petTutorialSkipped = Boolean(state.player.petTutorialSkipped);
   state.player.petTutorialActive = Boolean(state.player.petTutorialActive && !state.player.petTutorialCompleted && !state.player.petTutorialSkipped);
   if (!PET_TUTORIAL_STEP_BY_ID[state.player.petTutorialStep]) state.player.petTutorialStep = state.player.petTutorialActive ? PET_TUTORIAL_FIRST_STEP : null;
+  state.player.businessTutorialCompleted = Boolean(state.player.businessTutorialCompleted);
+  state.player.businessTutorialSkipped = Boolean(state.player.businessTutorialSkipped);
+  state.player.businessTutorialActive = Boolean(
+    state.player.businessTutorialActive &&
+    !state.player.businessTutorialCompleted &&
+    !state.player.businessTutorialSkipped &&
+    businessUnlocked(state.player)
+  );
+  if (!BUSINESS_TUTORIAL_STEP_BY_ID[state.player.businessTutorialStep]) {
+    state.player.businessTutorialStep = state.player.businessTutorialActive ? BUSINESS_TUTORIAL_FIRST_STEP : null;
+  }
   applyOfflinePassiveIncome(state);
   state.run ||= createNewGame(state.selectedPlayerId || "iris").run;
   state.run.playerDirection ||= "right";
@@ -5348,6 +5746,7 @@ function normalizeState() {
   state.run.policeTimer ||= 0;
   state.run.policeMessage ??= null;
   state.run.policeScene ??= null;
+  state.run.tutorialFirstRaid = Boolean(state.run.tutorialFirstRaid);
   state.run.temporaryStay ??= null;
   state.run.summary ??= null;
   state.run.summaryTimer ||= 0;
@@ -5444,6 +5843,27 @@ function temporaryStayText() {
   return `${stay.label}: ${formatTime(stay.remaining)}`;
 }
 
+function playerLevelValue(player = state?.player) {
+  return Math.max(1, Math.floor(Number(player?.level || player?.nivelJogador || 1)));
+}
+
+function businessUnlocked(player = state?.player) {
+  return playerLevelValue(player) >= BUSINESS_UNLOCK_LEVEL;
+}
+
+function businessLockedMessage() {
+  return `Negocios e drogas de jogadores liberam no nivel ${BUSINESS_UNLOCK_LEVEL}.`;
+}
+
+function guidedTutorialActive() {
+  return Boolean(
+    characterTutorialVisible ||
+    tutorialStep(state) ||
+    state?.player?.petTutorialActive ||
+    state?.player?.businessTutorialActive
+  );
+}
+
 function idleMapName(mapId) {
   return IDLE_MAPS.find((map) => map.id === mapId)?.name || "mapa";
 }
@@ -5484,18 +5904,45 @@ function actionLabel(mode, map) {
 }
 
 elements.masterToggle?.addEventListener("click", toggleMaster);
+elements.autoRaidToggle?.addEventListener("click", () => {
+  if (elements.autoRaidPanel?.classList.contains("hidden")) {
+    showAutoRaidConfirm();
+  } else {
+    hideAutoRaidConfirm();
+  }
+});
+elements.autoRaidCancel?.addEventListener("click", hideAutoRaidConfirm);
+elements.autoRaidConfirm?.addEventListener("click", startAutoRaidFromConfirm);
 elements.canvas.addEventListener("pointerdown", handleStagePointer);
 document.addEventListener("keydown", handleGameKeyDown);
 document.addEventListener("keyup", handleGameKeyUp);
 window.addEventListener("blur", clearKeyboardMovement);
 window.addEventListener("resize", handleViewportChange);
 window.addEventListener("orientationchange", handleViewportChange);
+installMobileZoomBlock();
 document.addEventListener("contextmenu", (event) => {
   event.preventDefault();
 }, { capture: true });
 
 function round(value) {
   return Math.round(value * 100) / 100;
+}
+
+function installMobileZoomBlock() {
+  let lastTouchEnd = 0;
+  document.addEventListener("touchstart", (event) => {
+    if (event.touches?.length > 1) event.preventDefault();
+  }, { passive: false });
+  document.addEventListener("touchmove", (event) => {
+    if (event.touches?.length > 1) event.preventDefault();
+  }, { passive: false });
+  document.addEventListener("touchend", (event) => {
+    const now = Date.now();
+    if (now - lastTouchEnd <= 300) event.preventDefault();
+    lastTouchEnd = now;
+  }, { passive: false });
+  document.addEventListener("gesturestart", (event) => event.preventDefault(), { passive: false });
+  document.addEventListener("dblclick", (event) => event.preventDefault(), { passive: false, capture: true });
 }
 
 elements.saveButton.addEventListener("click", () => {
@@ -5525,11 +5972,19 @@ elements.hospitalModal?.addEventListener("click", (event) => {
 });
 
 elements.raidRepeatButton?.addEventListener("click", () => {
+  if (isGuidedFirstRaidSummary()) {
+    showToast("Retorne para a cidade para continuar o tutorial.");
+    return;
+  }
   combat.repeatLastRaid();
   renderAll();
 });
 
 elements.raidNextButton?.addEventListener("click", () => {
+  if (isGuidedFirstRaidSummary()) {
+    showToast("Retorne para a cidade para continuar o tutorial.");
+    return;
+  }
   startNextRaidFromSummary();
 });
 
@@ -5539,6 +5994,12 @@ elements.raidReturnButton?.addEventListener("click", () => {
 });
 
 elements.autoRepeatToggle?.addEventListener("change", () => {
+  if (isGuidedFirstRaidSummary()) {
+    state.settings.autoRepeatRaid = false;
+    elements.autoRepeatToggle.checked = false;
+    showToast("Auto repetir libera depois do tutorial.");
+    return;
+  }
   state.settings.autoRepeatRaid = elements.autoRepeatToggle.checked;
   syncRaidSummary();
   showToast(state.settings.autoRepeatRaid ? "Auto repetir ativado." : "Auto repetir desativado.");

@@ -54,7 +54,11 @@ export function createNewGame(playerId) {
         items: createEmptyInventory(36)
       },
       equipment: createStarterEquipment(),
-      inventory: createStarterInventory()
+      inventory: createStarterInventory(),
+      businessTutorialCompleted: false,
+      businessTutorialSkipped: false,
+      businessTutorialActive: false,
+      businessTutorialStep: null
     },
     run: {
       mode: "city",
@@ -84,6 +88,7 @@ export function createNewGame(playerId) {
       policeTimer: 0,
       policeMessage: null,
       policeScene: null,
+      tutorialFirstRaid: false,
       summary: null,
       summaryTimer: 0
     },

@@ -470,10 +470,10 @@ function compareInventoryItems(a, b) {
   if (groupDiff) return groupDiff;
   const slotDiff = inventorySlotOrder(a) - inventorySlotOrder(b);
   if (slotDiff) return slotDiff;
-  const tierDiff = Number(b.tier || 0) - Number(a.tier || 0);
-  if (tierDiff) return tierDiff;
   const rarityDiff = RARITY_ORDER.indexOf(b.rarity) - RARITY_ORDER.indexOf(a.rarity);
   if (rarityDiff) return rarityDiff;
+  const tierDiff = Number(b.tier || 0) - Number(a.tier || 0);
+  if (tierDiff) return tierDiff;
   const powerDiff = itemPower(b) - itemPower(a);
   if (powerDiff) return powerDiff;
   return String(a.name || "").localeCompare(String(b.name || ""));
@@ -514,7 +514,7 @@ function singleItemFromStack(item) {
 }
 
 function inventorySortGroup(item) {
-  return isUseOrUtilityItem(item) ? 0 : 1;
+  return isUseOrUtilityItem(item) ? 1 : 0;
 }
 
 function inventorySlotOrder(item) {

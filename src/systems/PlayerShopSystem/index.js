@@ -1,11 +1,12 @@
 import {
   BUSINESS_CONFIG,
   BUSINESS_MAP_ID,
+  BUSINESS_UNLOCK_LEVEL,
   SELLABLE_BUSINESS_PRODUCTS,
   businessProductConfig
 } from "../../data/business/index.js";
-import { createDrugInventoryItem } from "../DrugSystem/index.js?v=stack-1";
-import { addItem } from "../InventorySystem/index.js?v=stack-1";
+import { createDrugInventoryItem, isDrugInventoryItem } from "../DrugSystem/index.js?v=stack-1";
+import { addItem, itemQuantity, removeItemUnits } from "../InventorySystem/index.js?v=stack-1";
 import { adjustBusinessStock, normalizeBusinessState, stockAmount } from "../BusinessSystem/index.js";
 
 const REGISTRY_VERSION = 1;
@@ -36,6 +37,10 @@ export function createShop(state, playerId, shopName, listings, now = Date.now()
   normalizeBusinessState(player, now);
   const ownerPlayerId = String(playerId || player.playerId || "local-player");
 
+  if (playerLevel(player) < BUSINESS_UNLOCK_LEVEL) {
+    return { ok: false, reason: playerShopLockedMessage() };
+  }
+
   if (getPlayerActiveShop(state, ownerPlayerId)) {
     return { ok: false, reason: "Fecha a lojinha atual primeiro." };
   }
@@ -49,9 +54,27 @@ export function createShop(state, playerId, shopName, listings, now = Date.now()
   const listingResult = normalizeRequestedListings(player, listings);
   if (!listingResult.ok) return listingResult;
 
-  listingResult.listings.forEach((listing) => {
-    adjustBusinessStock(player, listing.drugType, -listing.quantity);
-  });
+  const inventoryReservations = [];
+  for (const listing of listingResult.listings) {
+    if (listing.reservedInventory <= 0) continue;
+    const removed = removeDrugUnitsFromInventory(player, listing.drugType, listing.reservedInventory);
+    if (!removed.ok) {
+      inventoryReservations.forEach((reserved) => restoreDrugUnitsToInventory(player, reserved.drugType, reserved.quantity));
+      return removed;
+    }
+    inventoryReservations.push({ drugType: listing.drugType, quantity: listing.reservedInventory });
+  }
+
+  const stockReservations = [];
+  for (const listing of listingResult.listings) {
+    if (listing.reservedStock <= 0) continue;
+    if (!adjustBusinessStock(player, listing.drugType, -listing.reservedStock)) {
+      stockReservations.forEach((reserved) => adjustBusinessStock(player, reserved.drugType, reserved.quantity));
+      inventoryReservations.forEach((reserved) => restoreDrugUnitsToInventory(player, reserved.drugType, reserved.quantity));
+      return { ok: false, reason: BUSINESS_CONFIG.messages.missingStock };
+    }
+    stockReservations.push({ drugType: listing.drugType, quantity: listing.reservedStock });
+  }
 
   const shopId = `shop-${ownerPlayerId}-${now.toString(36)}-${registry.nextId++}`;
   const shop = {
@@ -94,7 +117,7 @@ export function closeShop(state, playerId, now = Date.now()) {
   closeShopRecord(registry, shop, "owner", now);
   if (shop.ownerPlayerId === ownerPlayerId) {
     shop.listings.forEach((listing) => {
-      if (listing.quantity > 0) adjustBusinessStock(player, listing.drugType, listing.quantity);
+      returnReservedListingUnits(player, listing);
     });
     player.activeShopId = null;
   }
@@ -115,6 +138,9 @@ export function buyFromShop(state, buyerId, shopId, drugType, quantity, now = Da
   const buyer = state.player;
   normalizeBusinessState(buyer, now);
   const cleanBuyerId = String(buyerId || buyer.playerId || "local-player");
+  if (playerLevel(buyer) < BUSINESS_UNLOCK_LEVEL) {
+    return { ok: false, reason: playerShopLockedMessage() };
+  }
   const shop = registry.shops.find((candidate) => candidate.shopId === shopId);
   if (!shop || !shop.active) return { ok: false, reason: "Loja indisponivel." };
   if (shop.ownerPlayerId === cleanBuyerId) return { ok: false, reason: BUSINESS_CONFIG.messages.ownShop };
@@ -132,6 +158,7 @@ export function buyFromShop(state, buyerId, shopId, drugType, quantity, now = Da
   buyer.money = safeMoney(buyer.money) - total;
   buyer.inventory = itemResult.inventory;
   listing.quantity -= amount;
+  consumeListingReservation(listing, amount);
   listing.soldQuantity += amount;
   shop.grossSales += total;
   const sellerGets = Math.floor(total * (1 - BUSINESS_CONFIG.saleTaxRate));
@@ -251,7 +278,9 @@ function normalizeRequestedListings(player, listings) {
       pricePerUnit,
       suggestedPrice: product.suggestedPrice,
       soldQuantity: 0,
-      originalQuantity: 0
+      originalQuantity: 0,
+      reservedStock: 0,
+      reservedInventory: 0
     };
     current.quantity += quantity;
     current.originalQuantity += quantity;
@@ -268,9 +297,13 @@ function normalizeRequestedListings(player, listings) {
     if (listing.pricePerUnit < product.minPrice || listing.pricePerUnit > product.maxPrice) {
       return { ok: false, reason: BUSINESS_CONFIG.messages.invalidPrice };
     }
-    if (listing.quantity > stockAmount(player, listing.drugType)) {
+    const stockAvailable = stockAmount(player, listing.drugType);
+    const inventoryAvailable = inventoryDrugAmount(player, listing.drugType);
+    if (listing.quantity > stockAvailable + inventoryAvailable) {
       return { ok: false, reason: BUSINESS_CONFIG.messages.missingStock };
     }
+    listing.reservedStock = Math.min(listing.quantity, stockAvailable);
+    listing.reservedInventory = listing.quantity - listing.reservedStock;
   }
 
   return { ok: true, listings: normalized };
@@ -318,13 +351,20 @@ function normalizeListing(listing) {
   const quantity = Math.max(0, Math.floor(Number(listing.quantity || 0)));
   const originalQuantity = Math.max(quantity, Math.floor(Number(listing.originalQuantity || listing.quantity || 0)));
   const pricePerUnit = Math.max(0, Math.floor(Number(listing.pricePerUnit || product.suggestedPrice || 0)));
+  const reservedStock = Math.max(0, Math.floor(Number(listing.reservedStock ?? quantity)));
+  const reservedInventory = Math.max(0, Math.floor(Number(listing.reservedInventory || 0)));
+  const reservedTotal = reservedStock + reservedInventory;
+  const normalizedReservedStock = reservedTotal > quantity ? Math.min(quantity, reservedStock) : reservedStock;
+  const normalizedReservedInventory = Math.max(0, Math.min(quantity - normalizedReservedStock, reservedInventory));
   return {
     drugType,
     quantity,
     pricePerUnit,
     suggestedPrice: product.suggestedPrice,
     originalQuantity,
-    soldQuantity: Math.max(0, Math.floor(Number(listing.soldQuantity || originalQuantity - quantity || 0)))
+    soldQuantity: Math.max(0, Math.floor(Number(listing.soldQuantity || originalQuantity - quantity || 0))),
+    reservedStock: normalizedReservedStock,
+    reservedInventory: normalizedReservedInventory
   };
 }
 
@@ -338,6 +378,69 @@ function addDrugUnitsToInventoryPreview(player, drugType, quantity) {
   item.quantity = quantity;
   if (!addItem(preview, item)) return { ok: false, reason: "Mochila cheia." };
   return { ok: true, inventory: preview.inventory };
+}
+
+function inventoryDrugAmount(player, drugType) {
+  const drugId = businessProductConfig(drugType)?.inventoryDrugId;
+  if (!drugId) return 0;
+  return (player.inventory || [])
+    .filter((item) => isDrugInventoryItem(item) && drugItemId(item) === drugId)
+    .reduce((sum, item) => sum + itemQuantity(item), 0);
+}
+
+function removeDrugUnitsFromInventory(player, drugType, quantity) {
+  const drugId = businessProductConfig(drugType)?.inventoryDrugId;
+  let remaining = Math.max(0, Math.floor(Number(quantity || 0)));
+  let removed = 0;
+  if (!drugId || remaining <= 0) return { ok: remaining <= 0, reason: BUSINESS_CONFIG.messages.missingStock };
+
+  for (let index = 0; index < (player.inventory || []).length && remaining > 0; index += 1) {
+    const item = player.inventory[index];
+    if (!isDrugInventoryItem(item) || drugItemId(item) !== drugId) continue;
+    const amount = Math.min(remaining, itemQuantity(item));
+    removeItemUnits(player.inventory, index, amount);
+    remaining -= amount;
+    removed += amount;
+  }
+
+  if (remaining > 0) {
+    if (removed > 0) restoreDrugUnitsToInventory(player, drugType, removed);
+    return { ok: false, reason: BUSINESS_CONFIG.messages.missingStock };
+  }
+  return { ok: true };
+}
+
+function restoreDrugUnitsToInventory(player, drugType, quantity) {
+  const product = businessProductConfig(drugType);
+  const amount = Math.max(0, Math.floor(Number(quantity || 0)));
+  if (!product?.inventoryDrugId || amount <= 0) return true;
+  const item = createDrugInventoryItem(product.inventoryDrugId);
+  if (!item) return false;
+  item.quantity = amount;
+  return addItem(player, item);
+}
+
+function returnReservedListingUnits(player, listing) {
+  const stockAmountToReturn = Math.max(0, Math.floor(Number(listing.reservedStock || 0)));
+  const inventoryAmountToReturn = Math.max(0, Math.floor(Number(listing.reservedInventory || 0)));
+  if (stockAmountToReturn > 0) adjustBusinessStock(player, listing.drugType, stockAmountToReturn);
+  if (inventoryAmountToReturn <= 0) return;
+  if (!restoreDrugUnitsToInventory(player, listing.drugType, inventoryAmountToReturn)) {
+    adjustBusinessStock(player, listing.drugType, inventoryAmountToReturn);
+  }
+}
+
+function consumeListingReservation(listing, quantity) {
+  let remaining = Math.max(0, Math.floor(Number(quantity || 0)));
+  const stock = Math.min(Math.max(0, Math.floor(Number(listing.reservedStock || 0))), remaining);
+  listing.reservedStock = Math.max(0, Math.floor(Number(listing.reservedStock || 0)) - stock);
+  remaining -= stock;
+  const inventory = Math.min(Math.max(0, Math.floor(Number(listing.reservedInventory || 0))), remaining);
+  listing.reservedInventory = Math.max(0, Math.floor(Number(listing.reservedInventory || 0)) - inventory);
+}
+
+function drugItemId(item) {
+  return item?.drugId || String(item?.id || "").replace(/^drug-/, "");
 }
 
 function pushSaleLog(registry, entry) {
@@ -354,4 +457,12 @@ function safeTimestamp(value, fallback) {
 function safeMoney(value) {
   const number = Math.floor(Number(value || 0));
   return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function playerLevel(player) {
+  return Math.max(1, Math.floor(Number(player?.level || player?.nivelJogador || 1)));
+}
+
+function playerShopLockedMessage() {
+  return `Negocios e drogas de jogadores liberam no nivel ${BUSINESS_UNLOCK_LEVEL}.`;
 }

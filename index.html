@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="theme-color" content="#070707">
   <meta name="description" content="Projeto 190 - Idle Crime RPG em pixel art">
   <script>
@@ -213,6 +213,21 @@
         <button class="master-toggle" id="master-toggle" aria-label="Abrir Equipamento e Mochila" aria-expanded="false">
           <span aria-hidden="true">v</span>
         </button>
+        <button class="auto-raid-toggle hidden" id="auto-raid-toggle" type="button" aria-label="Auto assalto" aria-expanded="false" title="Auto assalto">
+          <span aria-hidden="true">A</span>
+        </button>
+        <div class="auto-raid-panel hidden" id="auto-raid-panel">
+          <strong id="auto-raid-title">Auto assalto</strong>
+          <span id="auto-raid-map-label">Mapa</span>
+          <label class="auto-repeat-toggle">
+            <input type="checkbox" id="auto-raid-repeat-toggle">
+            <span>Auto repetir</span>
+          </label>
+          <div class="auto-raid-actions">
+            <button type="button" class="secondary-action" id="auto-raid-cancel">Cancelar</button>
+            <button type="button" class="primary-action" id="auto-raid-confirm">Iniciar</button>
+          </div>
+        </div>
         <div class="modal-backdrop character-stage-backdrop hidden" id="character-modal" role="dialog" aria-modal="true" aria-labelledby="character-title">
           <section class="modal large-modal character-stage-panel">
             <div class="character-stage-copy">

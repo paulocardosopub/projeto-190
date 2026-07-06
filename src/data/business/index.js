@@ -1,5 +1,7 @@
 export const BUSINESS_MAP_ID = "fazenda-laboratorio";
 export const BUSINESS_NPC_ID = "npc-empresario-negocios";
+export const BUSINESS_UNLOCK_LEVEL = 10;
+export const AUTO_RAID_UNLOCK_LEVEL = 3;
 
 export const BUSINESS_PRODUCT_ORDER = ["weed", "ecstasy", "cocaineInput", "cocaine"];
 export const SELLABLE_BUSINESS_PRODUCTS = ["weed", "ecstasy", "cocaine"];
@@ -39,7 +41,7 @@ export const BUSINESS_CONFIG = {
     },
     cocaineInput: {
       id: "cocaineInput",
-      label: "Insumo de cocaina",
+      label: "Folha de coca",
       source: "farm",
       suggestedPrice: 0,
       minPrice: 0,

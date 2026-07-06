@@ -315,6 +315,67 @@ body.temporary-stay-mode .stage-hud .status-card {
   transform: translateY(1px) rotate(180deg);
 }
 
+.auto-raid-toggle {
+  position: absolute;
+  left: calc(50% + 34px);
+  bottom: 8px;
+  z-index: 4;
+  width: 34px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  transform: translateX(-50%);
+  color: #ffe4a7;
+  background: rgba(22, 15, 10, 0.88);
+  border: 1px solid #9b6b2e;
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.38);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.auto-raid-panel {
+  position: absolute;
+  left: 50%;
+  bottom: 43px;
+  z-index: 12;
+  width: min(260px, calc(100% - 24px));
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  transform: translateX(-50%);
+  color: #ecd9ad;
+  background: rgba(18, 18, 18, 0.96);
+  border: 1px solid #a57630;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.58);
+}
+
+.auto-raid-panel strong {
+  color: #ffd45f;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.auto-raid-panel > span {
+  color: #f8ead0;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.auto-raid-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.auto-raid-actions button {
+  min-width: 0;
+  min-height: 28px;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
 .status-card,
 .combat-card,
 .raid-timer {
@@ -566,6 +627,24 @@ body.temporary-stay-mode .stage-hud .status-card {
   color: #140906;
   border-color: #ffe19d;
   background: linear-gradient(180deg, #f0ca63, #ac711d);
+}
+
+.shop-sell-cell.recommended-offer {
+  padding-right: 20px;
+  border-color: rgba(91, 224, 111, 0.82);
+}
+
+.shop-recommend-badge {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  width: 0;
+  height: 0;
+  display: block;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 9px solid #60e871;
+  filter: drop-shadow(0 0 4px rgba(64, 255, 96, 0.65));
 }
 
 .shop-craft-grid {
@@ -2898,6 +2977,8 @@ body.auth-pending .topbar {
 
 body.auth-pending .stage-hud,
 body.auth-pending .master-toggle,
+body.auth-pending .auto-raid-toggle,
+body.auth-pending .auto-raid-panel,
 body.auth-pending .window-layer {
   display: none !important;
   visibility: hidden !important;
@@ -4098,6 +4179,24 @@ body.auth-pending .window-layer {
     height: 26px;
   }
 
+  .auto-raid-toggle {
+    position: fixed;
+    left: calc(50% + 36px);
+    bottom: 6px;
+    z-index: 58;
+    width: 34px;
+    height: 26px;
+  }
+
+  .auto-raid-panel {
+    position: fixed;
+    left: 50%;
+    bottom: 38px;
+    z-index: 59;
+    width: min(260px, 38vw);
+    transform: translateX(-50%);
+  }
+
   .survival-warning {
     left: 50%;
     right: auto;
@@ -4560,6 +4659,18 @@ body.auth-pending .window-layer {
 
   .stage-hud {
     inset: 24px 5px auto 5px;
+  }
+
+  .auto-raid-toggle {
+    left: calc(50% + 34px);
+    bottom: 4px;
+    width: 32px;
+    height: 24px;
+  }
+
+  .auto-raid-panel {
+    bottom: 34px;
+    width: min(240px, 42vw);
   }
 
   .status-card {

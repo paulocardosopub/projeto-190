@@ -307,7 +307,7 @@ export class CombatSystem {
     this.emit();
   }
 
-  enterMap(mapId) {
+  enterMap(mapId, options = {}) {
     const map = MAPS.find((candidate) => candidate.id === mapId);
     if (!map) return;
     const highestUnlocked = this.state.player.highestMapUnlocked || 1;
@@ -373,6 +373,7 @@ export class CombatSystem {
       policeTimer: 0,
       policeMessage: null,
       policeScene: null,
+      tutorialFirstRaid: Boolean(options.tutorialFirstRaid),
       raidStartSnapshot: createRaidStartSnapshot(this.state.player),
       summary: createRaidSummary(map, npcs.length),
       summaryTimer: 0
@@ -1053,6 +1054,10 @@ export class CombatSystem {
   }
 
   repeatLastRaid() {
+    if (this.state.run?.tutorialFirstRaid) {
+      this.hooks.onToast?.("Retorne para a cidade para continuar o tutorial.");
+      return;
+    }
     const mapId = this.state.run.summary?.mapId || this.state.currentMapId || MAPS[0].id;
     this.enterMap(mapId);
   }
@@ -1068,6 +1073,11 @@ export class CombatSystem {
     const run = this.state.run;
     run.summaryTimer = Math.max(0, (run.summaryTimer || 0) - dt);
     if (run.summaryTimer > 0) return;
+
+    if (run.tutorialFirstRaid) {
+      this.returnFromSummary();
+      return;
+    }
 
     if (this.state.settings?.autoRepeatRaid) {
       const map = MAPS.find((candidate) => candidate.id === (run.summary?.mapId || this.state.currentMapId));
@@ -1101,6 +1111,7 @@ export class CombatSystem {
   }
 
   shouldTriggerPoliceBeforeFight() {
+    if (this.state.run?.tutorialFirstRaid) return false;
     return Math.random() < policePrisonChanceForFight(this.state.run.battlesStarted || 0);
   }
 
