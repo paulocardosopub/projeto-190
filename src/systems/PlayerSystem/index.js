@@ -38,6 +38,7 @@ export function createNewGame(playerId) {
       staminaMax: 120,
       staminaRegenPorMinuto: 2,
       needsHideoutRest: false,
+      lastHideoutRestAt: 0,
       nivelJogador: 1,
       casaAtual: null,
       carroAtual: null,

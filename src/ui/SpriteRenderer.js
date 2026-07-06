@@ -1076,37 +1076,52 @@ export class SpriteRenderer {
     const ctx = this.ctx;
     const direction = state.run?.playerDirection || "right";
     const side = direction === "left" ? -1 : 1;
-    const handX = playerX + side * playerHeight * 0.19;
-    const handY = feetY - playerHeight * 0.47;
+    const handX = playerX + side * playerHeight * 0.18;
+    const handY = feetY - playerHeight * 0.34;
     const time = performance.now() / 1000;
-    const actionBoost = state.run?.mode === "combat" ? 1.18 : 1;
+    const actionBoost = playerAction(state) === "attack" || state.run?.mode === "combat" ? 1.16 : 1;
+    const pulse = 0.72 + (Math.sin(time * 5.2) + 1) * 0.14;
+    const length = playerHeight * config.length * actionBoost;
+    const lift = playerHeight * config.lift;
+    const hiltX = handX - side * playerHeight * 0.035;
+    const hiltY = handY + playerHeight * 0.055;
+    const tipX = handX + side * length;
+    const tipY = handY - lift;
 
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    for (let index = 0; index < config.puffs; index += 1) {
-      const phase = time * (1.4 + index * 0.13) + index * 1.7;
-      const drift = (index - (config.puffs - 1) / 2) * 2.2;
-      const x = handX + side * (Math.sin(phase) * config.spread + drift);
-      const y = handY - index * 1.4 - Math.abs(Math.cos(phase)) * config.rise;
-      const radius = (config.radius + Math.sin(phase * 1.6) * 1.1) * actionBoost;
-      ctx.globalAlpha = config.alpha * (0.58 + Math.abs(Math.sin(phase)) * 0.42);
-      ctx.fillStyle = config.color;
-      ctx.beginPath();
-      ctx.ellipse(x, y, radius * 0.85, radius * 1.2, phase * 0.4, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.shadowColor = config.color;
+    ctx.shadowBlur = config.blur * pulse;
 
-    if (config.flame) {
-      const flicker = Math.sin(time * 9) * 1.4;
-      ctx.globalAlpha = config.alpha + 0.08;
-      ctx.fillStyle = config.core;
-      ctx.beginPath();
-      ctx.moveTo(handX + side * 2, handY - 9 - flicker);
-      ctx.lineTo(handX - side * 4, handY + 4);
-      ctx.lineTo(handX + side * 7, handY + 3);
-      ctx.closePath();
-      ctx.fill();
-    }
+    ctx.globalAlpha = config.alpha * 0.52;
+    ctx.strokeStyle = config.color;
+    ctx.lineWidth = config.width * 2.7;
+    ctx.beginPath();
+    ctx.moveTo(hiltX, hiltY);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+
+    ctx.shadowBlur = config.blur * 0.45;
+    ctx.globalAlpha = config.alpha;
+    ctx.strokeStyle = config.core;
+    ctx.lineWidth = config.width;
+    ctx.beginPath();
+    ctx.moveTo(hiltX, hiltY);
+    ctx.lineTo(tipX, tipY);
+    ctx.stroke();
+
+    const tipGlow = ctx.createRadialGradient(tipX, tipY, 1, tipX, tipY, config.radius * pulse * actionBoost);
+    tipGlow.addColorStop(0, hexToRgba(config.core, Math.min(0.7, config.alpha + 0.18)));
+    tipGlow.addColorStop(0.42, hexToRgba(config.color, config.alpha * 0.48));
+    tipGlow.addColorStop(1, hexToRgba(config.color, 0));
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = tipGlow;
+    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(tipX, tipY, config.radius * pulse * actionBoost, 0, Math.PI * 2);
+    ctx.fill();
     ctx.restore();
   }
 
@@ -1670,62 +1685,62 @@ function weaponEffectConfig(rarity) {
     comum: {
       color: "#b8b8b8",
       core: "#e7e7e7",
-      puffs: 2,
-      radius: 2.4,
-      spread: 2.4,
-      rise: 3,
-      alpha: 0.08,
-      flame: false
+      radius: 5,
+      width: 1.1,
+      length: 0.19,
+      lift: 0.035,
+      blur: 4,
+      alpha: 0.12
     },
     incomum: {
       color: "#55d66b",
       core: "#b8ffbc",
-      puffs: 3,
-      radius: 2.9,
-      spread: 3,
-      rise: 4,
-      alpha: 0.12,
-      flame: false
+      radius: 5.8,
+      width: 1.25,
+      length: 0.2,
+      lift: 0.038,
+      blur: 5,
+      alpha: 0.16
     },
     raro: {
       color: "#52a8ff",
       core: "#c7e6ff",
-      puffs: 4,
-      radius: 3.2,
-      spread: 3.5,
-      rise: 5,
-      alpha: 0.15,
-      flame: false
+      radius: 6.4,
+      width: 1.4,
+      length: 0.21,
+      lift: 0.04,
+      blur: 6,
+      alpha: 0.2
     },
     epico: {
       color: "#b65cff",
       core: "#f0d2ff",
-      puffs: 5,
-      radius: 3.6,
-      spread: 4,
-      rise: 6,
-      alpha: 0.2,
-      flame: true
+      radius: 7.2,
+      width: 1.6,
+      length: 0.22,
+      lift: 0.044,
+      blur: 7,
+      alpha: 0.24
     },
     lendario: {
       color: "#ffd45f",
       core: "#fff0a6",
-      puffs: 5,
-      radius: 3.8,
-      spread: 4.2,
-      rise: 6,
-      alpha: 0.22,
-      flame: true
+      radius: 7.8,
+      width: 1.75,
+      length: 0.23,
+      lift: 0.047,
+      blur: 8,
+      alpha: 0.28
     },
     mestre: {
       color: "#aefcff",
       core: "#f6e4ff",
-      puffs: 6,
-      radius: 4,
-      spread: 4.5,
-      rise: 7,
-      alpha: 0.24,
-      flame: true
+      radius: 8.5,
+      width: 1.9,
+      length: 0.24,
+      lift: 0.05,
+      blur: 9,
+      alpha: 0.32
     }
   }[rarity] || null;
 }

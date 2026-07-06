@@ -3,8 +3,8 @@ export const CITY_DECORATIVE_NPCS = [];
 export function decorativeNpcsForIdleMap(mapId) {
   const sets = {
     prisao: [
-      newNpc("prisao-policial-extra-1", "Policial", 4, 0, 300, "right"),
-      newNpc("prisao-policial-extra-2", "Policial", 4, 0, 650, "front"),
+      cityPoliceNpc("prisao-policial-extra-1", 300, "right"),
+      cityPoliceNpc("prisao-policial-extra-2", 650, "front"),
       newNpc("prisao-detento-1", "Detento", 6, 0, 1130, "front"),
       newNpc("prisao-detento-2", "Detento", 3, 4, 1320, "right"),
       newNpc("prisao-seguranca-1", "Seguranca", 8, 4, 1640, "left")
@@ -33,5 +33,12 @@ function newNpc(id, name, row, columnOffset, x, direction = "front", heightScale
     direction,
     x,
     heightScale
+  };
+}
+
+function cityPoliceNpc(id, x, direction = "front") {
+  return {
+    ...newNpc(id, "Policial", 3, 0, x, direction, 1),
+    sheet: "enemies2"
   };
 }

@@ -150,6 +150,7 @@ import {
   getOfflineLimitHours,
   getPassiveIncomePerMinute,
   getStaminaRechargeCost,
+  hideoutRestCooldown,
   houseOptions,
   landOptions,
   normalizeProgressionSystems,
@@ -1914,7 +1915,35 @@ function syncHud() {
   elements.playerHpFill.style.width = `${Math.round(hpPercent * 100)}%`;
   elements.playerHp.textContent = `HP ${state.player.hp} / ${stats.maxHp}`;
   syncAutoRaidButton();
+  syncHideoutRestButton();
   syncRaidSummary();
+}
+
+function syncHideoutRestButton() {
+  const button = document.querySelector("[data-hideout-rest]");
+  if (!button || !state?.player) return;
+  const player = state.player;
+  const house = getHouseConfig(player.casaAtual);
+  const rechargeCost = getStaminaRechargeCost(player);
+  const cooldown = hideoutRestCooldown(player);
+  const canRestNow = Boolean(house && rechargeCost > 0 && player.money >= rechargeCost && cooldown.ready);
+  button.disabled = !canRestNow;
+  button.textContent = hideoutRestButtonLabel(player, house, rechargeCost, cooldown);
+}
+
+function hideoutRestButtonLabel(player, house, rechargeCost, cooldown) {
+  if (!house) return "Sem casa";
+  if (rechargeCost <= 0) return "Stamina cheia";
+  if (!cooldown.ready) return `Aguardar ${compactDuration(cooldown.remainingMs)}`;
+  if (player.money < rechargeCost) return `Precisa ${formatMoney(rechargeCost)}`;
+  return `Descansar ${formatMoney(rechargeCost)}`;
+}
+
+function compactDuration(ms) {
+  const totalSeconds = Math.max(1, Math.ceil(Number(ms || 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function syncAutoRaidButton() {

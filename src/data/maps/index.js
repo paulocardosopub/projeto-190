@@ -51,9 +51,9 @@ export const IDLE_MAPS = [
     backgroundRow: 0,
     description: "Area de retencao temporaria.",
     npcs: [
-      idleNpc("prisao-policial-1", "Policial", 4, 0, 420, "front"),
-      idleNpc("prisao-policial-2", "Policial", 4, 0, 920, "left"),
-      idleNpc("prisao-policial-3", "Policial", 4, 0, 1450, "right")
+      cityPoliceNpc("prisao-policial-1", 420, "front"),
+      cityPoliceNpc("prisao-policial-2", 920, "left"),
+      cityPoliceNpc("prisao-policial-3", 1450, "right")
     ]
   },
   {
@@ -100,5 +100,12 @@ function idleNpc(id, name, row, columnOffset, x, direction = "front", heightScal
     x,
     direction,
     heightScale
+  };
+}
+
+function cityPoliceNpc(id, x, direction = "front") {
+  return {
+    ...idleNpc(id, "Policial", 3, 0, x, direction, 1),
+    sheet: "enemies2"
   };
 }

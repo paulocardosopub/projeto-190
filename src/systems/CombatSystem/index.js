@@ -1,7 +1,6 @@
 import { IDLE_MAPS, MAPS } from "../../data/maps/index.js?v=spawn-height-1";
 import { SPRITES } from "../../data/assets.js?v=petshop-portal-1";
 import { NPC_ALERT_LINES } from "../../data/enemies/index.js?v=npc-crops-1";
-import { CITY_NPCS } from "../../data/cityNpcs/index.js?v=petshop-portal-1";
 import { decorativeNpcsForIdleMap } from "../../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { calculateStats } from "../EquipmentSystem/index.js";
 import { createNpcWave, createEnemyStats } from "../EnemySystem/index.js?v=npc-crops-1";
@@ -235,13 +234,12 @@ export class CombatSystem {
   }
 
   enterPrison() {
-    const police = CITY_NPCS.find((npc) => npc.id === "npc-seguranca");
     this.enterTemporaryStay({
       mapId: "prisao",
       duration: 30,
       label: "cumprindo pena",
       playerX: 260,
-      returnX: (police?.x ?? 1500) - 58,
+      returnX: CITY_SPAWN_X,
       returnDirection: "right",
       logMessage: "Voce foi levado para a prisao.",
       completionToast: "Pena cumprida. Voce voltou para a cidade."

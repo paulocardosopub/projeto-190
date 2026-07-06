@@ -11,6 +11,7 @@ import {
   getOfflineLimitHours,
   getPassiveIncomePerMinute,
   getStaminaRechargeCost,
+  hideoutRestCooldown,
   staminaPercent,
   staminaState
 } from "../systems/StaminaSystem/index.js?v=asset-lock-1";
@@ -973,6 +974,8 @@ function hideoutProgressPanel(state) {
   const car = getCarConfig(player.carroAtual);
   const land = getLandConfig(player.terrenoAtual);
   const rechargeCost = getStaminaRechargeCost(player);
+  const restCooldown = hideoutRestCooldown(player);
+  const canRestNow = Boolean(house && rechargeCost > 0 && player.money >= rechargeCost && restCooldown.ready);
   const vault = Math.floor(player.passiveVault?.amount || 0);
   const percent = Math.round(staminaPercent(player));
   const stateLabel = staminaState(player).label;
@@ -982,8 +985,8 @@ function hideoutProgressPanel(state) {
         <span class="eyebrow">Stamina</span>
         <h3>${Math.floor(player.staminaAtual)} / ${player.staminaMax}</h3>
         <p>${stateLabel} | ${percent}% | Regen ${formatPercentless(player.staminaRegenPorMinuto)}/min</p>
-        <button class="panel-action" data-hideout-rest ${house && rechargeCost > 0 && player.money >= rechargeCost ? "" : "disabled"}>
-          Descansar Agora ${rechargeCost ? money(rechargeCost) : ""}
+        <button class="panel-action" data-hideout-rest ${canRestNow ? "" : "disabled"}>
+          ${hideoutRestButtonLabel(player, house, rechargeCost, restCooldown)}
         </button>
       </article>
       <article>
@@ -1009,6 +1012,21 @@ function hideoutProgressPanel(state) {
       </article>
     </section>
   `;
+}
+
+function hideoutRestButtonLabel(player, house, rechargeCost, cooldown) {
+  if (!house) return "Sem casa";
+  if (rechargeCost <= 0) return "Stamina cheia";
+  if (!cooldown.ready) return `Aguardar ${compactDuration(cooldown.remainingMs)}`;
+  if (player.money < rechargeCost) return `Precisa ${money(rechargeCost)}`;
+  return `Descansar ${money(rechargeCost)}`;
+}
+
+function compactDuration(ms) {
+  const totalSeconds = Math.max(1, Math.ceil(Number(ms || 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function rangeControl(key, label, value, min, max) {

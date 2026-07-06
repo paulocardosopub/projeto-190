@@ -24,17 +24,6 @@ export const CITY_NPCS = [
     greeting: "Cuido dos bichos da area. Quer conhecer o petshop?"
   },
   {
-    id: "npc-turista",
-    name: "Turista",
-    shopName: "Informacoes",
-    role: "future",
-    sheet: "enemies2",
-    row: 1,
-    x: 1140,
-    direction: "front",
-    greeting: "Ainda estou organizando minhas coisas."
-  },
-  {
     id: "npc-mendigo-fumante",
     name: "Mendigo Fumante",
     shopName: "Contato do Fumante",
@@ -60,28 +49,6 @@ export const CITY_NPCS = [
     x: 1320,
     direction: "front",
     greeting: "Tenho itens aleatorios e faco fusao de equipamentos."
-  },
-  {
-    id: "npc-seguranca",
-    name: "Policial",
-    shopName: "Policial da Cidade",
-    role: "future",
-    sheet: "enemies2",
-    row: 3,
-    x: 1500,
-    direction: "front",
-    greeting: "Fica esperto por aqui."
-  },
-  {
-    id: "npc-feirante",
-    name: "Feirante",
-    shopName: "Banca da Feira",
-    role: "future",
-    sheet: "enemies2",
-    row: 4,
-    x: 1680,
-    direction: "front",
-    greeting: "Ainda nao tenho estoque."
   },
   {
     id: "seu-zeca",

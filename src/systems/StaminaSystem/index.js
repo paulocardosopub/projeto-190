@@ -9,6 +9,8 @@ import {
   staminaConfig
 } from "../../data/balance/index.js?v=asset-lock-1";
 
+export const HIDEOUT_REST_COOLDOWN_MS = 30 * 60 * 1000;
+
 export function normalizeProgressionSystems(player) {
   player.staminaMax = calculateStaminaMax(player);
   player.staminaRegenPorMinuto = calculateStaminaRegenPerMinute(player);
@@ -26,6 +28,7 @@ export function normalizeProgressionSystems(player) {
     : player.terrenosComprados[0] || null;
   player.maiorTerrenoDesbloqueado = highestUnlockedLandTier(player);
   player.hideoutTier = player.terrenoAtual || 0;
+  player.lastHideoutRestAt = Math.max(0, Number(player.lastHideoutRestAt || 0));
   player.passiveVault ||= { amount: 0, accumulatedSeconds: 0, lastUpdatedAt: Date.now() };
   player.passiveVault.amount ||= 0;
   player.passiveVault.accumulatedSeconds ||= 0;
@@ -105,18 +108,41 @@ export function getStaminaRechargeCost(player) {
   return roundClean(raw);
 }
 
-export function restNow(player) {
+export function hideoutRestCooldown(player, now = Date.now()) {
+  const safeNow = Math.max(0, Number(now) || Date.now());
+  const lastRest = Math.max(0, Number(player?.lastHideoutRestAt || 0));
+  if (!Number.isFinite(lastRest) || lastRest <= 0) {
+    return { ready: true, remainingMs: 0, readyAt: safeNow };
+  }
+
+  const readyAt = lastRest + HIDEOUT_REST_COOLDOWN_MS;
+  const remainingMs = Math.max(0, Math.min(HIDEOUT_REST_COOLDOWN_MS, readyAt - safeNow));
+  return { ready: remainingMs <= 0, remainingMs, readyAt };
+}
+
+export function restNow(player, now = Date.now()) {
   updateStaminaDerivedStats(player);
   const house = getHouseConfig(player.casaAtual);
   if (!house) return { ok: false, reason: "Compre uma casa para descansar agora." };
   if (player.staminaAtual >= player.staminaMax) return { ok: false, reason: "Stamina ja esta cheia." };
+  const cooldown = hideoutRestCooldown(player, now);
+  if (!cooldown.ready) return { ok: false, reason: `Aguarde ${cooldownDurationText(cooldown.remainingMs)} para descansar de novo.` };
 
   const cost = getStaminaRechargeCost(player);
   if (player.money < cost) return { ok: false, reason: "Moedas insuficientes para descansar agora." };
 
   player.money -= cost;
   player.staminaAtual = player.staminaMax;
+  player.lastHideoutRestAt = now;
   return { ok: true, value: cost, message: `Stamina recuperada por R$ ${cost}.` };
+}
+
+function cooldownDurationText(ms) {
+  const totalSeconds = Math.max(1, Math.ceil(Number(ms || 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) return `${seconds}s`;
+  return seconds ? `${minutes}min ${seconds}s` : `${minutes}min`;
 }
 
 export function buyHouse(player, tier) {
