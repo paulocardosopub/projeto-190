@@ -1931,20 +1931,27 @@ function canShowAutoRaidButton() {
   if (guidedTutorialActive()) return false;
   if (state.scene === "map" || state.run?.summary) return false;
   if (state.run?.mode === "temporary") return false;
-  return Boolean(lastUnlockedRaidMap());
+  return Boolean(autoRaidMap());
 }
 
-function lastUnlockedRaidMap() {
+function autoRaidMap() {
   if (!state?.player) return null;
   const highest = Math.max(1, Math.floor(Number(state.player.highestMapUnlocked || 1)));
-  return [...MAPS]
-    .filter((map) => Number(map.index || 0) <= highest)
-    .sort((a, b) => Number(b.index || 0) - Number(a.index || 0))[0] || MAPS[0] || null;
+  const lastById = MAPS.find((map) => map.id === state.player.lastRaidMapId);
+  const lastByNumber = MAPS.find((map) => Number(map.index || 0) === Number(state.player.lastRaidMapNumber || 0));
+  const map = lastById || lastByNumber || legacyAutoRaidMap(highest);
+  if (!map || Number(map.index || 0) > highest) return null;
+  return map;
+}
+
+function legacyAutoRaidMap(highestMapUnlocked) {
+  const inferredIndex = Math.max(1, Math.min(MAPS.length, Number(highestMapUnlocked || 1) - 1 || 1));
+  return MAPS.find((map) => Number(map.index || 0) === inferredIndex) || MAPS[0] || null;
 }
 
 function showAutoRaidConfirm() {
   if (!canShowAutoRaidButton()) return;
-  const map = lastUnlockedRaidMap();
+  const map = autoRaidMap();
   if (!map) return;
   elements.autoRaidTitle.textContent = "Auto assalto";
   elements.autoRaidMapLabel.textContent = `${map.code || map.index || ""} ${map.name}`.trim();
@@ -1959,7 +1966,7 @@ function hideAutoRaidConfirm() {
 }
 
 function startAutoRaidFromConfirm() {
-  const map = lastUnlockedRaidMap();
+  const map = autoRaidMap();
   if (!map) {
     hideAutoRaidConfirm();
     return;
@@ -3808,6 +3815,7 @@ function startRaid(mapId, options = {}) {
   if (!options.keepMenus) closeMaster({ render: false, force: true });
   closeCityShopPanel({ force: true });
   tutorialOverlay?.hide();
+  rememberLastRaidMap(map);
   fadeThen("Roube o maximo que conseguir!", () => {
     combat.enterMap(mapId, { tutorialFirstRaid: Boolean(options.tutorialFirstRaid) });
     dispatchTutorialEvent("raid_started", { mapId, mapIndex: map?.index || 1 }, { render: false });
@@ -3817,6 +3825,13 @@ function startRaid(mapId, options = {}) {
       activeRight = activeRight || "configs";
     }
   });
+}
+
+function rememberLastRaidMap(map) {
+  if (!map || !state?.player) return;
+  state.player.lastRaidMapId = map.id;
+  state.player.lastRaidMapNumber = Number(map.index || map.mapNumber || 1);
+  if (!state.settings?.visualPreview) persistGame();
 }
 
 function startNextRaidFromSummary() {
@@ -5655,6 +5670,8 @@ function normalizeState() {
   }
   state.activeAssaultTier ||= 1;
   state.player.highestMapUnlocked ||= 1;
+  state.player.lastRaidMapId ||= null;
+  state.player.lastRaidMapNumber = Math.max(0, Math.floor(Number(state.player.lastRaidMapNumber || 0)));
   state.player.playerId ||= activeProfile?.id || null;
   state.player.username ||= activeProfile?.username || "";
   state.player.isGuest = Boolean(activeProfile?.isGuest || state.player.isGuest);

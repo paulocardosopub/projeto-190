@@ -9,6 +9,7 @@
     "start": "npx http-server . -p 4190 -c-1",
     "server": "node server/index.mjs",
     "electron": "electron .",
+    "simulate:economy": "node scripts/economy-simulation.mjs",
     "build": "electron-builder",
     "build:win": "electron-builder --win portable"
   },

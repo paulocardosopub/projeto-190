@@ -1,4 +1,5 @@
 import {
+  clampDirectCashReward,
   equipmentSlotsConfig,
   getEquipmentConfig,
   lootTables,
@@ -15,7 +16,7 @@ export function rollLoot(map, stats, wonFight = false) {
   const moneyMin = map.money[0];
   const moneyMax = map.money[1];
   const moneyRoll = randomInt(moneyMin, moneyMax);
-  const money = Math.round(moneyRoll * (1 + (stats.money || 0)) * (wonFight ? 1.25 : 1));
+  const money = clampDirectCashReward(moneyRoll, map, stats, wonFight);
   const xp = Math.round(map.xp * (wonFight ? 1.35 : 1));
   const itemChance = Math.min(0.95, (map.chanceDropEquipamento ?? map.equipmentDropChance ?? 0) / 100 + (stats.loot || 0));
   const equipmentId = Math.random() < itemChance ? rollEquipmentId(map) : null;

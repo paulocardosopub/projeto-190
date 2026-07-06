@@ -26,6 +26,8 @@ export function createNewGame(playerId) {
       factionId: null,
       level: 1,
       highestMapUnlocked: 1,
+      lastRaidMapId: null,
+      lastRaidMapNumber: 0,
       hideoutTier: 0,
       hideoutItems: {},
       xp: 0,

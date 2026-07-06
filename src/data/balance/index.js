@@ -82,7 +82,15 @@ export const equipmentSlotsConfig = {
 };
 
 export const priceConfig = {
-  sellPercent: 0.3,
+  sellPercent: 0.22,
+  sellPercentByRarity: {
+    comum: 0.22,
+    incomum: 0.16,
+    raro: 0.09,
+    epico: 0.045,
+    lendario: 0.03,
+    mestre: 0.02
+  },
   baseByRarityTier: {
     comum: { 1: 250, 2: 450, 3: 800, 4: 1400 },
     incomum: { 1: 2400, 2: 4300, 3: 7800, 4: 14000 },
@@ -90,6 +98,52 @@ export const priceConfig = {
     epico: { 1: 260000, 2: 470000, 3: 850000, 4: 1500000 },
     lendario: { 1: 3000000, 2: 5400000, 3: 9700000, 4: 17500000 },
     mestre: { 1: 35000000, 2: 63000000, 3: 113000000, 4: 200000000 }
+  }
+};
+
+export const economyBalanceConfig = {
+  notes: "Dinheiro direto por alvo usa curva linear por tier de mapa, com teto por risco para evitar inflacao por multiplicadores.",
+  directCash: {
+    formula: "reward = clamp(baseMapReward * riskMultiplier * moneyBonusMultiplier, minReward, capByTierAndRisk)",
+    minReward: 35,
+    fightMultiplier: 1.15,
+    maxMoneyBonusMultiplier: 1.25,
+    mapTierBands: {
+      1: { minStart: 35, minEnd: 110, maxStart: 110, maxEnd: 300 },
+      2: { minStart: 125, minEnd: 300, maxStart: 300, maxEnd: 780 },
+      3: { minStart: 360, minEnd: 650, maxStart: 850, maxEnd: 1350 },
+      4: { minStart: 750, minEnd: 1250, maxStart: 1500, maxEnd: 2300 }
+    },
+    caps: {
+      theftByTier: { 1: 320, 2: 850, 3: 1450, 4: 2400 },
+      fightByTier: { 1: 420, 2: 1100, 3: 1900, 4: 3100 }
+    }
+  },
+  equipmentDropChanceByMap: {
+    1: 4.5,
+    2: 5,
+    3: 5.5,
+    4: 6,
+    5: 6.5,
+    6: 7,
+    7: 7,
+    8: 7.5,
+    9: 8,
+    10: 8.5,
+    11: 9,
+    12: 9.5,
+    13: 9.5,
+    14: 10,
+    15: 10.5,
+    16: 11,
+    17: 11.5,
+    18: 12,
+    19: 12,
+    20: 12.3,
+    21: 12.6,
+    22: 12.9,
+    23: 13.2,
+    24: 13.5
   }
 };
 
@@ -273,35 +327,36 @@ export const itemsConfigById = Object.fromEntries(itemsConfig.map((item) => [ite
 export const equipmentAliasConfig = buildEquipmentAliases();
 
 const mapRows = [
-  [1, 1, "Beco do Camping", 80, 4, 6, 8],
-  [2, 1, "Praca do Aperto", 120, 6, 8, 8.5],
-  [3, 1, "Mercadinho da Esquina", 180, 9, 10, 9],
-  [4, 1, "Ponto de Onibus", 270, 13, 12, 9.5],
-  [5, 1, "Feira de Bairro", 400, 18, 14, 10],
-  [6, 1, "Calcadao Popular", 600, 26, 16, 11],
-  [7, 2, "Vila do Corre", 900, 38, 18, 12],
-  [8, 2, "Terminal Urbano", 1350, 55, 20, 13],
-  [9, 2, "Centro Comercial", 2000, 80, 22, 14],
-  [10, 2, "Rua dos Barzinhos", 3000, 115, 24, 15],
-  [11, 2, "Oficina Fechada", 4500, 165, 26, 16],
-  [12, 2, "Feira Grande", 6700, 240, 28, 17],
-  [13, 3, "Orla Movimentada", 10000, 350, 30, 18],
-  [14, 3, "Galeria da Zona Sul", 15000, 510, 32, 19],
-  [15, 3, "Evento VIP", 22500, 740, 34, 20],
-  [16, 3, "Condominio Alto", 33500, 1070, 36, 21],
-  [17, 3, "Garagem de Importados", 50000, 1550, 38, 22],
-  [18, 3, "Avenida Empresarial", 75000, 2250, 40, 23],
-  [19, 4, "Marina de Luxo", 110000, 3250, 43, 24],
-  [20, 4, "Cobertura Blindada", 165000, 4700, 46, 25],
-  [21, 4, "Mansoes do Lago", 245000, 6800, 49, 26],
-  [22, 4, "Clube Fechado", 365000, 9800, 52, 27],
-  [23, 4, "Torre dos Milionarios", 545000, 14200, 55, 28],
-  [24, 4, "Cofre da Cidade", 800000, 20500, 58, 30]
+  [1, 1, "Beco do Camping", 80, 4, 6],
+  [2, 1, "Praca do Aperto", 120, 6, 8],
+  [3, 1, "Mercadinho da Esquina", 180, 9, 10],
+  [4, 1, "Ponto de Onibus", 270, 13, 12],
+  [5, 1, "Feira de Bairro", 400, 18, 14],
+  [6, 1, "Calcadao Popular", 600, 26, 16],
+  [7, 2, "Vila do Corre", 900, 38, 18],
+  [8, 2, "Terminal Urbano", 1350, 55, 20],
+  [9, 2, "Centro Comercial", 2000, 80, 22],
+  [10, 2, "Rua dos Barzinhos", 3000, 115, 24],
+  [11, 2, "Oficina Fechada", 4500, 165, 26],
+  [12, 2, "Feira Grande", 6700, 240, 28],
+  [13, 3, "Orla Movimentada", 10000, 350, 30],
+  [14, 3, "Galeria da Zona Sul", 15000, 510, 32],
+  [15, 3, "Evento VIP", 22500, 740, 34],
+  [16, 3, "Condominio Alto", 33500, 1070, 36],
+  [17, 3, "Garagem de Importados", 50000, 1550, 38],
+  [18, 3, "Avenida Empresarial", 75000, 2250, 40],
+  [19, 4, "Marina de Luxo", 110000, 3250, 43],
+  [20, 4, "Cobertura Blindada", 165000, 4700, 46],
+  [21, 4, "Mansoes do Lago", 245000, 6800, 49],
+  [22, 4, "Clube Fechado", 365000, 9800, 52],
+  [23, 4, "Torre dos Milionarios", 545000, 14200, 55],
+  [24, 4, "Cofre da Cidade", 800000, 20500, 58]
 ];
 
-export const mapsConfig = mapRows.map(([index, tier, name, enemyHp, enemyDamage, stealRisk, dropChance]) => {
+export const mapsConfig = mapRows.map(([index, tier, name, enemyHp, enemyDamage, stealRisk]) => {
   const codeIndex = ((index - 1) % 6) + 1;
   const background = backgroundForMap(index, tier);
+  const dropChance = economyBalanceConfig.equipmentDropChanceByMap[index] || 6;
   return {
     id: `mapa-${index}`,
     index,
@@ -591,6 +646,18 @@ export function getMapTierForMapNumber(mapNumber) {
   return Math.max(1, Math.min(4, Math.ceil(Number(mapNumber || 1) / 6)));
 }
 
+export function clampDirectCashReward(baseRoll, map, stats = {}, wonFight = false) {
+  const cash = economyBalanceConfig.directCash;
+  const tier = Math.max(1, Math.min(4, Number(map?.tier || getMapTierForMapNumber(map?.index || map?.mapNumber || 1))));
+  const moneyBonus = Math.max(0, Math.min(Number(stats?.money || 0), Number(cash.maxMoneyBonusMultiplier || 1.25) - 1));
+  const riskMultiplier = wonFight ? Number(cash.fightMultiplier || 1.15) : 1;
+  const raw = Math.round(Number(baseRoll || 0) * (1 + moneyBonus) * riskMultiplier);
+  const caps = wonFight ? cash.caps.fightByTier : cash.caps.theftByTier;
+  const cap = Number(caps?.[tier] || Infinity);
+  const min = Number(cash.minReward || 1);
+  return Math.max(min, Math.min(cap, raw));
+}
+
 export function getCraftResultConfig(item) {
   if (!item) return null;
   const rarity = item.rarity || item.raridade;
@@ -633,7 +700,8 @@ function createItemConfig(slot, rarity, tier, name, bonus) {
   const rarityInfo = rarityConfig[rarity];
   const basePrice = priceConfig.baseByRarityTier[rarity][tier];
   const buyPrice = Math.round(basePrice * slotConfig.npcPriceMultiplier);
-  const sellPrice = Math.round(buyPrice * priceConfig.sellPercent);
+  const sellPercent = priceConfig.sellPercentByRarity[rarity] ?? priceConfig.sellPercent;
+  const sellPrice = Math.round(buyPrice * sellPercent);
   const id = `${slot}-${rarity}-t${tier}`;
   const stats = {};
   if (slot === "weapon") stats.attack = bonus;
@@ -728,8 +796,11 @@ function mapDescription(tier) {
 }
 
 function moneyForMap(index) {
-  const min = Math.round(35 * Math.pow(1.43, index - 1));
-  const max = Math.round(min * 2.35 + index * 45);
+  const tier = getMapTierForMapNumber(index);
+  const progress = (((Number(index) || 1) - 1) % 6) / 5;
+  const band = economyBalanceConfig.directCash.mapTierBands[tier] || economyBalanceConfig.directCash.mapTierBands[1];
+  const min = roundEconomyReward(lerp(band.minStart, band.minEnd, progress));
+  const max = roundEconomyReward(lerp(band.maxStart, band.maxEnd, progress));
   return [min, max];
 }
 
@@ -774,4 +845,14 @@ function weighted(weights) {
   return Object.entries(weights)
     .filter(([, chance]) => chance > 0)
     .map(([id, chance]) => ({ id, chance }));
+}
+
+function lerp(start, end, amount) {
+  return start + (end - start) * Math.max(0, Math.min(1, amount));
+}
+
+function roundEconomyReward(value) {
+  const amount = Math.max(0, Number(value || 0));
+  if (amount < 1000) return Math.round(amount / 5) * 5;
+  return Math.round(amount / 25) * 25;
 }

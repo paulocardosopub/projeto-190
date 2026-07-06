@@ -280,6 +280,7 @@ export function renderPanel(container, type, state, renderer, callbacks) {
     pets: "Pets",
     faction: "Faccao"
   };
+  const preservedControls = capturePanelControls(container);
 
   container.innerHTML = `
     ${windowHeader(titles[type] || "Painel", type)}
@@ -328,6 +329,7 @@ export function renderPanel(container, type, state, renderer, callbacks) {
   });
   if (type === "faction") bindFactionControls(container, callbacks);
   if (type === "pets") bindPetControls(container, renderer, callbacks);
+  restorePanelControls(container, preservedControls);
 }
 
 export function renderConfigWindow(container, state, callbacks) {
@@ -712,6 +714,82 @@ function bindFactionControls(container, callbacks) {
 
 function formData(form) {
   return Object.fromEntries(new FormData(form).entries());
+}
+
+function capturePanelControls(container) {
+  const controls = [...container.querySelectorAll("input, textarea, select")];
+  if (!controls.length) return null;
+
+  const activeElement = document.activeElement;
+  return {
+    activeKey: controls.includes(activeElement) ? panelControlKey(activeElement, controls.indexOf(activeElement)) : null,
+    entries: controls.map((control, index) => {
+      const selection = controlSelection(control);
+      return {
+        key: panelControlKey(control, index),
+        value: control.value,
+        checked: Boolean(control.checked),
+        selectionStart: selection.start,
+        selectionEnd: selection.end
+      };
+    })
+  };
+}
+
+function restorePanelControls(container, snapshot) {
+  if (!snapshot?.entries?.length) return;
+  const controls = [...container.querySelectorAll("input, textarea, select")];
+  if (!controls.length) return;
+
+  const byKey = new Map(snapshot.entries.map((entry) => [entry.key, entry]));
+  let focusTarget = null;
+  let focusEntry = null;
+
+  controls.forEach((control, index) => {
+    const key = panelControlKey(control, index);
+    const entry = byKey.get(key);
+    if (!entry) return;
+    if (control.type === "checkbox" || control.type === "radio") {
+      control.checked = entry.checked;
+    } else {
+      control.value = entry.value;
+    }
+    if (key === snapshot.activeKey) {
+      focusTarget = control;
+      focusEntry = entry;
+    }
+  });
+
+  if (!focusTarget) return;
+  focusTarget.focus({ preventScroll: true });
+  if (
+    focusEntry &&
+    Number.isInteger(focusEntry.selectionStart) &&
+    Number.isInteger(focusEntry.selectionEnd) &&
+    typeof focusTarget.setSelectionRange === "function"
+  ) {
+    focusTarget.setSelectionRange(focusEntry.selectionStart, focusEntry.selectionEnd);
+  }
+}
+
+function panelControlKey(control, index) {
+  const form = control.closest("form");
+  const formKey = form
+    ? form.id || [...form.attributes].find((attribute) => attribute.name.startsWith("data-"))?.name || "form"
+    : "panel";
+  const controlKey = control.id || control.name || [...control.attributes].find((attribute) => attribute.name.startsWith("data-"))?.name || index;
+  return `${formKey}:${controlKey}`;
+}
+
+function controlSelection(control) {
+  try {
+    return {
+      start: Number.isInteger(control.selectionStart) ? control.selectionStart : null,
+      end: Number.isInteger(control.selectionEnd) ? control.selectionEnd : null
+    };
+  } catch {
+    return { start: null, end: null };
+  }
 }
 
 function roleLabel(role) {
