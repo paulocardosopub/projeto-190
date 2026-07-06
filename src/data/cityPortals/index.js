@@ -42,6 +42,15 @@ export const HIDEOUT_PORTALS = [
 
 export const IDLE_PORTALS = [
   {
+    id: "business-city-return",
+    mapId: "fazenda-laboratorio",
+    label: "Cidade",
+    x: 82,
+    action: "city",
+    approachOffset: 71,
+    ...motorcyclePortal
+  },
+  {
     id: "petshop-city-return",
     mapId: "petshop",
     label: "Cidade",

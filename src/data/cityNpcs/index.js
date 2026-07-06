@@ -37,18 +37,17 @@ export const CITY_NPCS = [
   {
     id: "npc-mendigo-fumante",
     name: "Mendigo Fumante",
-    shopName: "Corre do Fumante",
-    role: "drugs",
+    shopName: "Contato do Fumante",
+    role: "business_invite",
     sheet: "enemies2",
     row: 7,
     x: 960,
     direction: "front",
-    greeting: "Tenho umas paradas aí, mas usa com juízo.",
+    greeting: "Ta afim de arrumar uma grana facil?",
     greetings: [
-      "E aí, patrão... quer dar uma acordada?",
-      "Tenho umas paradas aí, mas usa com juízo.",
-      "Barato não é de graça, hein.",
-      "Se passar do ponto, o hospital te abraça."
+      "Ta afim de arrumar uma grana facil?",
+      "Conheco um lugar onde o dinheiro gira.",
+      "Vai la, mas nao arruma problema comigo."
     ]
   },
   {

@@ -87,6 +87,7 @@ export class SpriteRenderer {
         { columnOffset: Number(npc.columnOffset || 0) }
       );
       if (npc.alerted) this.drawSpeech(screenX, npcFeetY - visual.npcHeight - 18, npc.alertLine);
+      if (npc.role === "player_shop") this.drawNameplate(screenX, npcFeetY - visual.npcHeight - 8, npc.shopName || npc.name);
     }
     this.drawRaidDogs(state, cameraWorld, visual);
     this.drawAmbientPets(state, cameraWorld, visual);

@@ -21,6 +21,29 @@ export const HIDEOUTS = Array.from({ length: 6 }, (_, row) => ({
 
 export const IDLE_MAPS = [
   {
+    id: "fazenda-laboratorio",
+    code: "FL",
+    name: "Fazenda e Laboratorio",
+    backgroundSheet: "hideouts",
+    backgroundRow: 0,
+    spawnX: 260,
+    description: "Area de negocios dos jogadores.",
+    npcs: [
+      {
+        ...idleNpc("npc-empresario-negocios", "Empresario", 9, 0, 1040, "front"),
+        role: "business",
+        shopName: "Negocios",
+        greeting: "Aqui tu planta, fabrica e vende.",
+        greetings: [
+          "Aqui tu planta, fabrica e vende.",
+          "Quer comecar pequeno ou ja quer investir pesado?",
+          "Fazenda da o primeiro passo. Laboratorio leva pra outro nivel.",
+          "Cocaina so libera quando tu tiver estrutura dos dois lados."
+        ]
+      }
+    ]
+  },
+  {
     id: "prisao",
     code: "PR",
     name: "Prisao",

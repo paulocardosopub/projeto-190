@@ -2108,6 +2108,191 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
   font-size: 9px;
 }
 
+.business-window-body,
+.player-shop-window-body {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.business-card,
+.business-stock-panel,
+.active-player-shop,
+.player-shop-form {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(12, 16, 24, 0.76);
+  padding: 10px;
+}
+
+.business-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.business-section-title strong {
+  font-size: 0.82rem;
+  color: #f3d36b;
+  white-space: nowrap;
+}
+
+.business-card-stats,
+.active-shop-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  color: #c9d3e1;
+  font-size: 0.72rem;
+}
+
+.business-card-stats span,
+.active-shop-stats span {
+  min-width: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 6px;
+  overflow-wrap: anywhere;
+}
+
+.business-actions,
+.business-production-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.business-product-button {
+  display: grid;
+  gap: 2px;
+  min-height: 42px;
+  border: 1px solid rgba(122, 196, 132, 0.35);
+  border-radius: 7px;
+  background: rgba(31, 85, 58, 0.62);
+  color: #f3fff6;
+  font: inherit;
+  padding: 6px;
+  cursor: pointer;
+}
+
+.business-product-button small {
+  color: #badfc4;
+}
+
+.business-product-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.business-stock-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.business-stock-cell,
+.active-shop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 7px 8px;
+  font-size: 0.76rem;
+}
+
+.business-stock-cell span,
+.active-shop-row span {
+  overflow-wrap: anywhere;
+}
+
+.business-stock-cell strong,
+.active-shop-row strong {
+  color: #f3d36b;
+}
+
+.player-shop-form input,
+.player-shop-listing-row input,
+.player-shop-buy-row input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  background: rgba(4, 8, 14, 0.78);
+  color: #f5f7fb;
+  padding: 7px 8px;
+  font: inherit;
+}
+
+.player-shop-form > input {
+  font-weight: 700;
+}
+
+.player-shop-listing-list,
+.active-shop-list,
+.player-shop-buy-list {
+  display: grid;
+  gap: 7px;
+}
+
+.player-shop-listing-row,
+.player-shop-buy-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 1fr) minmax(52px, 0.62fr) minmax(66px, 0.78fr);
+  gap: 6px;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.055);
+  padding: 8px;
+}
+
+.player-shop-listing-row h3,
+.player-shop-buy-row h3 {
+  margin: 0 0 2px;
+  font-size: 0.82rem;
+}
+
+.player-shop-listing-row label {
+  display: grid;
+  gap: 3px;
+  color: #aeb9c8;
+  font-size: 0.66rem;
+  text-transform: uppercase;
+}
+
+.player-shop-listing-row > small {
+  grid-column: 1 / -1;
+  color: #aeb9c8;
+}
+
+.active-shop-row small {
+  color: #aeb9c8;
+  white-space: nowrap;
+}
+
+.player-shop-buy-row {
+  grid-template-columns: minmax(96px, 1fr) 64px 84px;
+}
+
+.player-shop-buy-row p,
+.player-shop-buy-row small {
+  margin: 0;
+  color: #b9c4d4;
+}
+
+.danger-action {
+  border-color: rgba(240, 94, 94, 0.42);
+  background: rgba(127, 35, 35, 0.7);
+}
+
 .asset-shop-row {
   display: grid;
   grid-template-columns: 1fr auto;

@@ -185,6 +185,11 @@ export const SPRITES = {
       width: 1920,
       height: 940 / 3,
       rows: 3
+    },
+    hideouts: {
+      width: 1920,
+      height: 320,
+      rows: 6
     }
   },
   playerAnimation: {

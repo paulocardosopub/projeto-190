@@ -1,0 +1,357 @@
+import {
+  BUSINESS_CONFIG,
+  BUSINESS_MAP_ID,
+  SELLABLE_BUSINESS_PRODUCTS,
+  businessProductConfig
+} from "../../data/business/index.js";
+import { createDrugInventoryItem } from "../DrugSystem/index.js?v=stack-1";
+import { addItem } from "../InventorySystem/index.js?v=stack-1";
+import { adjustBusinessStock, normalizeBusinessState, stockAmount } from "../BusinessSystem/index.js";
+
+const REGISTRY_VERSION = 1;
+
+export function normalizePlayerShopState(state, now = Date.now()) {
+  if (!state) return null;
+  state.playerShops ||= {};
+  const registry = state.playerShops;
+  registry.version = REGISTRY_VERSION;
+  registry.nextId = Math.max(1, Math.floor(Number(registry.nextId || 1)));
+  registry.shops = Array.isArray(registry.shops) ? registry.shops.map((shop) => normalizeShop(shop, now)).filter(Boolean) : [];
+  registry.saleLogs = Array.isArray(registry.saleLogs) ? registry.saleLogs.slice(-30) : [];
+  registry.pendingPayouts ||= {};
+
+  if (state.player) {
+    normalizeBusinessState(state.player, now);
+    claimShopPayouts(state, state.player.playerId);
+    const active = getPlayerActiveShop(state, state.player.playerId);
+    state.player.activeShopId = active?.shopId || null;
+  }
+
+  return registry;
+}
+
+export function createShop(state, playerId, shopName, listings, now = Date.now()) {
+  const registry = normalizePlayerShopState(state, now);
+  const player = state.player;
+  normalizeBusinessState(player, now);
+  const ownerPlayerId = String(playerId || player.playerId || "local-player");
+
+  if (getPlayerActiveShop(state, ownerPlayerId)) {
+    return { ok: false, reason: "Fecha a lojinha atual primeiro." };
+  }
+
+  const nameResult = sanitizeShopName(shopName);
+  if (!nameResult.ok) return nameResult;
+
+  const slot = firstFreeShopSlot(registry);
+  if (!slot) return { ok: false, reason: BUSINESS_CONFIG.messages.noShopSlot };
+
+  const listingResult = normalizeRequestedListings(player, listings);
+  if (!listingResult.ok) return listingResult;
+
+  listingResult.listings.forEach((listing) => {
+    adjustBusinessStock(player, listing.drugType, -listing.quantity);
+  });
+
+  const shopId = `shop-${ownerPlayerId}-${now.toString(36)}-${registry.nextId++}`;
+  const shop = {
+    shopId,
+    ownerPlayerId,
+    ownerName: player.displayName || player.username || "Jogador",
+    shopName: nameResult.value,
+    createdAt: now,
+    updatedAt: now,
+    closedAt: null,
+    active: true,
+    npcSlotId: slot.id,
+    listings: listingResult.listings,
+    grossSales: 0,
+    sellerRevenue: 0,
+    salesCount: 0
+  };
+
+  registry.shops.push(shop);
+  player.activeShopId = shop.shopId;
+  pushSaleLog(registry, {
+    type: "shop-created",
+    shopId,
+    ownerPlayerId,
+    at: now
+  });
+
+  syncShopNpcsForBusinessMap(state);
+  return { ok: true, shop, message: BUSINESS_CONFIG.messages.shopCreated };
+}
+
+export function closeShop(state, playerId, now = Date.now()) {
+  const registry = normalizePlayerShopState(state, now);
+  const player = state.player;
+  normalizeBusinessState(player, now);
+  const ownerPlayerId = String(playerId || player.playerId || "local-player");
+  const shop = getPlayerActiveShop(state, ownerPlayerId);
+  if (!shop) return { ok: false, reason: "Nenhuma lojinha ativa." };
+
+  closeShopRecord(registry, shop, "owner", now);
+  if (shop.ownerPlayerId === ownerPlayerId) {
+    shop.listings.forEach((listing) => {
+      if (listing.quantity > 0) adjustBusinessStock(player, listing.drugType, listing.quantity);
+    });
+    player.activeShopId = null;
+  }
+
+  pushSaleLog(registry, {
+    type: "shop-closed",
+    shopId: shop.shopId,
+    ownerPlayerId,
+    at: now
+  });
+
+  syncShopNpcsForBusinessMap(state);
+  return { ok: true, shop, message: BUSINESS_CONFIG.messages.shopClosed };
+}
+
+export function buyFromShop(state, buyerId, shopId, drugType, quantity, now = Date.now()) {
+  const registry = normalizePlayerShopState(state, now);
+  const buyer = state.player;
+  normalizeBusinessState(buyer, now);
+  const cleanBuyerId = String(buyerId || buyer.playerId || "local-player");
+  const shop = registry.shops.find((candidate) => candidate.shopId === shopId);
+  if (!shop || !shop.active) return { ok: false, reason: "Loja indisponivel." };
+  if (shop.ownerPlayerId === cleanBuyerId) return { ok: false, reason: BUSINESS_CONFIG.messages.ownShop };
+
+  const listing = shop.listings.find((candidate) => candidate.drugType === drugType);
+  const amount = Math.floor(Number(quantity || 0));
+  if (!listing || amount <= 0 || listing.quantity < amount) return { ok: false, reason: "Estoque indisponivel." };
+
+  const total = safeMoney(listing.pricePerUnit) * amount;
+  if (total <= 0 || safeMoney(buyer.money) < total) return { ok: false, reason: "Dinheiro insuficiente." };
+
+  const itemResult = addDrugUnitsToInventoryPreview(buyer, drugType, amount);
+  if (!itemResult.ok) return itemResult;
+
+  buyer.money = safeMoney(buyer.money) - total;
+  buyer.inventory = itemResult.inventory;
+  listing.quantity -= amount;
+  listing.soldQuantity += amount;
+  shop.grossSales += total;
+  const sellerGets = Math.floor(total * (1 - BUSINESS_CONFIG.saleTaxRate));
+  shop.sellerRevenue += sellerGets;
+  shop.salesCount += amount;
+  shop.updatedAt = now;
+  registry.pendingPayouts[shop.ownerPlayerId] = safeMoney(registry.pendingPayouts[shop.ownerPlayerId]) + sellerGets;
+
+  pushSaleLog(registry, {
+    type: "shop-sale",
+    shopId: shop.shopId,
+    ownerPlayerId: shop.ownerPlayerId,
+    buyerPlayerId: cleanBuyerId,
+    drugType,
+    quantity: amount,
+    total,
+    sellerGets,
+    at: now
+  });
+
+  if (shop.listings.every((entry) => entry.quantity <= 0)) {
+    closeShopRecord(registry, shop, "sold-out", now);
+  }
+
+  claimShopPayouts(state, buyer.playerId);
+  syncShopNpcsForBusinessMap(state);
+  return {
+    ok: true,
+    shop,
+    total,
+    sellerGets,
+    message: BUSINESS_CONFIG.messages.purchaseDone
+  };
+}
+
+export function getActiveShops(state) {
+  const registry = normalizePlayerShopState(state);
+  return registry.shops.filter((shop) => shop.active);
+}
+
+export function getShopById(state, shopId) {
+  const registry = normalizePlayerShopState(state);
+  return registry.shops.find((shop) => shop.shopId === shopId) || null;
+}
+
+export function getPlayerActiveShop(state, playerId) {
+  if (!state?.playerShops) return null;
+  const ownerPlayerId = String(playerId || state.player?.playerId || "local-player");
+  return (state.playerShops.shops || []).find((shop) => shop.active && shop.ownerPlayerId === ownerPlayerId) || null;
+}
+
+export function claimShopPayouts(state, playerId) {
+  const registry = state?.playerShops;
+  if (!registry?.pendingPayouts || !state?.player) return 0;
+  const key = String(playerId || state.player.playerId || "local-player");
+  const amount = safeMoney(registry.pendingPayouts[key]);
+  if (amount <= 0) return 0;
+  state.player.money = safeMoney(state.player.money) + amount;
+  delete registry.pendingPayouts[key];
+  return amount;
+}
+
+export function syncShopNpcsForBusinessMap(state) {
+  if (state?.scene !== "idle" || state.currentMapId !== BUSINESS_MAP_ID || !state.run) return [];
+  const baseNpcs = (state.run.npcs || []).filter((npc) => npc.role !== "player_shop");
+  const shopNpcs = getActiveShops(state).map(shopNpcForShop).filter(Boolean);
+  state.run.npcs = [...baseNpcs, ...shopNpcs];
+  return shopNpcs;
+}
+
+export function shopNpcForShop(shop) {
+  if (!shop?.active) return null;
+  const slot = BUSINESS_CONFIG.shopSlots.find((candidate) => candidate.id === shop.npcSlotId);
+  if (!slot) return null;
+  return {
+    id: `player-shop-${shop.shopId}`,
+    name: shop.shopName,
+    shopName: shop.shopName,
+    role: "player_shop",
+    shopId: shop.shopId,
+    ownerPlayerId: shop.ownerPlayerId,
+    ownerName: shop.ownerName,
+    sheet: "enemies3",
+    row: 2,
+    columnOffset: 0,
+    heightScale: 0.96,
+    x: slot.x,
+    direction: "front",
+    greeting: shop.shopName
+  };
+}
+
+export function sanitizeShopName(name) {
+  const value = String(name || "")
+    .replace(/[^\p{L}\p{N} _.-]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 24);
+  const length = [...value].length;
+  if (!value || length < 3) return { ok: false, reason: "Nome da loja precisa ter pelo menos 3 caracteres." };
+  if (length > 24) return { ok: false, reason: "Nome da loja pode ter no maximo 24 caracteres." };
+  return { ok: true, value };
+}
+
+function normalizeRequestedListings(player, listings) {
+  const byType = new Map();
+  (Array.isArray(listings) ? listings : []).forEach((entry) => {
+    const drugType = String(entry?.drugType || "");
+    if (!SELLABLE_BUSINESS_PRODUCTS.includes(drugType)) return;
+    const product = businessProductConfig(drugType);
+    const quantity = Math.floor(Number(entry.quantity || 0));
+    const pricePerUnit = Math.floor(Number(entry.pricePerUnit || 0));
+    if (quantity <= 0) return;
+    const current = byType.get(drugType) || {
+      drugType,
+      quantity: 0,
+      pricePerUnit,
+      suggestedPrice: product.suggestedPrice,
+      soldQuantity: 0,
+      originalQuantity: 0
+    };
+    current.quantity += quantity;
+    current.originalQuantity += quantity;
+    current.pricePerUnit = pricePerUnit;
+    byType.set(drugType, current);
+  });
+
+  const normalized = [...byType.values()];
+  if (!normalized.length) return { ok: false, reason: BUSINESS_CONFIG.messages.missingStock };
+
+  for (const listing of normalized) {
+    const product = businessProductConfig(listing.drugType);
+    if (!product || product.internal) return { ok: false, reason: "Produto nao pode ser vendido." };
+    if (listing.pricePerUnit < product.minPrice || listing.pricePerUnit > product.maxPrice) {
+      return { ok: false, reason: BUSINESS_CONFIG.messages.invalidPrice };
+    }
+    if (listing.quantity > stockAmount(player, listing.drugType)) {
+      return { ok: false, reason: BUSINESS_CONFIG.messages.missingStock };
+    }
+  }
+
+  return { ok: true, listings: normalized };
+}
+
+function firstFreeShopSlot(registry) {
+  const used = new Set((registry.shops || []).filter((shop) => shop.active).map((shop) => shop.npcSlotId));
+  return BUSINESS_CONFIG.shopSlots
+    .slice(0, BUSINESS_CONFIG.maxActiveShops)
+    .find((slot) => !used.has(slot.id)) || null;
+}
+
+function closeShopRecord(registry, shop, reason, now) {
+  shop.active = false;
+  shop.closedAt = now;
+  shop.closeReason = reason;
+  shop.updatedAt = now;
+}
+
+function normalizeShop(shop, now) {
+  if (!shop?.shopId) return null;
+  const listings = Array.isArray(shop.listings) ? shop.listings.map(normalizeListing).filter(Boolean) : [];
+  return {
+    shopId: String(shop.shopId),
+    ownerPlayerId: String(shop.ownerPlayerId || ""),
+    ownerName: String(shop.ownerName || "Jogador"),
+    shopName: sanitizeShopName(shop.shopName).value || "Lojinha",
+    createdAt: safeTimestamp(shop.createdAt, now),
+    updatedAt: safeTimestamp(shop.updatedAt || shop.createdAt, now),
+    closedAt: shop.closedAt ? safeTimestamp(shop.closedAt, now) : null,
+    active: Boolean(shop.active) && listings.some((listing) => listing.quantity > 0),
+    npcSlotId: String(shop.npcSlotId || ""),
+    listings,
+    grossSales: safeMoney(shop.grossSales),
+    sellerRevenue: safeMoney(shop.sellerRevenue),
+    salesCount: Math.max(0, Math.floor(Number(shop.salesCount || 0))),
+    closeReason: shop.closeReason || null
+  };
+}
+
+function normalizeListing(listing) {
+  const drugType = String(listing?.drugType || "");
+  const product = businessProductConfig(drugType);
+  if (!product || product.internal) return null;
+  const quantity = Math.max(0, Math.floor(Number(listing.quantity || 0)));
+  const originalQuantity = Math.max(quantity, Math.floor(Number(listing.originalQuantity || listing.quantity || 0)));
+  const pricePerUnit = Math.max(0, Math.floor(Number(listing.pricePerUnit || product.suggestedPrice || 0)));
+  return {
+    drugType,
+    quantity,
+    pricePerUnit,
+    suggestedPrice: product.suggestedPrice,
+    originalQuantity,
+    soldQuantity: Math.max(0, Math.floor(Number(listing.soldQuantity || originalQuantity - quantity || 0)))
+  };
+}
+
+function addDrugUnitsToInventoryPreview(player, drugType, quantity) {
+  const product = businessProductConfig(drugType);
+  if (!product?.inventoryDrugId) return { ok: false, reason: "Produto nao pode ir para mochila." };
+  const preview = structuredClone(player);
+  preview.inventory = structuredClone(player.inventory || []);
+  const item = createDrugInventoryItem(product.inventoryDrugId);
+  if (!item) return { ok: false, reason: "Item nao encontrado." };
+  item.quantity = quantity;
+  if (!addItem(preview, item)) return { ok: false, reason: "Mochila cheia." };
+  return { ok: true, inventory: preview.inventory };
+}
+
+function pushSaleLog(registry, entry) {
+  registry.saleLogs ||= [];
+  registry.saleLogs.push(entry);
+  registry.saleLogs = registry.saleLogs.slice(-30);
+}
+
+function safeTimestamp(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+function safeMoney(value) {
+  const number = Math.floor(Number(value || 0));
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}

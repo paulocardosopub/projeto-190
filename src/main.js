@@ -83,6 +83,39 @@ import {
   refreshReceptadorStock
 } from "./systems/ShopSystem/index.js?v=stack-1";
 import {
+  BUSINESS_CONFIG,
+  BUSINESS_MAP_ID,
+  SELLABLE_BUSINESS_PRODUCTS,
+  businessProductConfig
+} from "./data/business/index.js";
+import {
+  activeProductionLabel,
+  businessCapacity,
+  businessStockForSource,
+  buyFarm,
+  buyLab,
+  calculateProduction,
+  canProduceBusinessProduct,
+  collectFarmProduction,
+  collectLabProduction,
+  normalizeBusinessState,
+  productionRatePerHour,
+  startFarmProduction,
+  startLabProduction,
+  stockAmount,
+  upgradeFarm,
+  upgradeLab
+} from "./systems/BusinessSystem/index.js";
+import {
+  buyFromShop,
+  closeShop,
+  createShop,
+  getPlayerActiveShop,
+  getShopById,
+  normalizePlayerShopState,
+  syncShopNpcsForBusinessMap
+} from "./systems/PlayerShopSystem/index.js";
+import {
   CHARACTER_SELECT_TUTORIAL,
   TutorialOverlay,
   advanceTutorialStep,
@@ -765,6 +798,8 @@ function advanceGameStep(dt) {
   combat.update(dt);
   online?.update(dt);
   updatePassiveIncome(state, dt);
+  calculateProduction(state.player);
+  syncShopNpcsForBusinessMap(state);
   updateHideoutRestRecovery(dt);
   updateTutorialCityNpcArrival();
   updatePendingCityNpcArrival();
@@ -2097,11 +2132,19 @@ function applyEquipmentIconTestInventory(slot) {
 
 function renderLeftPanel(type) {
   elements.leftWindow.classList.remove("hidden");
+  if (type === "playerShop") {
+    renderPlayerShopPanel(elements.leftWindow);
+    return;
+  }
   renderPanel(elements.leftWindow, type, state, renderer, panelCallbacks(closeLeft));
 }
 
 function renderRightPanel(type) {
   elements.rightWindow.classList.remove("hidden");
+  if (type === "business") {
+    renderBusinessPanel(elements.rightWindow);
+    return;
+  }
   if (type === "configs") {
     renderConfigPanel(elements.rightWindow);
     return;
@@ -2468,6 +2511,14 @@ function petshopCityReturnPoint() {
   };
 }
 
+function businessCityReturnPoint() {
+  const npc = CITY_NPCS.find((candidate) => candidate.id === "npc-mendigo-fumante");
+  return {
+    playerX: Math.max(64, Math.round((npc?.x ?? 960) - 48)),
+    playerDirection: "right"
+  };
+}
+
 function cityHideoutReturnPoint() {
   const portal = CITY_PORTALS.find((candidate) => candidate.id === "hideout-door");
   return {
@@ -2477,6 +2528,7 @@ function cityHideoutReturnPoint() {
 }
 
 function cityReturnPointForIdleMap(mapId) {
+  if (mapId === BUSINESS_MAP_ID) return businessCityReturnPoint();
   if (mapId === "petshop") return petshopCityReturnPoint();
   return null;
 }
@@ -3655,6 +3707,20 @@ function openIdleNpcPanel(npc) {
     closeCityShopPanel();
     return;
   }
+  if (npc?.role === "business") {
+    openBusinessPanels(npc);
+    return;
+  }
+  if (npc?.role === "player_shop") {
+    closeMaster({ render: false, force: true });
+    activeCityNpc = npc;
+    activeCityNpcGreeting = npc.shopName || npc.name || "";
+    shopMode = "player-shop-buy";
+    pendingSellIndexes.clear();
+    pendingCraftIndex = null;
+    renderAll();
+    return;
+  }
   if (npc?.role !== "petshop") return;
   closeMaster({ render: false, force: true });
   activeCityNpc = npc;
@@ -3665,6 +3731,20 @@ function openIdleNpcPanel(npc) {
   if (npc?.id === "petshop-responsavel") {
     dispatchPetTutorialEvent("petshop_owner_opened", { npcId: npc.id }, { render: false });
   }
+  renderAll();
+}
+
+function openBusinessPanels(npc = null) {
+  closeCityShopPanel({ render: false, force: true });
+  closeCityPortalPanel({ render: false, force: true });
+  activeCityNpc = null;
+  activeCityNpcGreeting = "";
+  shopMode = "talk";
+  activeCenter = true;
+  activeLeft = "playerShop";
+  activeRight = "business";
+  syncShopNpcsForBusinessMap(state);
+  if (npc) showToast(cityNpcGreeting(npc));
   renderAll();
 }
 
@@ -3807,6 +3887,14 @@ function renderCityShopPanel() {
 
   panel.classList.remove("hidden");
   panel.classList.toggle("drug-shop-panel", shopMode === "drugs");
+  if (activeCityNpc.role === "business_invite") {
+    renderBusinessInvitePanel(panel, activeCityNpc);
+    return;
+  }
+  if (shopMode === "player-shop-buy") {
+    renderPlayerShopBuyPanel(panel, activeCityNpc);
+    return;
+  }
   if (shopMode === "drugs") {
     renderDrugPanel(panel, activeCityNpc);
     return;
@@ -3875,6 +3963,23 @@ function renderCityShopPanel() {
         <button type="button" class="secondary-action" data-shop-close>Agora não</button>
       ` : ""}
       ${activeCityNpc.role !== "oldman" && activeCityNpc.role !== "vendor" && activeCityNpc.role !== "buyer" && activeCityNpc.role !== "drugs" && activeCityNpc.role !== "petshop" ? `<button type="button" class="secondary-action" disabled>Em breve</button>` : ""}
+    </div>
+  `;
+  bindShopPanel(panel);
+}
+
+function renderBusinessInvitePanel(panel, npc) {
+  const greeting = activeCityNpcGreeting || cityNpcGreeting(npc);
+  panel.innerHTML = `
+    <header>
+      <span class="eyebrow">${escapeHtml(npc.name)}</span>
+      <h2>${escapeHtml(npc.shopName)}</h2>
+      <button type="button" class="close-button" data-shop-close aria-label="Fechar">X</button>
+    </header>
+    <p>${escapeHtml(greeting)}</p>
+    <div class="city-shop-actions">
+      <button type="button" class="primary-action" data-enter-business-map>Sim</button>
+      <button type="button" class="secondary-action" data-shop-close>Agora nao</button>
     </div>
   `;
   bindShopPanel(panel);
@@ -4052,6 +4157,312 @@ function handleDrugHospital(result, message) {
   showHospitalBill(bill);
   persistGame();
   renderAll();
+}
+
+function renderBusinessPanel(container) {
+  normalizeBusinessState(state.player);
+  calculateProduction(state.player);
+  container.innerHTML = `
+    ${businessWindowHeader("Negocios", "business")}
+    <div class="window-body business-window-body">
+      ${businessStructureCard("farm")}
+      ${businessStructureCard("lab")}
+      <section class="business-stock-panel">
+        <div class="business-section-title">
+          <span class="eyebrow">Estoque</span>
+          <strong>${businessStockForSource(state.player, "farm") + businessStockForSource(state.player, "lab")} un.</strong>
+        </div>
+        <div class="business-stock-grid">
+          ${BUSINESS_CONFIG ? Object.keys(BUSINESS_CONFIG.products).map((productType) => businessStockCell(productType)).join("") : ""}
+        </div>
+      </section>
+    </div>
+  `;
+  bindClose(container, closeRight);
+  bindBusinessPanel(container);
+}
+
+function renderPlayerShopPanel(container) {
+  normalizePlayerShopState(state);
+  const activeShop = getPlayerActiveShop(state, state.player.playerId);
+  container.innerHTML = `
+    ${businessWindowHeader("Minha Lojinha", "player-shop")}
+    <div class="window-body player-shop-window-body">
+      ${activeShop ? activePlayerShopTemplate(activeShop) : playerShopCreateTemplate()}
+    </div>
+  `;
+  bindClose(container, closeLeft);
+  bindPlayerShopPanel(container);
+}
+
+function renderPlayerShopBuyPanel(panel, npc) {
+  const shop = getShopById(state, npc.shopId);
+  if (!shop?.active) {
+    panel.innerHTML = `
+      <header>
+        <span class="eyebrow">Lojinha</span>
+        <h2>Indisponivel</h2>
+        <button type="button" class="close-button" data-shop-close aria-label="Fechar">X</button>
+      </header>
+      <p>Essa lojinha ja fechou.</p>
+    `;
+    bindShopPanel(panel);
+    return;
+  }
+
+  const isOwnShop = shop.ownerPlayerId === (state.player.playerId || "local-player");
+  panel.innerHTML = `
+    <header>
+      <span class="eyebrow">${escapeHtml(shop.ownerName)}</span>
+      <h2>${escapeHtml(shop.shopName)}</h2>
+      <button type="button" class="close-button" data-shop-close aria-label="Fechar">X</button>
+    </header>
+    <div class="player-shop-buy-list">
+      ${shop.listings.filter((listing) => listing.quantity > 0).map((listing) => playerShopBuyRow(shop, listing, isOwnShop)).join("")}
+    </div>
+  `;
+  bindShopPanel(panel);
+  panel.querySelectorAll("[data-buy-player-shop]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const drugType = button.dataset.buyPlayerShop;
+      const input = panel.querySelector(`[data-buy-player-shop-qty="${drugType}"]`);
+      const result = buyFromShop(state, state.player.playerId, shop.shopId, drugType, Number(input?.value || 1));
+      handleShopResult(result);
+    });
+  });
+}
+
+function businessStructureCard(source) {
+  const isFarm = source === "farm";
+  const hasStructure = isFarm ? state.player.hasFarm : state.player.hasLab;
+  const level = isFarm ? state.player.farmLevel : state.player.labLevel;
+  const label = isFarm ? "Fazenda" : "Laboratorio";
+  const currentConfig = hasStructure ? (isFarm ? BUSINESS_CONFIG.farmLevels[level] : BUSINESS_CONFIG.labLevels[level]) : null;
+  const nextConfig = isFarm
+    ? BUSINESS_CONFIG.farmLevels[hasStructure ? level + 1 : 1]
+    : BUSINESS_CONFIG.labLevels[hasStructure ? level + 1 : 1];
+  const sourceStock = businessStockForSource(state.player, source);
+  const capacity = businessCapacity(state.player, source);
+  const activeLabel = activeProductionLabel(state.player, source);
+  const buyAction = isFarm ? "data-business-buy-farm" : "data-business-buy-lab";
+  const upgradeAction = isFarm ? "data-business-upgrade-farm" : "data-business-upgrade-lab";
+  const collectAction = isFarm ? "data-business-collect-farm" : "data-business-collect-lab";
+  const activeProduction = isFarm ? state.player.activeFarmProduction : state.player.activeLabProduction;
+  return `
+    <section class="business-card">
+      <div class="business-section-title">
+        <span class="eyebrow">${label}</span>
+        <strong>${hasStructure ? `Nivel ${level}` : "Nao comprada"}</strong>
+      </div>
+      <div class="business-card-stats">
+        <span>Producao: ${escapeHtml(activeLabel)}</span>
+        <span>Estoque: ${sourceStock}/${capacity || "-"}</span>
+        <span>Multiplicador: x${formatMultiplier(currentConfig?.multiplier || 0)}</span>
+      </div>
+      <div class="business-actions">
+        ${hasStructure ? `
+          <button type="button" class="panel-action" ${upgradeAction} ${nextConfig && state.player.money >= nextConfig.cost ? "" : "disabled"}>
+            ${nextConfig ? `Upgrade ${formatMoney(nextConfig.cost)}` : "Maximo"}
+          </button>
+        ` : `
+          <button type="button" class="panel-action primary-action" ${buyAction} ${nextConfig && state.player.money >= nextConfig.cost ? "" : "disabled"}>
+            Comprar ${formatMoney(nextConfig?.cost || 0)}
+          </button>
+        `}
+        <button type="button" class="panel-action" ${collectAction} ${activeProduction?.productType ? "" : "disabled"}>Coletar</button>
+      </div>
+      <div class="business-production-list">
+        ${businessProductionButtons(source).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function businessProductionButtons(source) {
+  const products = source === "farm" ? ["weed", "cocaineInput"] : ["ecstasy", "cocaine"];
+  return products.map((productType) => {
+    const product = businessProductConfig(productType);
+    const rate = productionRatePerHour(state.player, source, productType);
+    const canProduce = canProduceBusinessProduct(state.player, source, productType) && businessStockForSource(state.player, source) < businessCapacity(state.player, source);
+    const action = source === "farm" ? "data-business-start-farm" : "data-business-start-lab";
+    return `
+      <button type="button" class="business-product-button" ${action}="${productType}" ${canProduce ? "" : "disabled"}>
+        <span>${escapeHtml(product.label)}</span>
+        <small>${rate}/h</small>
+      </button>
+    `;
+  });
+}
+
+function businessStockCell(productType) {
+  const product = businessProductConfig(productType);
+  return `
+    <div class="business-stock-cell">
+      <span>${escapeHtml(product.label)}</span>
+      <strong>${stockAmount(state.player, productType)}</strong>
+    </div>
+  `;
+}
+
+function playerShopCreateTemplate() {
+  return `
+    <form class="player-shop-form" data-player-shop-form>
+      <input name="shopName" maxlength="24" placeholder="Nome da loja" value="${escapeHtml(defaultShopName())}">
+      <div class="player-shop-listing-list">
+        ${SELLABLE_BUSINESS_PRODUCTS.map((productType) => playerShopListingRow(productType)).join("")}
+      </div>
+      <button type="submit" class="panel-action primary-action">Abrir loja</button>
+    </form>
+  `;
+}
+
+function playerShopListingRow(productType) {
+  const product = businessProductConfig(productType);
+  const available = stockAmount(state.player, productType);
+  return `
+    <article class="player-shop-listing-row">
+      <div>
+        <h3>${escapeHtml(product.label)}</h3>
+        <small>Estoque ${available}</small>
+      </div>
+      <label>
+        <span>Qtd</span>
+        <input type="number" min="0" max="${available}" step="1" value="0" data-shop-listing-qty="${productType}">
+      </label>
+      <label>
+        <span>Preco</span>
+        <input type="number" min="${product.minPrice}" max="${product.maxPrice}" step="1" value="${product.suggestedPrice}" data-shop-listing-price="${productType}">
+      </label>
+      <small>${formatMoney(product.suggestedPrice)} | ${formatMoney(product.minPrice)}-${formatMoney(product.maxPrice)}</small>
+    </article>
+  `;
+}
+
+function activePlayerShopTemplate(shop) {
+  return `
+    <section class="active-player-shop">
+      <div class="business-section-title">
+        <span class="eyebrow">${escapeHtml(shop.shopName)}</span>
+        <strong>Ativa</strong>
+      </div>
+      <div class="active-shop-stats">
+        <span>Vendidas: ${shop.salesCount}</span>
+        <span>Bruto: ${formatMoney(shop.grossSales)}</span>
+        <span>Ganho: ${formatMoney(shop.sellerRevenue)}</span>
+      </div>
+      <div class="active-shop-list">
+        ${shop.listings.map((listing) => activeShopListingRow(listing)).join("")}
+      </div>
+      <button type="button" class="panel-action danger-action" data-close-player-shop>Fechar loja</button>
+    </section>
+  `;
+}
+
+function activeShopListingRow(listing) {
+  const product = businessProductConfig(listing.drugType);
+  return `
+    <article class="active-shop-row">
+      <span>${escapeHtml(product.label)}</span>
+      <strong>${listing.quantity}/${listing.originalQuantity}</strong>
+      <small>${formatMoney(listing.pricePerUnit)} un.</small>
+    </article>
+  `;
+}
+
+function playerShopBuyRow(shop, listing, isOwnShop) {
+  const product = businessProductConfig(listing.drugType);
+  return `
+    <article class="player-shop-buy-row">
+      <div>
+        <h3>${escapeHtml(product.label)}</h3>
+        <p>${formatMoney(listing.pricePerUnit)} un.</p>
+        <small>Disponivel ${listing.quantity}</small>
+      </div>
+      <input type="number" min="1" max="${listing.quantity}" step="1" value="1" data-buy-player-shop-qty="${listing.drugType}" ${isOwnShop ? "disabled" : ""}>
+      <button type="button" class="panel-action" data-buy-player-shop="${listing.drugType}" ${isOwnShop ? "disabled" : ""}>
+        ${isOwnShop ? "Propria" : "Comprar"}
+      </button>
+    </article>
+  `;
+}
+
+function bindBusinessPanel(container) {
+  container.querySelector("[data-business-buy-farm]")?.addEventListener("click", () => handleBusinessResult(buyFarm(state.player)));
+  container.querySelector("[data-business-buy-lab]")?.addEventListener("click", () => handleBusinessResult(buyLab(state.player)));
+  container.querySelector("[data-business-upgrade-farm]")?.addEventListener("click", () => handleBusinessResult(upgradeFarm(state.player)));
+  container.querySelector("[data-business-upgrade-lab]")?.addEventListener("click", () => handleBusinessResult(upgradeLab(state.player)));
+  container.querySelector("[data-business-collect-farm]")?.addEventListener("click", () => handleBusinessResult(collectFarmProduction(state.player)));
+  container.querySelector("[data-business-collect-lab]")?.addEventListener("click", () => handleBusinessResult(collectLabProduction(state.player)));
+  container.querySelectorAll("[data-business-start-farm]").forEach((button) => {
+    button.addEventListener("click", () => handleBusinessResult(startFarmProduction(state.player, button.dataset.businessStartFarm)));
+  });
+  container.querySelectorAll("[data-business-start-lab]").forEach((button) => {
+    button.addEventListener("click", () => handleBusinessResult(startLabProduction(state.player, button.dataset.businessStartLab)));
+  });
+}
+
+function bindPlayerShopPanel(container) {
+  container.querySelector("[data-player-shop-form]")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const listings = SELLABLE_BUSINESS_PRODUCTS.map((productType) => ({
+      drugType: productType,
+      quantity: Number(form.querySelector(`[data-shop-listing-qty="${productType}"]`)?.value || 0),
+      pricePerUnit: Number(form.querySelector(`[data-shop-listing-price="${productType}"]`)?.value || 0)
+    }));
+    const result = createShop(state, state.player.playerId, form.elements.shopName?.value, listings);
+    handleShopResult(result);
+  });
+  container.querySelector("[data-close-player-shop]")?.addEventListener("click", () => {
+    const result = closeShop(state, state.player.playerId);
+    handleShopResult(result);
+  });
+}
+
+function handleBusinessResult(result) {
+  handleResult(result);
+  if (result?.ok) {
+    calculateProduction(state.player);
+    persistGame();
+  }
+  renderAll();
+}
+
+function handleShopResult(result) {
+  handleResult(result);
+  if (result?.ok) {
+    normalizePlayerShopState(state);
+    syncShopNpcsForBusinessMap(state);
+    persistGame();
+    if (result.shop && !result.shop.active && activeCityNpc?.shopId === result.shop.shopId) {
+      closeCityShopPanel({ render: false, force: true });
+    }
+  }
+  renderAll();
+}
+
+function bindClose(container, close) {
+  container.querySelectorAll("[data-window-close], .window-header .close-button").forEach((button) => {
+    button.addEventListener("click", () => close?.());
+  });
+}
+
+function businessWindowHeader(title, id) {
+  return `
+    <header class="window-header">
+      <h2>${title}</h2>
+      <button class="close-button" data-window-close="${id}" aria-label="Fechar">X</button>
+    </header>
+  `;
+}
+
+function defaultShopName() {
+  const base = state.player.displayName || state.player.username || "Jogador";
+  return `Loja ${base}`.slice(0, 24);
+}
+
+function formatMultiplier(value) {
+  return Number(value || 0).toFixed(1);
 }
 
 function renderBuyPanel(panel, npc) {
@@ -4301,6 +4712,9 @@ function bindShopPanel(panel) {
   panel.querySelector("[data-enter-petshop]")?.addEventListener("click", () => {
     enterPetshopFromCityNpc();
   });
+  panel.querySelector("[data-enter-business-map]")?.addEventListener("click", () => {
+    enterBusinessMapFromCityNpc();
+  });
 }
 
 function enterPetshopFromCityNpc() {
@@ -4317,6 +4731,23 @@ function enterPetshopFromCityNpc() {
     returnToCity: petshopCityReturnPoint()
   });
   dispatchPetTutorialEvent("petshop_entered", {}, { render: false });
+  renderAll();
+}
+
+function enterBusinessMapFromCityNpc() {
+  if (state.run?.mode === "temporary") {
+    showToast(temporaryStayText());
+    return;
+  }
+  closeCityShopPanel({ render: false });
+  closeCityPortalPanel({ render: false });
+  closeMaster({ render: false, force: true });
+  combat.enterIdleMap(BUSINESS_MAP_ID, {
+    playerX: 620,
+    logMessage: `Voce entrou em ${idleMapName(BUSINESS_MAP_ID)}.`,
+    returnToCity: businessCityReturnPoint()
+  });
+  syncShopNpcsForBusinessMap(state);
   renderAll();
 }
 
@@ -4797,6 +5228,7 @@ function normalizeState() {
   state.player.hideoutItems ||= {};
   state.player.needsHideoutRest = Boolean(state.player.needsHideoutRest);
   normalizeDrugState(state.player);
+  normalizeBusinessState(state.player);
   HIDEOUT_ITEM_TYPES.forEach((item) => {
     state.settings.hideoutEditor.previewTiers[item.id] ||= state.player.hideoutItems[item.id] || 1;
   });
@@ -4869,6 +5301,9 @@ function normalizeState() {
   state.run.temporaryStay ??= null;
   state.run.summary ??= null;
   state.run.summaryTimer ||= 0;
+  normalizePlayerShopState(state);
+  calculateProduction(state.player);
+  syncShopNpcsForBusinessMap(state);
 }
 
 function applyVisualCalibration() {
