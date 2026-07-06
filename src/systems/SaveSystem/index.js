@@ -84,6 +84,10 @@ export function sanitizeStateForSave(state) {
   const persisted = structuredClone(state);
   if (persisted.settings) persisted.settings.visualPreview = false;
   delete persisted.onlineCityPlayers;
+  delete persisted.onlinePlayerShops;
+  if (persisted.playerShops?.shops) {
+    persisted.playerShops.shops = persisted.playerShops.shops.filter((shop) => !shop.remoteOnline);
+  }
   return persisted;
 }
 

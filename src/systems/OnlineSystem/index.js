@@ -14,6 +14,9 @@ const REMOTE_LERP_SPEED = 12;
 const REMOTE_SNAP_DISTANCE = 2200;
 const OFFLINE_MESSAGE = "Xii, caiu a luz na favela! Segura ai";
 const ONLINE_MESSAGE = "Tudo certo, ja fizemos um gato. Tamo online!";
+const CITY_AREA_ID = "cidade";
+const AWAY_AREA_ID = "fora";
+const SOCIAL_IDLE_MAP_IDS = new Set(["fazenda-laboratorio", "petshop", "prisao", "hospital"]);
 
 let supabaseModulePromise = null;
 
@@ -236,7 +239,7 @@ export class OnlineSystem {
         sessionToken: this.sessionToken(),
         name: this.playerName(),
         level: this.state.player.level,
-        area: this.isInCity() ? "cidade" : "assalto"
+        area: this.currentSocialAreaId() || (this.localActiveShopPayload() ? "loja online" : "assalto")
       });
     }
   }
@@ -287,6 +290,8 @@ export class OnlineSystem {
       provider: this.provider,
       players: this.players,
       cityPlayers: [...this.cityPlayers.values()],
+      playerShops: this.state.onlinePlayerShops || [],
+      socialArea: this.currentSocialAreaId(),
       shops: this.shops,
       chat: this.chat,
       activity: this.activity,
@@ -346,7 +351,7 @@ export class OnlineSystem {
   }
 
   syncCityMembership() {
-    if (this.isInCity()) {
+    if (this.shouldShareOnlinePresence()) {
       if (!this.joinedCity) this.joinCity();
       return;
     }
@@ -406,9 +411,11 @@ export class OnlineSystem {
       payload.y,
       payload.direction,
       payload.isMoving,
+      payload.areaId,
       payload.characterId,
       payload.equippedPetId || "",
-      payload.weaponRarity || ""
+      payload.weaponRarity || "",
+      activeShopSignature(payload.activeShop)
     ].join(":");
     if (!force && signature === this.lastMoveSignature) {
       if (this.provider === "supabase" && now - this.lastPresenceTrackAt > PRESENCE_TRACK_INTERVAL_MS) {
@@ -470,7 +477,7 @@ export class OnlineSystem {
     this.players = [...this.cityPlayers.values()].map((player) => ({
       id: player.playerId,
       name: player.playerName,
-      area: "cidade",
+      area: player.areaId || CITY_AREA_ID,
       level: 1,
       lastSeen: player.lastSeen
     }));
@@ -486,9 +493,13 @@ export class OnlineSystem {
       playerId: this.localPlayerId(),
       sessionToken: this.sessionToken(),
       playerName: this.playerName(),
+      areaId: this.currentSocialAreaId() || AWAY_AREA_ID,
+      scene: this.state.scene || "city",
+      mapId: this.state.scene === "idle" ? this.state.currentMapId || "" : "",
       characterId: this.state.selectedPlayerId || this.state.player.characterId || DEFAULT_PLAYER_ID,
       equippedPetId: this.state.player.equippedPetId || null,
       weaponRarity: this.state.player.equipment?.weapon?.rarity || null,
+      activeShop: this.localActiveShopPayload(),
       x: Math.round(Number(this.state.run?.playerX || 120)),
       y: 0,
       direction: this.state.run?.playerDirection || "right"
@@ -504,6 +515,8 @@ export class OnlineSystem {
     const existing = this.cityPlayers.get(key);
     const targetX = Number(raw.x || 120);
     const targetY = Number(raw.y || 0);
+    const areaId = String(raw.areaId || raw.area || CITY_AREA_ID);
+    const sameArea = existing?.areaId === areaId;
     const timestamp = Number(raw.timestamp || Date.now());
     if (this.wasRecentlyLeft(raw, timestamp)) return;
     if (existing?.lastRemoteTimestamp && timestamp < existing.lastRemoteTimestamp - 120) return;
@@ -515,11 +528,15 @@ export class OnlineSystem {
       clientId: raw.clientId || raw.socketId || key,
       playerId,
       playerName: String(raw.playerName || "Jogador"),
+      areaId,
+      scene: String(raw.scene || "city"),
+      mapId: raw.mapId ? String(raw.mapId) : "",
       characterId: String(raw.characterId || DEFAULT_PLAYER_ID),
       equippedPetId: raw.equippedPetId ? String(raw.equippedPetId) : null,
       weaponRarity: raw.weaponRarity ? String(raw.weaponRarity) : null,
-      x: existing ? existing.x : targetX,
-      y: existing ? existing.y : targetY,
+      activeShop: normalizeActiveShop(raw.activeShop),
+      x: existing && sameArea ? existing.x : targetX,
+      y: existing && sameArea ? existing.y : targetY,
       targetX,
       targetY,
       direction: raw.direction === "left" ? "left" : "right",
@@ -659,11 +676,34 @@ export class OnlineSystem {
   }
 
   syncStatePlayers() {
-    this.state.onlineCityPlayers = [...this.cityPlayers.values()];
+    const socialAreaId = this.currentSocialAreaId();
+    const players = [...this.cityPlayers.values()];
+    this.state.onlineCityPlayers = socialAreaId
+      ? players.filter((player) => player.areaId === socialAreaId)
+      : [];
+    this.state.onlinePlayerShops = players
+      .map((player) => normalizeActiveShop(player.activeShop))
+      .filter(Boolean);
   }
 
   isInCity() {
-    return this.state?.scene === "city" && this.state?.run?.mode === "city";
+    return Boolean(this.currentSocialAreaId());
+  }
+
+  shouldShareOnlinePresence() {
+    return Boolean(this.currentSocialAreaId() || this.localActiveShopPayload());
+  }
+
+  currentSocialAreaId() {
+    if (this.state?.scene === "city" && this.state?.run?.mode === "city") return CITY_AREA_ID;
+    if (
+      this.state?.scene === "idle" &&
+      SOCIAL_IDLE_MAP_IDS.has(this.state.currentMapId) &&
+      ["idle", "temporary"].includes(this.state.run?.mode)
+    ) {
+      return this.state.currentMapId;
+    }
+    return null;
   }
 
   isLocalMoving() {
@@ -689,6 +729,27 @@ export class OnlineSystem {
 
   sessionToken() {
     return this.state.player.sessionToken || this.state.player.playerId || "local-session";
+  }
+
+  localActiveShopPayload() {
+    const playerId = this.localPlayerId();
+    const shop = (this.state.playerShops?.shops || [])
+      .find((candidate) => candidate?.active && !candidate.remoteOnline && candidate.ownerPlayerId === playerId);
+    if (!shop) return null;
+    return normalizeActiveShop({
+      shopId: shop.shopId,
+      ownerPlayerId: playerId,
+      ownerName: shop.ownerName || this.playerName(),
+      shopName: shop.shopName,
+      createdAt: shop.createdAt,
+      updatedAt: shop.updatedAt || Date.now(),
+      active: true,
+      npcSlotId: shop.npcSlotId,
+      listings: shop.listings,
+      grossSales: shop.grossSales,
+      sellerRevenue: shop.sellerRevenue,
+      salesCount: shop.salesCount
+    });
   }
 
   playerKey(player) {
@@ -745,4 +806,58 @@ function loadSupabaseModule() {
 function createClientId() {
   if (crypto?.randomUUID) return `client-${crypto.randomUUID()}`;
   return `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function normalizeActiveShop(shop) {
+  if (!shop || shop.active === false) return null;
+  const listings = (Array.isArray(shop.listings) ? shop.listings : [])
+    .map((listing) => ({
+      drugType: cleanId(listing?.drugType),
+      quantity: Math.max(0, Math.floor(Number(listing?.quantity || 0))),
+      pricePerUnit: Math.max(0, Math.floor(Number(listing?.pricePerUnit || 0))),
+      suggestedPrice: Math.max(0, Math.floor(Number(listing?.suggestedPrice || listing?.pricePerUnit || 0))),
+      originalQuantity: Math.max(0, Math.floor(Number(listing?.originalQuantity || listing?.quantity || 0))),
+      soldQuantity: Math.max(0, Math.floor(Number(listing?.soldQuantity || 0))),
+      reservedStock: Math.max(0, Math.floor(Number(listing?.reservedStock || 0))),
+      reservedInventory: Math.max(0, Math.floor(Number(listing?.reservedInventory || 0)))
+    }))
+    .filter((listing) => listing.drugType && listing.quantity > 0 && listing.pricePerUnit > 0)
+    .slice(0, 4);
+  if (!listings.length) return null;
+
+  const shopId = cleanId(shop.shopId);
+  const ownerPlayerId = cleanId(shop.ownerPlayerId);
+  if (!shopId || !ownerPlayerId) return null;
+
+  return {
+    shopId,
+    ownerPlayerId,
+    ownerName: cleanText(shop.ownerName, 24) || "Jogador",
+    shopName: cleanText(shop.shopName, 24) || "Lojinha",
+    createdAt: safeTimestamp(shop.createdAt),
+    updatedAt: safeTimestamp(shop.updatedAt),
+    active: true,
+    npcSlotId: cleanId(shop.npcSlotId),
+    listings,
+    grossSales: Math.max(0, Math.floor(Number(shop.grossSales || 0))),
+    sellerRevenue: Math.max(0, Math.floor(Number(shop.sellerRevenue || 0))),
+    salesCount: Math.max(0, Math.floor(Number(shop.salesCount || 0)))
+  };
+}
+
+function activeShopSignature(shop) {
+  return shop ? JSON.stringify(shop) : "";
+}
+
+function cleanId(value) {
+  return String(value || "").trim().replace(/[^\w:.-]/g, "").slice(0, 80);
+}
+
+function cleanText(value, maxLength) {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, maxLength);
+}
+
+function safeTimestamp(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : Date.now();
 }

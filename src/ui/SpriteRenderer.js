@@ -1,7 +1,7 @@
 import { ASSETS, SPRITES } from "../data/assets.js?v=petshop-portal-1";
 import { CITY, HIDEOUTS, IDLE_MAPS, MAPS } from "../data/maps/index.js?v=petshop-portal-1";
 import { DEFAULT_PLAYER_ID, PLAYERS, PLAYER_POSES, getPlayerById } from "../data/players/index.js?v=players-16";
-import { CITY_NPCS } from "../data/cityNpcs/index.js?v=petshop-portal-1";
+import { CITY_NPCS } from "../data/cityNpcs/index.js?v=zeca-actions-1";
 import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "../data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-7";
@@ -383,13 +383,14 @@ export class SpriteRenderer {
   }
 
   drawOnlinePlayers(state, cameraWorld, visual) {
-    if (state.scene !== "city") return;
+    const areaId = onlineAreaId(state);
+    if (!areaId) return;
     const players = Array.isArray(state.onlineCityPlayers) ? state.onlineCityPlayers : [];
     if (!players.length) return;
 
     const feetY = visual.groundY + visual.playerYOffset;
     players
-      .filter((player) => player?.playerId && player.playerId !== state.player?.playerId)
+      .filter((player) => player?.playerId && player.playerId !== state.player?.playerId && (!player.areaId || player.areaId === areaId))
       .sort((a, b) => Number(a.x || 0) - Number(b.x || 0))
       .forEach((player) => {
         const x = this.worldToScreen(Number(player.x || 120), cameraWorld);
@@ -397,7 +398,8 @@ export class SpriteRenderer {
         const animation = this.playerAnimationFor(player.characterId);
         const direction = player.direction === "left" ? "left" : "right";
         const fakeState = {
-          scene: "city",
+          scene: state.scene,
+          currentMapId: state.currentMapId,
           selectedPlayerId: `online-${player.playerId}`,
           player: {
             equipment: {
@@ -416,7 +418,7 @@ export class SpriteRenderer {
 
         this.ctx.save();
         this.ctx.globalAlpha = 0.96;
-        this.drawOnlinePlayerPet(player, x, feetY, visual.playerHeight * 0.98);
+        this.drawOnlinePlayerPet(state, player, x, feetY, visual.playerHeight * 0.98);
         if (animation) {
           this.drawAnimatedPlayer(animation, fakeState, x, feetY, visual.playerHeight * 0.98, 1);
         }
@@ -426,7 +428,8 @@ export class SpriteRenderer {
       });
   }
 
-  drawOnlinePlayerPet(player, playerX, feetY, playerHeight) {
+  drawOnlinePlayerPet(state, player, playerX, feetY, playerHeight) {
+    if (petHiddenInScene(state)) return;
     const pet = getPetById(player?.equippedPetId);
     if (!pet) return;
     const direction = player.direction === "left" ? "left" : "right";
@@ -1804,6 +1807,14 @@ function ambientPetsForState(state) {
 
 function petHiddenInScene(state) {
   return state.scene === "idle" && state.currentMapId === "prisao";
+}
+
+function onlineAreaId(state) {
+  if (state?.scene === "city") return "cidade";
+  if (state?.scene === "idle" && ["fazenda-laboratorio", "petshop", "prisao", "hospital"].includes(state.currentMapId)) {
+    return state.currentMapId;
+  }
+  return null;
 }
 
 function isPlayerWalking(state) {

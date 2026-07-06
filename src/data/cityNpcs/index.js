@@ -59,6 +59,6 @@ export const CITY_NPCS = [
     row: 6,
     x: 780,
     direction: "front",
-    greeting: "Tenho uns contatos, uns terrenos e compro seus achados. O que voce precisa?"
+    greeting: "Tenho uns contatos e uns terrenos. O que voce precisa?"
   }
 ];

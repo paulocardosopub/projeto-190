@@ -31,6 +31,51 @@ export function normalizePlayerShopState(state, now = Date.now()) {
   return registry;
 }
 
+export function syncOnlinePlayerShops(state, shops = [], now = Date.now()) {
+  const registry = normalizePlayerShopState(state, now);
+  if (!registry) return [];
+
+  const localOwnerId = String(state?.player?.playerId || "local-player");
+  const localShops = (registry.shops || []).filter((shop) => !shop.remoteOnline);
+  const localShopIds = new Set(localShops.map((shop) => shop.shopId));
+  const usedSlots = new Set(
+    localShops
+      .filter((shop) => shop.active)
+      .map((shop) => shop.npcSlotId)
+      .filter(Boolean)
+  );
+  const slotIds = BUSINESS_CONFIG.shopSlots.map((slot) => slot.id);
+  const remoteShops = [];
+  const remoteShopIds = new Set();
+
+  (Array.isArray(shops) ? shops : []).forEach((shop) => {
+    const normalized = normalizeShop({
+      ...shop,
+      active: true,
+      remoteOnline: true,
+      remoteLastSeen: now
+    }, now);
+    if (!normalized?.active) return;
+    if (!normalized.ownerPlayerId || normalized.ownerPlayerId === localOwnerId) return;
+    if (localShopIds.has(normalized.shopId) || remoteShopIds.has(normalized.shopId)) return;
+
+    const preferredSlot = slotIds.includes(normalized.npcSlotId) && !usedSlots.has(normalized.npcSlotId)
+      ? normalized.npcSlotId
+      : slotIds.find((slotId) => !usedSlots.has(slotId));
+    if (!preferredSlot) return;
+
+    normalized.npcSlotId = preferredSlot;
+    normalized.remoteOnline = true;
+    normalized.remoteLastSeen = now;
+    usedSlots.add(preferredSlot);
+    remoteShopIds.add(normalized.shopId);
+    remoteShops.push(normalized);
+  });
+
+  registry.shops = [...localShops, ...remoteShops];
+  return remoteShops;
+}
+
 export function createShop(state, playerId, shopName, listings, now = Date.now()) {
   const registry = normalizePlayerShopState(state, now);
   const player = state.player;
@@ -143,6 +188,7 @@ export function buyFromShop(state, buyerId, shopId, drugType, quantity, now = Da
   }
   const shop = registry.shops.find((candidate) => candidate.shopId === shopId);
   if (!shop || !shop.active) return { ok: false, reason: "Loja indisponivel." };
+  if (shop.remoteOnline) return { ok: false, reason: "Compra online dessa lojinha ainda nao esta sincronizada." };
   if (shop.ownerPlayerId === cleanBuyerId) return { ok: false, reason: BUSINESS_CONFIG.messages.ownShop };
 
   const listing = shop.listings.find((candidate) => candidate.drugType === drugType);
@@ -207,7 +253,7 @@ export function getShopById(state, shopId) {
 export function getPlayerActiveShop(state, playerId) {
   if (!state?.playerShops) return null;
   const ownerPlayerId = String(playerId || state.player?.playerId || "local-player");
-  return (state.playerShops.shops || []).find((shop) => shop.active && shop.ownerPlayerId === ownerPlayerId) || null;
+  return (state.playerShops.shops || []).find((shop) => shop.active && !shop.remoteOnline && shop.ownerPlayerId === ownerPlayerId) || null;
 }
 
 export function claimShopPayouts(state, playerId) {
@@ -340,7 +386,9 @@ function normalizeShop(shop, now) {
     grossSales: safeMoney(shop.grossSales),
     sellerRevenue: safeMoney(shop.sellerRevenue),
     salesCount: Math.max(0, Math.floor(Number(shop.salesCount || 0))),
-    closeReason: shop.closeReason || null
+    closeReason: shop.closeReason || null,
+    remoteOnline: Boolean(shop.remoteOnline),
+    remoteLastSeen: shop.remoteLastSeen ? safeTimestamp(shop.remoteLastSeen, now) : null
   };
 }
 

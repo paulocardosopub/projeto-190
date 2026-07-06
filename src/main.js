@@ -1,7 +1,7 @@
 import { DEFAULT_PLAYER_ID, PLAYERS } from "./data/players/index.js?v=players-16";
 import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=spawn-height-1";
 import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
-import { CITY_NPCS } from "./data/cityNpcs/index.js?v=petshop-portal-1";
+import { CITY_NPCS } from "./data/cityNpcs/index.js?v=zeca-actions-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
 import { CombatSystem, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=tutorial-raid-1";
@@ -77,7 +77,7 @@ import {
   saveVisualCalibration,
   saveWindowLayout
 } from "./systems/SaveSystem/index.js?v=city-stable-1";
-import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=online-visuals-1";
+import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=social-maps-1";
 import {
   buyReceptadorOffer,
   ensureReceptadorStock,
@@ -118,6 +118,7 @@ import {
   getPlayerActiveShop,
   getShopById,
   normalizePlayerShopState,
+  syncOnlinePlayerShops,
   syncShopNpcsForBusinessMap
 } from "./systems/PlayerShopSystem/index.js";
 import {
@@ -163,7 +164,7 @@ import {
 } from "./systems/StaminaSystem/index.js?v=asset-lock-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=asset-lock-1";
 import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=pets-manual-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=online-visuals-1";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=social-maps-1";
 import {
   renderCharacterSelect,
   renderConfigWindow,
@@ -888,6 +889,7 @@ function advanceGameStep(dt) {
   online?.update(dt);
   updatePassiveIncome(state, dt);
   calculateProduction(state.player);
+  syncOnlinePlayerShops(state, state.onlinePlayerShops);
   syncShopNpcsForBusinessMap(state);
   updateHideoutRestRecovery(dt);
   updateTutorialCityNpcArrival();
@@ -4434,7 +4436,6 @@ function renderCityShopPanel() {
         <button type="button" class="secondary-action" data-shop-mode="land">Comprar Terreno</button>
         <button type="button" class="secondary-action" data-shop-mode="house">Comprar Casa</button>
         <button type="button" class="secondary-action" data-shop-mode="car">Comprar Carro</button>
-        <button type="button" class="primary-action" data-shop-mode="sell">Vender</button>
       ` : ""}
       ${activeCityNpc.role === "vendor" ? `
         <button type="button" class="primary-action" data-shop-mode="buy">Itens Aleatorios</button>
@@ -4924,6 +4925,7 @@ function activeShopListingRow(listing) {
 function playerShopBuyRow(shop, listing, isOwnShop) {
   const product = businessProductConfig(listing.drugType);
   const locked = !businessUnlocked(state.player);
+  const remoteOnline = Boolean(shop.remoteOnline);
   return `
     <article class="player-shop-buy-row">
       <div>
@@ -4931,9 +4933,9 @@ function playerShopBuyRow(shop, listing, isOwnShop) {
         <p>${formatMoney(listing.pricePerUnit)} un.</p>
         <small>Disponivel ${listing.quantity}</small>
       </div>
-      <input type="number" min="1" max="${listing.quantity}" step="1" value="1" data-buy-player-shop-qty="${listing.drugType}" ${isOwnShop || locked ? "disabled" : ""}>
-      <button type="button" class="panel-action" data-buy-player-shop="${listing.drugType}" ${isOwnShop || locked ? "disabled" : ""}>
-        ${locked ? `Nivel ${BUSINESS_UNLOCK_LEVEL}` : isOwnShop ? "Propria" : "Comprar"}
+      <input type="number" min="1" max="${listing.quantity}" step="1" value="1" data-buy-player-shop-qty="${listing.drugType}" ${isOwnShop || locked || remoteOnline ? "disabled" : ""}>
+      <button type="button" class="panel-action" data-buy-player-shop="${listing.drugType}" ${isOwnShop || locked || remoteOnline ? "disabled" : ""}>
+        ${locked ? `Nivel ${BUSINESS_UNLOCK_LEVEL}` : isOwnShop ? "Propria" : remoteOnline ? "Online" : "Comprar"}
       </button>
     </article>
   `;
@@ -5768,6 +5770,7 @@ function normalizeState() {
   state.settings ||= {};
   state.settings.visual ||= {};
   state.onlineCityPlayers = [];
+  state.onlinePlayerShops = [];
   normalizeTutorialState(state, { startIfMissing: false });
   if (!state.settings.visual.version || state.settings.visual.version < 2) {
     state.settings.visual = {

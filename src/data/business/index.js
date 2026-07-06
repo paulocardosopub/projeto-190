@@ -13,7 +13,7 @@ export const BUSINESS_CONFIG = {
   shopPersistsWhenOwnerOffline: true,
   saleTaxPercent: 5,
   saleTaxRate: 0.05,
-  maxActiveShops: 8,
+  maxActiveShops: 12,
   products: {
     weed: {
       id: "weed",
@@ -83,14 +83,18 @@ export const BUSINESS_CONFIG = {
     5: { cost: 5000000, multiplier: 5, capacity: 450 }
   },
   shopSlots: [
-    { id: "loja-1", x: 360 },
-    { id: "loja-2", x: 520 },
-    { id: "loja-3", x: 680 },
-    { id: "loja-4", x: 840 },
-    { id: "loja-5", x: 1220 },
-    { id: "loja-6", x: 1380 },
-    { id: "loja-7", x: 1540 },
-    { id: "loja-8", x: 1700 }
+    { id: "loja-1", x: 240 },
+    { id: "loja-2", x: 380 },
+    { id: "loja-3", x: 520 },
+    { id: "loja-4", x: 660 },
+    { id: "loja-5", x: 800 },
+    { id: "loja-6", x: 940 },
+    { id: "loja-7", x: 1080 },
+    { id: "loja-8", x: 1220 },
+    { id: "loja-9", x: 1360 },
+    { id: "loja-10", x: 1500 },
+    { id: "loja-11", x: 1640 },
+    { id: "loja-12", x: 1780 }
   ],
   messages: {
     noMoneyProperty: "Sem grana pra esse investimento.",

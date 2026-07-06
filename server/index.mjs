@@ -119,9 +119,13 @@ function joinCity(socketId, client, message) {
     playerId: message.playerId || client.publicPlayerId || socketId,
     sessionToken: message.sessionToken || client.sessionToken || "",
     playerName: message.playerName || client.name,
+    areaId: message.areaId || "cidade",
+    scene: message.scene || "city",
+    mapId: message.mapId || "",
     characterId: message.characterId || DEFAULT_PLAYER_ID,
     equippedPetId: message.equippedPetId || null,
     weaponRarity: message.weaponRarity || null,
+    activeShop: message.activeShop || null,
     x: message.x,
     y: message.y,
     direction: message.direction || "right",
@@ -136,7 +140,7 @@ function joinCity(socketId, client, message) {
   client.publicPlayerId = player.playerId;
   client.sessionToken = player.sessionToken;
   client.name = player.playerName;
-  client.area = "cidade";
+  client.area = player.areaId || "cidade";
   cityPlayers.set(socketId, {
     ...player,
     socketId,
@@ -171,14 +175,19 @@ function moveCityPlayer(socketId, client, message) {
 
   current.x = Math.round(nextX);
   current.y = Math.round(nextY);
+  current.areaId = sanitizeId(message.areaId) || current.areaId || "cidade";
+  current.scene = sanitizeId(message.scene) || current.scene || "city";
+  current.mapId = sanitizeId(message.mapId) || "";
   current.characterId = sanitizeId(message.characterId) || current.characterId;
   current.equippedPetId = sanitizeId(message.equippedPetId) || null;
   current.weaponRarity = sanitizeId(message.weaponRarity) || null;
+  current.activeShop = sanitizeActiveShop(message.activeShop);
   current.direction = message.direction === "left" ? "left" : "right";
   current.isMoving = Boolean(message.isMoving);
   current.timestamp = Number(message.timestamp || now);
   current.lastMoveAt = now;
   current.lastSeen = now;
+  client.area = current.areaId || client.area;
 
   broadcastToOthers(socketId, {
     type: current.isMoving ? "city:player_moved" : "city:player_stopped",
@@ -230,9 +239,13 @@ function publicCityPlayer(player) {
     socketId: player.socketId,
     playerId: player.playerId,
     playerName: player.playerName,
+    areaId: player.areaId,
+    scene: player.scene,
+    mapId: player.mapId,
     characterId: player.characterId,
     equippedPetId: player.equippedPetId,
     weaponRarity: player.weaponRarity,
+    activeShop: player.activeShop,
     x: player.x,
     y: player.y,
     direction: player.direction,
@@ -265,9 +278,13 @@ function sanitizeCityPlayer(player) {
     playerId: sanitizeId(player.playerId),
     sessionToken: sanitizeId(player.sessionToken),
     playerName: sanitizeText(player.playerName, 24) || "Jogador",
+    areaId: sanitizeId(player.areaId) || "cidade",
+    scene: sanitizeId(player.scene) || "city",
+    mapId: sanitizeId(player.mapId),
     characterId: sanitizeId(player.characterId) || DEFAULT_PLAYER_ID,
     equippedPetId: sanitizeId(player.equippedPetId) || null,
     weaponRarity: sanitizeId(player.weaponRarity) || null,
+    activeShop: sanitizeActiveShop(player.activeShop),
     x: clampNumber(player.x, 64, 1856, 120),
     y: clampNumber(player.y, -200, 400, 0),
     direction: player.direction === "left" ? "left" : "right",
@@ -284,6 +301,43 @@ function sanitizeId(value) {
 
 function sanitizeText(value, maxLength) {
   return String(value || "").trim().replace(/\s+/g, " ").slice(0, maxLength);
+}
+
+function sanitizeActiveShop(shop) {
+  if (!shop || shop.active === false) return null;
+  const listings = (Array.isArray(shop.listings) ? shop.listings : [])
+    .map((listing) => ({
+      drugType: sanitizeId(listing?.drugType),
+      quantity: Math.max(0, Math.floor(Number(listing?.quantity || 0))),
+      pricePerUnit: Math.max(0, Math.floor(Number(listing?.pricePerUnit || 0))),
+      suggestedPrice: Math.max(0, Math.floor(Number(listing?.suggestedPrice || listing?.pricePerUnit || 0))),
+      originalQuantity: Math.max(0, Math.floor(Number(listing?.originalQuantity || listing?.quantity || 0))),
+      soldQuantity: Math.max(0, Math.floor(Number(listing?.soldQuantity || 0))),
+      reservedStock: Math.max(0, Math.floor(Number(listing?.reservedStock || 0))),
+      reservedInventory: Math.max(0, Math.floor(Number(listing?.reservedInventory || 0)))
+    }))
+    .filter((listing) => listing.drugType && listing.quantity > 0 && listing.pricePerUnit > 0)
+    .slice(0, 4);
+  if (!listings.length) return null;
+
+  const shopId = sanitizeId(shop.shopId);
+  const ownerPlayerId = sanitizeId(shop.ownerPlayerId);
+  if (!shopId || !ownerPlayerId) return null;
+
+  return {
+    shopId,
+    ownerPlayerId,
+    ownerName: sanitizeText(shop.ownerName, 24) || "Jogador",
+    shopName: sanitizeText(shop.shopName, 24) || "Lojinha",
+    createdAt: Number(shop.createdAt || Date.now()),
+    updatedAt: Number(shop.updatedAt || Date.now()),
+    active: true,
+    npcSlotId: sanitizeId(shop.npcSlotId),
+    listings,
+    grossSales: Math.max(0, Math.floor(Number(shop.grossSales || 0))),
+    sellerRevenue: Math.max(0, Math.floor(Number(shop.sellerRevenue || 0))),
+    salesCount: Math.max(0, Math.floor(Number(shop.salesCount || 0)))
+  };
 }
 
 function clampNumber(value, min, max, fallback) {
