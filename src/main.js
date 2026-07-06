@@ -264,6 +264,7 @@ let shopMode = "talk";
 let activeCityNpcGreeting = "";
 let pendingSellIndexes = new Set();
 let pendingCraftIndex = null;
+let playerShopDraft = null;
 let hideoutItemDrag = null;
 let stageHoldMove = null;
 let keyboardMoveKeys = new Set();
@@ -963,7 +964,9 @@ function renderAll() {
   }
 
   if (activeLeft) {
-    renderLeftPanel(activeLeft);
+    if (!(activeLeft === "playerShop" && isEditingPlayerShopDraft())) {
+      renderLeftPanel(activeLeft);
+    }
   } else {
     elements.leftWindow.classList.add("hidden");
   }
@@ -4698,9 +4701,11 @@ function renderBusinessPanel(container) {
 }
 
 function renderPlayerShopPanel(container) {
+  capturePlayerShopDraft(container);
   normalizePlayerShopState(state);
   const activeShop = getPlayerActiveShop(state, state.player.playerId);
   if (!businessUnlocked(state.player)) {
+    playerShopDraft = null;
     container.innerHTML = `
       ${businessWindowHeader("Minha Lojinha", "player-shop")}
       <div class="window-body player-shop-window-body">
@@ -4716,6 +4721,7 @@ function renderPlayerShopPanel(container) {
     bindClose(container, closeLeft);
     return;
   }
+  if (activeShop) playerShopDraft = null;
   container.innerHTML = `
     ${businessWindowHeader("Minha Lojinha", "player-shop")}
     <div class="window-body player-shop-window-body">
@@ -4848,22 +4854,25 @@ function businessStockCell(productType) {
 }
 
 function playerShopCreateTemplate() {
+  const draft = currentPlayerShopDraft();
   return `
     <form class="player-shop-form" data-player-shop-form>
-      <input name="shopName" maxlength="24" placeholder="Nome da loja" value="${escapeHtml(defaultShopName())}">
+      <input name="shopName" maxlength="24" placeholder="Nome da loja" value="${escapeHtml(draft.shopName)}">
       <div class="player-shop-listing-list">
-        ${SELLABLE_BUSINESS_PRODUCTS.map((productType) => playerShopListingRow(productType)).join("")}
+        ${SELLABLE_BUSINESS_PRODUCTS.map((productType) => playerShopListingRow(productType, draft.listings[productType])).join("")}
       </div>
       <button type="submit" class="panel-action primary-action">Abrir loja</button>
     </form>
   `;
 }
 
-function playerShopListingRow(productType) {
+function playerShopListingRow(productType, draft = null) {
   const product = businessProductConfig(productType);
   const stockAvailable = stockAmount(state.player, productType);
   const inventoryAvailable = playerShopInventoryAmount(productType);
   const available = stockAvailable + inventoryAvailable;
+  const quantity = Math.max(0, Math.min(available, Math.floor(Number(draft?.quantity || 0))));
+  const pricePerUnit = Math.max(product.minPrice, Math.min(product.maxPrice, Math.floor(Number(draft?.pricePerUnit || product.suggestedPrice))));
   return `
     <article class="player-shop-listing-row">
       <div>
@@ -4872,11 +4881,11 @@ function playerShopListingRow(productType) {
       </div>
       <label>
         <span>Qtd</span>
-        <input type="number" min="0" max="${available}" step="1" value="0" data-shop-listing-qty="${productType}">
+        <input type="number" min="0" max="${available}" step="1" value="${quantity}" data-shop-listing-qty="${productType}">
       </label>
       <label>
         <span>Preco</span>
-        <input type="number" min="${product.minPrice}" max="${product.maxPrice}" step="1" value="${product.suggestedPrice}" data-shop-listing-price="${productType}">
+        <input type="number" min="${product.minPrice}" max="${product.maxPrice}" step="1" value="${pricePerUnit}" data-shop-listing-price="${productType}">
       </label>
       <small>${formatMoney(product.suggestedPrice)} | ${formatMoney(product.minPrice)}-${formatMoney(product.maxPrice)}</small>
     </article>
@@ -4889,6 +4898,44 @@ function playerShopInventoryAmount(productType) {
   return (state.player.inventory || [])
     .filter((item) => isDrugInventoryItem(item) && (item.drugId || String(item.id || "").replace(/^drug-/, "")) === product.inventoryDrugId)
     .reduce((sum, item) => sum + itemQuantity(item), 0);
+}
+
+function currentPlayerShopDraft() {
+  const draft = playerShopDraft || {};
+  return {
+    shopName: draft.shopName ?? defaultShopName(),
+    listings: Object.fromEntries(SELLABLE_BUSINESS_PRODUCTS.map((productType) => {
+      const product = businessProductConfig(productType);
+      const listing = draft.listings?.[productType] || {};
+      return [productType, {
+        quantity: Math.max(0, Math.floor(Number(listing.quantity || 0))),
+        pricePerUnit: Math.floor(Number(listing.pricePerUnit || product?.suggestedPrice || 0))
+      }];
+    }))
+  };
+}
+
+function capturePlayerShopDraft(container) {
+  const form = container?.querySelector?.("[data-player-shop-form]");
+  if (form) updatePlayerShopDraftFromForm(form);
+}
+
+function updatePlayerShopDraftFromForm(form) {
+  playerShopDraft = {
+    shopName: String(form.elements.shopName?.value || "").slice(0, 24),
+    listings: Object.fromEntries(SELLABLE_BUSINESS_PRODUCTS.map((productType) => ([
+      productType,
+      {
+        quantity: Number(form.querySelector(`[data-shop-listing-qty="${productType}"]`)?.value || 0),
+        pricePerUnit: Number(form.querySelector(`[data-shop-listing-price="${productType}"]`)?.value || 0)
+      }
+    ])))
+  };
+}
+
+function isEditingPlayerShopDraft() {
+  if (state?.player?.activeShopId) return false;
+  return Boolean(document.activeElement?.closest?.("[data-player-shop-form]"));
 }
 
 function activePlayerShopTemplate(shop) {
@@ -4957,9 +5004,14 @@ function bindBusinessPanel(container) {
 }
 
 function bindPlayerShopPanel(container) {
-  container.querySelector("[data-player-shop-form]")?.addEventListener("submit", (event) => {
+  const form = container.querySelector("[data-player-shop-form]");
+  form?.addEventListener("input", (event) => {
+    updatePlayerShopDraftFromForm(event.currentTarget);
+  });
+  form?.addEventListener("submit", (event) => {
     event.preventDefault();
     const form = event.currentTarget;
+    updatePlayerShopDraftFromForm(form);
     const listings = SELLABLE_BUSINESS_PRODUCTS.map((productType) => ({
       drugType: productType,
       quantity: Number(form.querySelector(`[data-shop-listing-qty="${productType}"]`)?.value || 0),
@@ -4986,14 +5038,21 @@ function handleBusinessResult(result) {
 function handleShopResult(result) {
   handleResult(result);
   if (result?.ok) {
+    playerShopDraft = null;
     normalizePlayerShopState(state);
     syncShopNpcsForBusinessMap(state);
+    broadcastPlayerShopUpdate();
     persistGame();
     if (result.shop && !result.shop.active && activeCityNpc?.shopId === result.shop.shopId) {
       closeCityShopPanel({ render: false, force: true });
     }
   }
   renderAll();
+}
+
+function broadcastPlayerShopUpdate() {
+  online?.syncCityMembership?.();
+  online?.sendMovement?.(true);
 }
 
 function bindClose(container, close) {
