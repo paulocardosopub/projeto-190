@@ -1,4 +1,4 @@
-import { DEFAULT_PLAYER_ID } from "../../data/players/index.js?v=players-15";
+import { DEFAULT_PLAYER_ID } from "../../data/players/index.js?v=players-16";
 
 const DEFAULT_URL = "ws://localhost:4191";
 const SUPABASE_JS_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/+esm";

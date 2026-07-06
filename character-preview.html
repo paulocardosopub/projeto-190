@@ -255,7 +255,7 @@
   <main class="character-review" id="character-review" aria-live="polite"></main>
 
   <script type="module">
-    import { PLAYERS, PLAYER_POSES } from "./src/data/players/index.js?v=players-15";
+    import { PLAYERS, PLAYER_POSES } from "./src/data/players/index.js?v=players-16";
 
     const columns = [
       { key: "front", label: "Frente", pose: PLAYER_POSES.frontIdle },
@@ -318,7 +318,7 @@
     async function loadCharacter(player) {
       const images = {};
       await Promise.all(Object.values(PLAYER_POSES).map(async (pose) => {
-        images[pose] = await loadImage(`${player.assetPath}/${pose}.png?v=players-15`);
+        images[pose] = await loadImage(`${player.assetPath}/${pose}.png?v=players-16`);
       }));
 
       const frames = Object.fromEntries(Object.entries(images).map(([pose, image]) => [pose, buildFrame(image)]));

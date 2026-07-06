@@ -1,5 +1,5 @@
 import { createEmptyInventory, createStarterEquipment, createStarterInventory } from "../InventorySystem/index.js?v=stack-1";
-import { DEFAULT_PLAYER_ID } from "../../data/players/index.js?v=players-15";
+import { DEFAULT_PLAYER_ID } from "../../data/players/index.js?v=players-16";
 
 export function createNewGame(playerId = DEFAULT_PLAYER_ID) {
   const characterId = playerId || DEFAULT_PLAYER_ID;

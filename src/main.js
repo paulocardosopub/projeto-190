@@ -1,4 +1,4 @@
-import { DEFAULT_PLAYER_ID, PLAYERS } from "./data/players/index.js?v=players-15";
+import { DEFAULT_PLAYER_ID, PLAYERS } from "./data/players/index.js?v=players-16";
 import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=spawn-height-1";
 import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=petshop-portal-1";
@@ -40,7 +40,7 @@ import {
   sellNonFavoriteInventoryItems,
   unequipToInventory
 } from "./systems/InventorySystem/index.js?v=stack-1";
-import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=players-15";
+import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=players-16";
 import {
   applyProfileToState,
   createAccount,
@@ -163,14 +163,14 @@ import {
 } from "./systems/StaminaSystem/index.js?v=asset-lock-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=asset-lock-1";
 import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=pets-manual-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=players-15";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=players-16";
 import {
   renderCharacterSelect,
   renderConfigWindow,
   renderInventoryWindow,
   renderVaultWindow,
   renderPanel
-} from "./ui/WindowSystem.js?v=players-15";
+} from "./ui/WindowSystem.js?v=players-16";
 
 const elements = {
   canvas: document.querySelector("#game-canvas"),

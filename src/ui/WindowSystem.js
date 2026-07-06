@@ -1,5 +1,5 @@
 import { IDLE_MAPS, MAPS, MAP_TIERS } from "../data/maps/index.js?v=petshop-portal-1";
-import { DEFAULT_PLAYER_ID, PLAYERS } from "../data/players/index.js?v=players-15";
+import { DEFAULT_PLAYER_ID, PLAYERS } from "../data/players/index.js?v=players-16";
 import { EQUIPMENT_SLOTS, SLOT_LABELS } from "../data/equipment/index.js?v=gloves-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemCost } from "../data/hideoutItems/index.js";
 import { calculateStats, formatStat, statLabel } from "../systems/EquipmentSystem/index.js?v=equipment-2";
@@ -428,14 +428,21 @@ function bindResetControls(container, resetGame) {
 
 export function renderCharacterSelect(container, renderer, onSelect, initialPlayerId = DEFAULT_PLAYER_ID) {
   let selectedIndex = Math.max(0, PLAYERS.findIndex((player) => player.id === initialPlayerId));
+  const indexAt = (offset) => (selectedIndex + offset + PLAYERS.length) % PLAYERS.length;
 
   const render = () => {
     const player = PLAYERS[selectedIndex] || PLAYERS[0];
+    const previousPlayer = PLAYERS[indexAt(-1)] || player;
+    const nextPlayer = PLAYERS[indexAt(1)] || player;
     container.innerHTML = `
       <section class="character-carousel" data-current-player="${escapeAttribute(player.id)}">
         <button type="button" class="character-arrow" data-character-prev aria-label="Personagem anterior">‹</button>
         <div class="character-spotlight">
-          <canvas width="220" height="260" data-character-preview="${escapeAttribute(player.id)}"></canvas>
+          <div class="character-preview-strip">
+            <canvas class="character-side-preview" width="150" height="210" data-character-side-preview="previous" data-player-preview-id="${escapeAttribute(previousPlayer.id)}"></canvas>
+            <canvas class="character-main-preview" width="220" height="260" data-character-preview="${escapeAttribute(player.id)}"></canvas>
+            <canvas class="character-side-preview" width="150" height="210" data-character-side-preview="next" data-player-preview-id="${escapeAttribute(nextPlayer.id)}"></canvas>
+          </div>
           <div class="character-selected-copy">
             <span class="eyebrow">${selectedIndex + 1} / ${PLAYERS.length}</span>
             <h3>${escapeHtml(player.name)}</h3>
@@ -448,6 +455,9 @@ export function renderCharacterSelect(container, renderer, onSelect, initialPlay
     `;
 
     renderer.drawPlayerPreview(container.querySelector("[data-character-preview]"), player.id, "front");
+    container.querySelectorAll("[data-character-side-preview]").forEach((canvas) => {
+      renderer.drawPlayerPreview(canvas, canvas.dataset.playerPreviewId, "front");
+    });
     container.querySelector("[data-character-prev]")?.addEventListener("click", () => {
       selectedIndex = (selectedIndex - 1 + PLAYERS.length) % PLAYERS.length;
       render();

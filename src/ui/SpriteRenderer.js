@@ -1,6 +1,6 @@
 import { ASSETS, SPRITES } from "../data/assets.js?v=petshop-portal-1";
 import { CITY, HIDEOUTS, IDLE_MAPS, MAPS } from "../data/maps/index.js?v=petshop-portal-1";
-import { DEFAULT_PLAYER_ID, PLAYERS, PLAYER_POSES, getPlayerById } from "../data/players/index.js?v=players-15";
+import { DEFAULT_PLAYER_ID, PLAYERS, PLAYER_POSES, getPlayerById } from "../data/players/index.js?v=players-16";
 import { CITY_NPCS } from "../data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "../data/cityPortals/index.js?v=petshop-portal-1";
@@ -1291,7 +1291,7 @@ async function loadPlayerAnimations() {
   const entries = await Promise.all(PLAYERS.map(async (player) => {
     const frames = {};
     await Promise.all(Object.values(PLAYER_POSES).map(async (pose) => {
-      frames[pose] = await loadImage(`${player.assetPath}/${pose}.png?v=players-15`);
+      frames[pose] = await loadImage(`${player.assetPath}/${pose}.png?v=players-16`);
     }));
     return [player.id, buildPlayerAnimationFromFrames(frames)];
   }));
@@ -1632,24 +1632,6 @@ function hexToRgba(hex, alpha) {
 
 function weaponEffectConfig(rarity) {
   return {
-    comum: {
-      color: "#b8b8b8",
-      core: "#e7e7e7",
-      auraRadius: 4.8,
-      coreRadius: 1.25,
-      blur: 4.2,
-      alpha: 0.42,
-      pulse: 0.24
-    },
-    incomum: {
-      color: "#55d66b",
-      core: "#b8ffbc",
-      auraRadius: 5,
-      coreRadius: 1.3,
-      blur: 5,
-      alpha: 0.42,
-      pulse: 0.24
-    },
     raro: {
       color: "#52a8ff",
       core: "#c7e6ff",
