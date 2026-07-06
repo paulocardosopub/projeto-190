@@ -60,7 +60,8 @@ import {
   factionSnapshot,
   joinFaction,
   kickFactionMember,
-  leaveFaction
+  leaveFaction,
+  resetPlayerFaction
 } from "./systems/FactionSystem/index.js";
 import {
   clearProfileSave,
@@ -334,11 +335,35 @@ const PET_TUTORIAL_STEPS = [
     actionRequired: "talk_petshop_owner",
     passiveButton: true,
     allowSkip: true,
+    next: "pet_dogs"
+  },
+  {
+    id: "pet_dogs",
+    message: "Nos assaltos, alguns doguinhos podem gostar de voce. Quando isso acontecer, eles soltam coracoes e ficam liberados aqui no Petshop.",
+    buttonLabel: "Entendi",
+    target: "stage",
+    allowSkip: true,
+    next: "pet_unlock"
+  },
+  {
+    id: "pet_unlock",
+    message: "Liberado nao e adotado. O cachorro aparece no Petshop, mas so vira teu parceiro depois que voce comprar ou adotar no balcao.",
+    buttonLabel: "Boa",
+    target: "stage",
+    allowSkip: true,
+    next: "pet_sequence"
+  },
+  {
+    id: "pet_sequence",
+    message: "A ordem importa: adota um cachorro para o proximo poder gostar de voce nos mapas. So cachorro comprado conta nessa progressao.",
+    buttonLabel: "Fechou",
+    target: "stage",
+    allowSkip: true,
     next: "pet_buy"
   },
   {
     id: "pet_buy",
-    message: "Adota o Pinscher no balcao. Ele so aparece contigo depois disso.",
+    message: "Adota teu primeiro parceiro no balcao. Ele so aparece contigo depois disso.",
     buttonLabel: "Adotar",
     target: "pet_shop_starter",
     actionRequired: "buy_starter_pet",
@@ -1347,7 +1372,7 @@ function dispatchPetTutorialEvent(type, payload = {}, options = {}) {
   const nextByEvent = {
     petshop_city_opened: { from: "pet_city", next: "pet_enter" },
     petshop_entered: { from: "pet_enter", next: "pet_inside" },
-    petshop_owner_opened: { from: "pet_inside", next: "pet_buy" }
+    petshop_owner_opened: { from: "pet_inside", next: "pet_dogs" }
   }[type];
   if (nextByEvent && step.id === nextByEvent.from) {
     state.player.petTutorialStep = nextByEvent.next;
@@ -2716,7 +2741,8 @@ function renderConfigPanel(container) {
     },
     logout: () => {
       disconnectActiveAccount("Conta desconectada.");
-    }
+    },
+    resetGame: resetCurrentProgress
   });
 }
 
@@ -2740,6 +2766,77 @@ async function createAccountFromConfig(formData) {
   online?.disconnect();
   if (!state.settings.visualPreview) online?.connect();
   showToast("Conta criada e progresso salvo.");
+  renderAll();
+}
+
+function resetCurrentProgress() {
+  if (!state?.player) return;
+  const previousProfile = activeProfile ? { ...activeProfile } : null;
+  const characterId = state.selectedPlayerId || state.player.characterId || previousProfile?.characterId || PLAYERS[0].id;
+  const displayName = state.player.displayName || previousProfile?.displayName || "";
+  const username = state.player.username || previousProfile?.username || "";
+  const isGuest = Boolean(previousProfile?.isGuest || state.player.isGuest);
+
+  resetPlayerFaction(state.player);
+  if (previousProfile?.id) {
+    clearProfileSave(previousProfile.id);
+    activeProfile = updateProfile(previousProfile.id, {
+      displayName,
+      characterId,
+      factionId: null,
+      lastMap: "city",
+      lastPositionX: 190,
+      lastPositionY: 0
+    }) || {
+      ...previousProfile,
+      displayName,
+      characterId,
+      factionId: null,
+      lastMap: "city",
+      lastPositionX: 190,
+      lastPositionY: 0
+    };
+  } else {
+    clearSave();
+  }
+
+  state = createNewGame(characterId);
+  if (activeProfile?.id) {
+    applyProfileToState(state, activeProfile);
+  } else {
+    state.player.displayName = displayName;
+    state.player.username = username;
+    state.player.isGuest = isGuest;
+  }
+  state.player.factionId = null;
+  normalizeState();
+  if (activeProfile?.id) applyProfileToState(state, activeProfile);
+  state.player.factionId = null;
+  applyVisualCalibration();
+
+  closeCityShopPanel({ force: true, render: false });
+  hideAutoRaidConfirm();
+  hideChoice();
+  elements.hospitalModal?.classList.add("hidden");
+  elements.sceneTransition?.classList.remove("visible");
+  elements.sceneTransition?.classList.add("hidden");
+  elements.deathFlash?.classList.add("hidden");
+  activeCenter = true;
+  activeLeft = null;
+  activeRight = "configs";
+  activeCityNpc = null;
+  activeCityPortalId = null;
+  pendingSellIndexes.clear();
+  pendingCraftIndex = null;
+  saveTimer = 0;
+  cloudSavePending = false;
+  sessionCheckTimer = 0;
+  lastTime = performance.now();
+
+  setupCombat();
+  persistGame();
+  if (!state.settings.visualPreview) online?.connect();
+  showToast("Progresso resetado. Comecando do zero.");
   renderAll();
 }
 

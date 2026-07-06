@@ -241,10 +241,10 @@ export const SPRITES = {
   },
   petFrames: {
     actions: {
-      idle: [0, 1],
-      walk: [0, 1, 2, 3],
-      attack: [4, 5],
-      returnToPlayer: [0, 1, 2, 3]
+      idle: [0],
+      walk: [0, 1, 2],
+      attack: [3, 4, 5],
+      returnToPlayer: [0, 1, 2]
     }
   },
   hideoutItems: {

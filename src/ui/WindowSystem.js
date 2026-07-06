@@ -365,6 +365,23 @@ export function renderConfigWindow(container, state, callbacks) {
       <div class="inventory-tools">
         <button class="panel-action primary-action" id="config-save">Forcar salvamento</button>
       </div>
+      <section class="reset-config-panel">
+        <div>
+          <span class="eyebrow">Progresso</span>
+          <p>Volta o jogador para o inicio e apaga o progresso salvo desta conta.</p>
+        </div>
+        <button type="button" class="panel-action danger-action" id="config-reset-open">Começar do Zero</button>
+        <form class="reset-confirm-form hidden" data-config-reset-form>
+          <label>
+            <span>Digite confirmar</span>
+            <input name="confirmation" autocomplete="off" data-config-reset-input>
+          </label>
+          <div class="reset-confirm-actions">
+            <button type="button" class="panel-action secondary-action" data-config-reset-cancel>Cancelar</button>
+            <button type="submit" class="panel-action danger-action" data-config-reset-confirm disabled>Confirmar reset</button>
+          </div>
+        </form>
+      </section>
     </div>
   `;
 
@@ -373,6 +390,40 @@ export function renderConfigWindow(container, state, callbacks) {
   container.querySelector("#config-save")?.addEventListener("click", callbacks.save);
   container.querySelector("[data-config-create-account]")?.addEventListener("submit", callbacks.createAccount);
   container.querySelector("[data-config-logout]")?.addEventListener("click", callbacks.logout);
+  bindResetControls(container, callbacks.resetGame);
+}
+
+function bindResetControls(container, resetGame) {
+  const openButton = container.querySelector("#config-reset-open");
+  const form = container.querySelector("[data-config-reset-form]");
+  const input = container.querySelector("[data-config-reset-input]");
+  const confirmButton = container.querySelector("[data-config-reset-confirm]");
+
+  const syncConfirm = () => {
+    const allowed = String(input?.value || "").trim().toLowerCase() === "confirmar";
+    if (confirmButton) confirmButton.disabled = !allowed;
+  };
+
+  openButton?.addEventListener("click", () => {
+    form?.classList.remove("hidden");
+    openButton.disabled = true;
+    window.setTimeout(() => input?.focus(), 0);
+    syncConfirm();
+  });
+
+  container.querySelector("[data-config-reset-cancel]")?.addEventListener("click", () => {
+    form?.reset();
+    form?.classList.add("hidden");
+    if (openButton) openButton.disabled = false;
+    syncConfirm();
+  });
+
+  input?.addEventListener("input", syncConfirm);
+  form?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (confirmButton?.disabled) return;
+    resetGame?.();
+  });
 }
 
 export function renderCharacterSelect(container, renderer, onSelect) {

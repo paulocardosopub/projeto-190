@@ -128,6 +128,33 @@ export function kickFactionMember(player, targetPlayerId) {
   return { ok: true, message: `${target.playerName} saiu da faccao.` };
 }
 
+export function resetPlayerFaction(player) {
+  const store = normalizeFactionStore(readFactionStore());
+  const membership = currentMember(store, player?.playerId);
+  if (!membership) return { ok: true, factionId: null };
+
+  const faction = store.factions.find((candidate) => candidate.id === membership.factionId);
+  const factionMembers = store.members.filter((member) => member.factionId === membership.factionId);
+
+  if (membership.role === "leader") {
+    const successor = factionMembers.find((member) => member.id !== membership.id);
+    if (successor && faction) {
+      successor.role = "leader";
+      faction.leaderPlayerId = successor.playerId;
+      faction.leaderName = successor.playerName;
+    } else {
+      store.factions = store.factions.filter((candidate) => candidate.id !== membership.factionId);
+      store.members = store.members.filter((member) => member.factionId !== membership.factionId);
+      writeFactionStore(store);
+      return { ok: true, factionId: null };
+    }
+  }
+
+  store.members = store.members.filter((member) => member.id !== membership.id);
+  writeFactionStore(store);
+  return { ok: true, factionId: null };
+}
+
 function validateFactionFields(fields, store, currentFactionId = null) {
   const name = String(fields?.name || "").trim().replace(/\s+/g, " ");
   const tag = String(fields?.tag || "").trim().toUpperCase();

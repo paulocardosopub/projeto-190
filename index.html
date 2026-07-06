@@ -190,6 +190,9 @@
         </div>
         <div class="survival-warning hidden" id="survival-warning"></div>
         <div class="toast-region" id="toast-region" aria-live="polite"></div>
+        <div class="scene-transition hidden" id="scene-transition">
+          <strong id="scene-transition-text">Roube o maximo que conseguir!</strong>
+        </div>
         <div class="raid-summary hidden" id="raid-summary">
           <span class="eyebrow">Assalto encerrado</span>
           <h2 id="raid-summary-title">Resumo do roubo</h2>
@@ -209,6 +212,22 @@
             <button type="button" class="primary-action" id="raid-repeat-button">Repetir</button>
             <button type="button" class="primary-action" id="raid-next-button">Proximo</button>
           </div>
+        </div>
+        <div class="modal-backdrop combat-choice-backdrop hidden" id="choice-modal" role="dialog" aria-modal="true" aria-labelledby="choice-title">
+          <section class="modal choice-modal">
+            <span class="eyebrow">Roubo falhou</span>
+            <h2 id="choice-title">"O que pensa que esta fazendo?"</h2>
+            <p id="choice-text">O alvo percebeu a tentativa.</p>
+            <p class="choice-prison-risk" id="choice-prison-risk">Chance de ir preso: 0%</p>
+            <p class="choice-warning hidden" id="choice-warning">Caso você seja pego novamente poderá ir preso, tem certeza?</p>
+            <div class="modal-actions">
+              <button class="secondary-action" id="flee-button">Fugir</button>
+              <button class="primary-action choice-fight-button" id="fight-button">
+                <span class="fight-auto-timer" id="fight-auto-timer">Auto em 5s</span>
+                <span>Brigar</span>
+              </button>
+            </div>
+          </section>
         </div>
         <button class="master-toggle" id="master-toggle" aria-label="Abrir Equipamento e Mochila" aria-expanded="false">
           <span aria-hidden="true">v</span>
@@ -277,23 +296,6 @@
     </main>
 
   </div>
-  <div class="modal-backdrop hidden" id="choice-modal" role="dialog" aria-modal="true" aria-labelledby="choice-title">
-    <section class="modal choice-modal">
-      <span class="eyebrow">Roubo falhou</span>
-      <h2 id="choice-title">"O que pensa que esta fazendo?"</h2>
-      <p id="choice-text">O alvo percebeu a tentativa.</p>
-      <p class="choice-prison-risk" id="choice-prison-risk">Chance de ir preso: 0%</p>
-      <p class="choice-warning hidden" id="choice-warning">Caso você seja pego novamente poderá ir preso, tem certeza?</p>
-      <div class="modal-actions">
-        <button class="secondary-action" id="flee-button">Fugir</button>
-        <button class="primary-action choice-fight-button" id="fight-button">
-          <span class="fight-auto-timer" id="fight-auto-timer">Auto em 5s</span>
-          <span>Brigar</span>
-        </button>
-      </div>
-    </section>
-  </div>
-
   <div class="modal-backdrop hidden" id="hospital-modal" role="dialog" aria-modal="true" aria-labelledby="hospital-title">
     <section class="modal hospital-modal">
       <span class="eyebrow">Atendimento hospitalar</span>
@@ -306,9 +308,6 @@
     </section>
   </div>
 
-  <div class="scene-transition hidden" id="scene-transition">
-    <strong id="scene-transition-text">Roube o maximo que conseguir!</strong>
-  </div>
   <div class="death-flash hidden" id="death-flash" aria-hidden="true"></div>
 
   <script src="./src/config/publicOnlineConfig.js?v=cache-check-1"></script>
