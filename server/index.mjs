@@ -8,6 +8,7 @@ const cityPlayers = new Map();
 const MOVE_MIN_INTERVAL_MS = 45;
 const MAX_MOVE_SPEED = 260;
 const INACTIVE_TIMEOUT_MS = 30_000;
+const DEFAULT_PLAYER_ID = "menino_gordinho_brasil";
 
 const shops = [
   { id: "mercearia", name: "Mercearia da Cidade", owner: "Sistema", status: "aberta" },
@@ -118,7 +119,7 @@ function joinCity(socketId, client, message) {
     playerId: message.playerId || client.publicPlayerId || socketId,
     sessionToken: message.sessionToken || client.sessionToken || "",
     playerName: message.playerName || client.name,
-    characterId: message.characterId || "iris",
+    characterId: message.characterId || DEFAULT_PLAYER_ID,
     x: message.x,
     y: message.y,
     direction: message.direction || "right",
@@ -257,7 +258,7 @@ function sanitizeCityPlayer(player) {
     playerId: sanitizeId(player.playerId),
     sessionToken: sanitizeId(player.sessionToken),
     playerName: sanitizeText(player.playerName, 24) || "Jogador",
-    characterId: sanitizeId(player.characterId) || "iris",
+    characterId: sanitizeId(player.characterId) || DEFAULT_PLAYER_ID,
     x: clampNumber(player.x, 64, 1856, 120),
     y: clampNumber(player.y, -200, 400, 0),
     direction: player.direction === "left" ? "left" : "right",

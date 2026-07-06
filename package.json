@@ -34,7 +34,6 @@
       "version.json",
       "src/**/*",
       "assets/**/*",
-      "player.png",
       "paginas.png",
       "electron-main.cjs"
     ],

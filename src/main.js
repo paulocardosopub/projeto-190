@@ -1,4 +1,4 @@
-import { PLAYERS } from "./data/players/index.js?v=bruno-yellow-1";
+import { DEFAULT_PLAYER_ID, PLAYERS } from "./data/players/index.js?v=players-15";
 import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=spawn-height-1";
 import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=petshop-portal-1";
@@ -40,7 +40,7 @@ import {
   sellNonFavoriteInventoryItems,
   unequipToInventory
 } from "./systems/InventorySystem/index.js?v=stack-1";
-import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=stack-1";
+import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=players-15";
 import {
   applyProfileToState,
   createAccount,
@@ -163,14 +163,14 @@ import {
 } from "./systems/StaminaSystem/index.js?v=asset-lock-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=asset-lock-1";
 import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=pets-manual-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=raid-dogs-1";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=players-15";
 import {
   renderCharacterSelect,
   renderConfigWindow,
   renderInventoryWindow,
   renderVaultWindow,
   renderPanel
-} from "./ui/WindowSystem.js?v=stack-1";
+} from "./ui/WindowSystem.js?v=players-15";
 
 const elements = {
   canvas: document.querySelector("#game-canvas"),
@@ -451,7 +451,7 @@ async function boot() {
   };
 
   if (previewMode) {
-    state = createNewGame("iris");
+    state = createNewGame(DEFAULT_PLAYER_ID);
     startLoadedGame({ previewMode: true });
     return;
   }
@@ -516,18 +516,18 @@ function advanceStartupFlow() {
     return;
   }
 
-  if (!state && !activeProfile.characterId) {
+  if (state && needsCharacterSelection(state, activeProfile)) {
+    showCharacterSelection("existing");
+    return;
+  }
+
+  if (!state && !isValidPlayerId(activeProfile.characterId)) {
     showCharacterSelection("new");
     return;
   }
 
   if (!state && activeProfile.characterId) {
     state = createNewGame(activeProfile.characterId);
-  }
-
-  if (!activeProfile.characterId) {
-    showCharacterSelection("existing");
-    return;
   }
 
   startLoadedGame();
@@ -589,8 +589,10 @@ function showCharacterSelection(mode = "new") {
   characterSelectionMode = mode;
   document.body.classList.add("character-selecting");
   elements.characterModal.classList.remove("hidden", "is-leaving");
-  renderCharacterSelect(elements.characterGrid, renderer, completeCharacterSelection);
-  renderer.draw(state || createNewGame("iris"), playerRowForState(state || createNewGame("iris")));
+  const previewState = state || createNewGame(activeProfile?.characterId || DEFAULT_PLAYER_ID);
+  const initialPlayerId = normalizePlayerId(previewState.selectedPlayerId || previewState.player?.characterId);
+  renderCharacterSelect(elements.characterGrid, renderer, completeCharacterSelection, initialPlayerId);
+  renderer.draw(previewState, playerRowForState(previewState));
   if (mode === "new") showCharacterSelectTutorial();
   else hideCharacterSelectTutorial();
 }
@@ -2772,7 +2774,6 @@ async function createAccountFromConfig(formData) {
 function resetCurrentProgress() {
   if (!state?.player) return;
   const previousProfile = activeProfile ? { ...activeProfile } : null;
-  const characterId = state.selectedPlayerId || state.player.characterId || previousProfile?.characterId || PLAYERS[0].id;
   const displayName = state.player.displayName || previousProfile?.displayName || "";
   const username = state.player.username || previousProfile?.username || "";
   const isGuest = Boolean(previousProfile?.isGuest || state.player.isGuest);
@@ -2782,7 +2783,7 @@ function resetCurrentProgress() {
     clearProfileSave(previousProfile.id);
     activeProfile = updateProfile(previousProfile.id, {
       displayName,
-      characterId,
+      characterId: null,
       factionId: null,
       lastMap: "city",
       lastPositionX: 190,
@@ -2790,7 +2791,7 @@ function resetCurrentProgress() {
     }) || {
       ...previousProfile,
       displayName,
-      characterId,
+      characterId: null,
       factionId: null,
       lastMap: "city",
       lastPositionX: 190,
@@ -2800,7 +2801,7 @@ function resetCurrentProgress() {
     clearSave();
   }
 
-  state = createNewGame(characterId);
+  state = createNewGame(DEFAULT_PLAYER_ID);
   if (activeProfile?.id) {
     applyProfileToState(state, activeProfile);
   } else {
@@ -2809,10 +2810,6 @@ function resetCurrentProgress() {
     state.player.isGuest = isGuest;
   }
   state.player.factionId = null;
-  normalizeState();
-  if (activeProfile?.id) applyProfileToState(state, activeProfile);
-  state.player.factionId = null;
-  applyVisualCalibration();
 
   closeCityShopPanel({ force: true, render: false });
   hideAutoRaidConfirm();
@@ -2833,11 +2830,11 @@ function resetCurrentProgress() {
   sessionCheckTimer = 0;
   lastTime = performance.now();
 
-  setupCombat();
-  persistGame();
-  if (!state.settings.visualPreview) online?.connect();
-  showToast("Progresso resetado. Comecando do zero.");
-  renderAll();
+  online?.disconnect();
+  combat = null;
+  online = null;
+  showToast("Progresso resetado. Escolha um novo visual.");
+  showCharacterSelection("existing");
 }
 
 function disconnectActiveAccount(message) {
@@ -3175,20 +3172,19 @@ function ensureAnimationTestBar() {
     bar = document.createElement("div");
     bar.id = "animation-test-bar";
     bar.className = "animation-test-bar";
-    bar.innerHTML = `
-      <strong>Teste combate</strong>
-      <button type="button" data-test-player="iris">Iris</button>
-      <button type="button" data-test-player="bruno">Bruno</button>
-      <button type="button" data-test-action="attack">Atacar</button>
-      <button type="button" data-test-action="hurt">Dano</button>
-      <button type="button" data-test-action="loop">Loop</button>
-      <button type="button" data-test-action="city">Cidade</button>
-    `;
     document.body.append(bar);
   }
 
   bar.classList.remove("hidden");
   if (bar.dataset.testReady) return;
+  bar.innerHTML = `
+    <strong>Teste combate</strong>
+    ${PLAYERS.map((player) => `<button type="button" data-test-player="${escapeHtml(player.id)}">${escapeHtml(player.name)}</button>`).join("")}
+    <button type="button" data-test-action="attack">Atacar</button>
+    <button type="button" data-test-action="hurt">Dano</button>
+    <button type="button" data-test-action="loop">Loop</button>
+    <button type="button" data-test-action="city">Cidade</button>
+  `;
   bar.dataset.testReady = "true";
   bar.addEventListener("click", handleAnimationTestClick);
 }
@@ -5738,12 +5734,25 @@ function playerRow() {
 }
 
 function playerRowForState(sourceState) {
-  return PLAYERS.find((player) => player.id === sourceState?.selectedPlayerId)?.row || 0;
+  return Math.max(0, PLAYERS.findIndex((player) => player.id === sourceState?.selectedPlayerId));
+}
+
+function isValidPlayerId(playerId) {
+  return PLAYERS.some((player) => player.id === playerId);
+}
+
+function normalizePlayerId(playerId) {
+  return isValidPlayerId(playerId) ? playerId : DEFAULT_PLAYER_ID;
+}
+
+function needsCharacterSelection(sourceState, profile = activeProfile) {
+  const loadedCharacterId = sourceState?.player?.characterId || sourceState?.selectedPlayerId || profile?.characterId;
+  return !isValidPlayerId(loadedCharacterId);
 }
 
 function normalizeState() {
-  if (!PLAYERS.some((player) => player.id === state.selectedPlayerId)) {
-    state.selectedPlayerId = PLAYERS[0].id;
+  if (!isValidPlayerId(state.selectedPlayerId)) {
+    state.selectedPlayerId = DEFAULT_PLAYER_ID;
   }
   state.settings ||= {};
   state.settings.visual ||= {};
@@ -5802,7 +5811,8 @@ function normalizeState() {
   state.player.username ||= activeProfile?.username || "";
   state.player.isGuest = Boolean(activeProfile?.isGuest || state.player.isGuest);
   state.player.displayName ||= activeProfile?.displayName || "";
-  state.player.characterId ||= activeProfile?.characterId || state.selectedPlayerId;
+  state.player.characterId = normalizePlayerId(state.player.characterId || activeProfile?.characterId || state.selectedPlayerId);
+  state.selectedPlayerId = state.player.characterId;
   state.player.factionId ||= activeProfile?.factionId || null;
   state.player.hideoutTier = Number(state.player.hideoutTier || state.player.terrenoAtual || 0);
   state.player.hideoutItems ||= {};
@@ -5863,7 +5873,7 @@ function normalizeState() {
     state.player.businessTutorialStep = state.player.businessTutorialActive ? BUSINESS_TUTORIAL_FIRST_STEP : null;
   }
   applyOfflinePassiveIncome(state);
-  state.run ||= createNewGame(state.selectedPlayerId || "iris").run;
+  state.run ||= createNewGame(state.selectedPlayerId || DEFAULT_PLAYER_ID).run;
   state.run.playerDirection ||= "right";
   state.run.cityTargetX ??= null;
   state.run.pendingCityNpcId ??= null;

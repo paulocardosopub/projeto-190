@@ -1,5 +1,5 @@
 import { IDLE_MAPS, MAPS, MAP_TIERS } from "../data/maps/index.js?v=petshop-portal-1";
-import { PLAYERS } from "../data/players/index.js?v=bruno-yellow-1";
+import { DEFAULT_PLAYER_ID, PLAYERS } from "../data/players/index.js?v=players-15";
 import { EQUIPMENT_SLOTS, SLOT_LABELS } from "../data/equipment/index.js?v=gloves-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemCost } from "../data/hideoutItems/index.js";
 import { calculateStats, formatStat, statLabel } from "../systems/EquipmentSystem/index.js?v=equipment-2";
@@ -92,7 +92,7 @@ export function renderInventoryWindow(container, state, renderer, callbacks) {
     </div>
   `;
 
-  renderer.drawActorPreview(container.querySelector("#inventory-avatar"), "players", playerRow(state), "front");
+  renderer.drawPlayerPreview(container.querySelector("#inventory-avatar"), state.selectedPlayerId, "front");
 
   bindClose(container, callbacks.close);
   container.querySelectorAll(".inventory-cell").forEach((cell) => {
@@ -426,22 +426,40 @@ function bindResetControls(container, resetGame) {
   });
 }
 
-export function renderCharacterSelect(container, renderer, onSelect) {
-  container.innerHTML = PLAYERS.map((player) => `
-    <button class="character-card" data-player="${player.id}">
-      <canvas width="150" height="150" data-row="${player.row}"></canvas>
-      <h3>${player.name}</h3>
-      <p><strong>${player.title}</strong><br>${player.description}</p>
-    </button>
-  `).join("");
+export function renderCharacterSelect(container, renderer, onSelect, initialPlayerId = DEFAULT_PLAYER_ID) {
+  let selectedIndex = Math.max(0, PLAYERS.findIndex((player) => player.id === initialPlayerId));
 
-  container.querySelectorAll("canvas").forEach((canvas) => {
-    renderer.drawActorPreview(canvas, "players", Number(canvas.dataset.row), "front");
-  });
+  const render = () => {
+    const player = PLAYERS[selectedIndex] || PLAYERS[0];
+    container.innerHTML = `
+      <section class="character-carousel" data-current-player="${escapeAttribute(player.id)}">
+        <button type="button" class="character-arrow" data-character-prev aria-label="Personagem anterior">‹</button>
+        <div class="character-spotlight">
+          <canvas width="220" height="260" data-character-preview="${escapeAttribute(player.id)}"></canvas>
+          <div class="character-selected-copy">
+            <span class="eyebrow">${selectedIndex + 1} / ${PLAYERS.length}</span>
+            <h3>${escapeHtml(player.name)}</h3>
+            <p><strong>${escapeHtml(player.title)}</strong><br>${escapeHtml(player.description)}</p>
+          </div>
+          <button type="button" class="primary-action" data-player="${escapeAttribute(player.id)}">Escolher</button>
+        </div>
+        <button type="button" class="character-arrow" data-character-next aria-label="Proximo personagem">›</button>
+      </section>
+    `;
 
-  container.querySelectorAll("[data-player]").forEach((button) => {
-    button.addEventListener("click", () => onSelect(button.dataset.player));
-  });
+    renderer.drawPlayerPreview(container.querySelector("[data-character-preview]"), player.id, "front");
+    container.querySelector("[data-character-prev]")?.addEventListener("click", () => {
+      selectedIndex = (selectedIndex - 1 + PLAYERS.length) % PLAYERS.length;
+      render();
+    });
+    container.querySelector("[data-character-next]")?.addEventListener("click", () => {
+      selectedIndex = (selectedIndex + 1) % PLAYERS.length;
+      render();
+    });
+    container.querySelector("[data-player]")?.addEventListener("click", () => onSelect(player.id));
+  };
+
+  render();
 }
 
 function panelBody(type, state, online, faction) {
@@ -1167,8 +1185,4 @@ function attachScrollControls(container) {
 
   body.addEventListener("scroll", update);
   requestAnimationFrame(update);
-}
-
-function playerRow(state) {
-  return PLAYERS.find((player) => player.id === state.selectedPlayerId)?.row || 0;
 }

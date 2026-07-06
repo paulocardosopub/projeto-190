@@ -31,10 +31,6 @@ export const ASSETS = {
   pets: "./assets/pets.png",
   hideoutHouses: "./src/hideout/casas.png",
   hideoutVehicles: "./src/hideout/veiculos.png?v=vehicle-alpha-3",
-  players: "./player.png",
-  playerAnimation1: "./src/animations/jogador1.png",
-  playerAnimation2: "./src/animations/jogador2.png",
-  playerStealAnimation: "./src/animations/roubos.png",
   enemies: "./src/enemy/inimigos1.png",
   enemies2: "./src/enemy/inimigos2.png",
   enemies3: "./src/enemy/inimigos3.png",
@@ -60,18 +56,6 @@ export const SPRITES = {
     }
   },
   actorSheets: {
-    players: {
-      cols: 4,
-      rows: 3,
-      cellWidth: 480,
-      cellHeight: 480,
-      direction: {
-        right: 0,
-        front: 1,
-        back: 2,
-        left: 3
-      }
-    },
     enemies: {
       cols: 4,
       rows: 3,
@@ -191,53 +175,6 @@ export const SPRITES = {
       height: 320,
       rows: 6
     }
-  },
-  playerAnimation: {
-    actions: {
-      walk: 0,
-      attack: 1,
-      hurt: 2
-    },
-    framesPerRow: 8,
-    rows: 3,
-    manualRuns: {
-      0: {
-        attack: [
-          { x0: 48, x1: 209 },
-          { x0: 298, x1: 494 },
-          { x0: 569, x1: 767 },
-          { x0: 843, x1: 1183, margin: 0 },
-          { x0: 1184, x1: 1470, margin: 0 },
-          { x0: 1486, x1: 1652 },
-          { x0: 1720, x1: 1874 },
-          { x0: 1970, x1: 2122 }
-        ]
-      }
-    }
-  },
-  playerStealAnimation: {
-    framesPerRow: 6,
-    rows: 3,
-    anchorMode: "manual",
-    referenceHeights: [332, 350],
-    framesByPlayer: [
-      [
-        { x: 0, y: 1300, width: 362, height: 430, anchorX: 186, anchorY: 379 },
-        { x: 362, y: 1300, width: 362, height: 430, anchorX: 232, anchorY: 375 },
-        { x: 724, y: 1300, width: 362, height: 430, anchorX: 236, anchorY: 377 },
-        { x: 1086, y: 1300, width: 362, height: 430, anchorX: 246, anchorY: 378 },
-        { x: 1448, y: 1300, width: 362, height: 430, anchorX: 256, anchorY: 379 },
-        { x: 1810, y: 1300, width: 362, height: 430, anchorX: 254, anchorY: 376 }
-      ],
-      [
-        { x: 0, y: 390, width: 362, height: 430, anchorX: 171, anchorY: 400 },
-        { x: 362, y: 390, width: 362, height: 430, anchorX: 210, anchorY: 400 },
-        { x: 724, y: 390, width: 362, height: 430, anchorX: 221, anchorY: 400 },
-        { x: 1086, y: 390, width: 362, height: 430, anchorX: 218, anchorY: 400 },
-        { x: 1448, y: 390, width: 362, height: 430, anchorX: 227, anchorY: 400 },
-        { x: 1810, y: 390, width: 362, height: 430, anchorX: 238, anchorY: 400 }
-      ]
-    ]
   },
   petFrames: {
     actions: {

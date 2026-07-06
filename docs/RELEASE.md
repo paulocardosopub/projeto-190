@@ -17,7 +17,6 @@ O workflow `.github/workflows/pages.yml` publica na branch `gh-pages` os arquivo
 - `styles.css`
 - `assets/`
 - `src/`
-- `player.png`
 - `paginas.png`
 
 Durante o deploy, o arquivo `src/config/publicOnlineConfig.js` e gerado com a configuracao publica do Supabase. Se existirem variaveis `SUPABASE_URL` e `SUPABASE_KEY` no GitHub, elas sobrescrevem a configuracao embutida. Assim, todo jogador que abrir o link publico entra no mesmo online do Supabase.

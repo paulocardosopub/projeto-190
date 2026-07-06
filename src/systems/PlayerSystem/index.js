@@ -1,9 +1,11 @@
 import { createEmptyInventory, createStarterEquipment, createStarterInventory } from "../InventorySystem/index.js?v=stack-1";
+import { DEFAULT_PLAYER_ID } from "../../data/players/index.js?v=players-15";
 
-export function createNewGame(playerId) {
+export function createNewGame(playerId = DEFAULT_PLAYER_ID) {
+  const characterId = playerId || DEFAULT_PLAYER_ID;
   return {
     version: 1,
-    selectedPlayerId: playerId,
+    selectedPlayerId: characterId,
     scene: "city",
     currentMapId: null,
     activeAssaultTier: 1,
@@ -22,7 +24,7 @@ export function createNewGame(playerId) {
       username: "",
       isGuest: false,
       displayName: "",
-      characterId: playerId,
+      characterId,
       factionId: null,
       level: 1,
       highestMapUnlocked: 1,

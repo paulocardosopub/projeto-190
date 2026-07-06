@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Projeto 190 - Personagens</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #080807;
+      --panel: #17130f;
+      --panel-soft: #211a13;
+      --line: #6d5130;
+      --gold: #e4ad38;
+      --gold-soft: #f1d58a;
+      --text: #f5ead0;
+      --muted: #b9aa8d;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100svh;
+      color: var(--text);
+      background:
+        linear-gradient(180deg, rgba(120, 38, 24, 0.18), transparent 220px),
+        var(--bg);
+    }
+
+    button,
+    input {
+      font: inherit;
+    }
+
+    .review-header {
+      position: sticky;
+      top: 0;
+      z-index: 4;
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      padding: 10px 14px;
+      background: rgba(10, 8, 7, 0.94);
+      border-bottom: 1px solid var(--line);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32);
+    }
+
+    h1 {
+      margin: 0;
+      color: var(--gold-soft);
+      font-size: 20px;
+      line-height: 1;
+      text-transform: uppercase;
+      text-shadow: 2px 2px 0 #220b08;
+    }
+
+    .review-header p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .effect-controls {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(96px, 1fr));
+      gap: 8px;
+      align-items: end;
+      min-width: min(680px, 58vw);
+    }
+
+    .effect-controls label {
+      display: grid;
+      gap: 3px;
+      color: var(--gold-soft);
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+
+    .effect-controls input[type="range"] {
+      width: 100%;
+      accent-color: var(--gold);
+    }
+
+    .effect-toggle {
+      min-height: 35px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 9px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+    }
+
+    .effect-output {
+      grid-column: 1 / -1;
+      min-height: 19px;
+      color: var(--muted);
+      font-size: 11px;
+      text-align: right;
+    }
+
+    .character-review {
+      display: grid;
+      gap: 12px;
+      padding: 12px;
+    }
+
+    .character-row {
+      display: grid;
+      grid-template-columns: minmax(150px, 190px) repeat(6, minmax(118px, 1fr));
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .character-name,
+    .pose-card {
+      min-width: 0;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 46%),
+        var(--panel);
+      border: 1px solid #3f3021;
+      border-radius: 6px;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
+    }
+
+    .character-name {
+      display: grid;
+      align-content: center;
+      gap: 5px;
+      padding: 10px;
+    }
+
+    .character-name strong {
+      color: var(--gold-soft);
+      font-size: 14px;
+      text-transform: uppercase;
+    }
+
+    .character-name small {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .pose-card {
+      display: grid;
+      grid-template-rows: 156px auto;
+      gap: 6px;
+      padding: 7px;
+      text-align: center;
+    }
+
+    canvas {
+      width: 100%;
+      height: 156px;
+      image-rendering: pixelated;
+      background:
+        linear-gradient(45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.035) 75%),
+        linear-gradient(45deg, rgba(255, 255, 255, 0.035) 25%, transparent 25%, transparent 75%, rgba(255, 255, 255, 0.035) 75%),
+        #11100e;
+      background-position: 0 0, 8px 8px;
+      background-size: 16px 16px;
+      border: 1px solid #2d241a;
+    }
+
+    .pose-card span {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+
+    @media (max-width: 980px) {
+      .review-header {
+        grid-template-columns: 1fr;
+      }
+
+      .effect-controls {
+        min-width: 0;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .character-row {
+        grid-template-columns: minmax(104px, 122px) repeat(6, minmax(88px, 1fr));
+        gap: 6px;
+        overflow-x: visible;
+      }
+
+      .character-name {
+        padding: 8px;
+      }
+
+      .character-name strong {
+        font-size: 12px;
+      }
+
+      .character-name small {
+        font-size: 10px;
+      }
+
+      .pose-card {
+        grid-template-rows: 128px auto;
+        padding: 5px;
+      }
+
+      canvas {
+        height: 128px;
+      }
+
+      .pose-card span {
+        font-size: 10px;
+      }
+    }
+
+    @media (max-width: 700px) {
+      .character-row {
+        grid-template-columns: minmax(120px, 150px) repeat(6, 104px);
+        overflow-x: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="review-header">
+    <div>
+      <h1>Personagens Jogaveis</h1>
+      <p>Frente, lados, caminhada, ataque, dano e brilho raro.</p>
+    </div>
+    <form class="effect-controls" id="effect-controls">
+      <label class="effect-toggle">
+        <input type="checkbox" id="effect-enabled" checked>
+        Efeito raro
+      </label>
+      <label>
+        X
+        <input type="range" id="effect-x" min="-0.6" max="0.6" step="0.005">
+      </label>
+      <label>
+        Y
+        <input type="range" id="effect-y" min="0" max="1" step="0.005">
+      </label>
+      <label>
+        Tamanho
+        <input type="range" id="effect-size" min="0.4" max="2.2" step="0.01">
+      </label>
+      <output class="effect-output" id="effect-output"></output>
+    </form>
+  </header>
+
+  <main class="character-review" id="character-review" aria-live="polite"></main>
+
+  <script type="module">
+    import { PLAYERS, PLAYER_POSES } from "./src/data/players/index.js?v=players-15";
+
+    const columns = [
+      { key: "front", label: "Frente", pose: PLAYER_POSES.frontIdle },
+      { key: "sideRight", label: "Lado dir.", pose: PLAYER_POSES.sideIdle, effect: true },
+      { key: "sideLeft", label: "Lado esq.", pose: PLAYER_POSES.sideIdle, mirrored: true, effect: true },
+      { key: "walk", label: "Andando", pose: "walk", effect: true },
+      { key: "attack", label: "Atacando", pose: PLAYER_POSES.attack },
+      { key: "hurt", label: "Dano", pose: PLAYER_POSES.hurt }
+    ];
+
+    const controls = {
+      enabled: document.querySelector("#effect-enabled"),
+      x: document.querySelector("#effect-x"),
+      y: document.querySelector("#effect-y"),
+      size: document.querySelector("#effect-size"),
+      output: document.querySelector("#effect-output")
+    };
+    const defaultEffect = { enabled: true, x: -0.125, y: 0.315, size: 1 };
+    const effect = loadEffectSettings();
+    const previews = [];
+
+    applyControlValues();
+    bindControls();
+    await renderReview();
+    requestAnimationFrame(tick);
+
+    async function renderReview() {
+      const container = document.querySelector("#character-review");
+      const characters = await Promise.all(PLAYERS.map(loadCharacter));
+      container.innerHTML = "";
+
+      characters.forEach((character) => {
+        const row = document.createElement("section");
+        row.className = "character-row";
+        row.innerHTML = `
+          <div class="character-name">
+            <strong>${escapeHtml(character.name)}</strong>
+            <small>${escapeHtml(character.title)}</small>
+            <small>${escapeHtml(character.description)}</small>
+          </div>
+        `;
+
+        columns.forEach((column) => {
+          const card = document.createElement("article");
+          card.className = "pose-card";
+          const canvas = document.createElement("canvas");
+          canvas.width = 156;
+          canvas.height = 156;
+          const label = document.createElement("span");
+          label.textContent = column.label;
+          card.append(canvas, label);
+          row.append(card);
+          previews.push({ canvas, character, column });
+        });
+
+        container.append(row);
+      });
+    }
+
+    async function loadCharacter(player) {
+      const images = {};
+      await Promise.all(Object.values(PLAYER_POSES).map(async (pose) => {
+        images[pose] = await loadImage(`${player.assetPath}/${pose}.png?v=players-15`);
+      }));
+
+      const frames = Object.fromEntries(Object.entries(images).map(([pose, image]) => [pose, buildFrame(image)]));
+      const referenceHeight = median([
+        frames[PLAYER_POSES.sideIdle].bodyHeight,
+        frames[PLAYER_POSES.frontIdle].bodyHeight,
+        frames[PLAYER_POSES.walk1].bodyHeight,
+        frames[PLAYER_POSES.walk2].bodyHeight
+      ]);
+
+      Object.values(frames).forEach((frame) => {
+        frame.referenceHeight = referenceHeight;
+      });
+
+      return {
+        ...player,
+        frames,
+        walkFrames: [frames[PLAYER_POSES.walk1], frames[PLAYER_POSES.walk2]],
+        referenceHeight
+      };
+    }
+
+    function tick(now) {
+      previews.forEach((preview) => drawPreview(preview, now));
+      requestAnimationFrame(tick);
+    }
+
+    function drawPreview({ canvas, character, column }, now) {
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.imageSmoothingEnabled = false;
+      drawGround(ctx, canvas);
+
+      const frame = column.pose === "walk"
+        ? character.walkFrames[Math.floor(now / 260) % character.walkFrames.length]
+        : character.frames[column.pose];
+      const mirrored = Boolean(column.mirrored);
+      const scale = Math.min(
+        canvas.width * 0.78 / frame.width,
+        canvas.height * 0.82 / Math.max(1, frame.anchorY)
+      );
+      const feetX = canvas.width * 0.5;
+      const feetY = canvas.height * 0.86;
+      const drawWidth = frame.width * scale;
+      const drawHeight = frame.height * scale;
+      const drawX = Math.round(feetX - (mirrored ? frame.width - frame.anchorX : frame.anchorX) * scale);
+      const drawY = Math.round(feetY - frame.anchorY * scale);
+
+      ctx.save();
+      ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
+      ctx.fillRect(Math.round(feetX - frame.footWidth * scale * 0.36), Math.round(feetY - 1), Math.round(frame.footWidth * scale * 0.72), 2);
+      if (mirrored) {
+        ctx.translate(drawX + drawWidth, drawY);
+        ctx.scale(-1, 1);
+        ctx.drawImage(frame.image, 0, 0, frame.width, frame.height, 0, 0, drawWidth, drawHeight);
+      } else {
+        ctx.drawImage(frame.image, 0, 0, frame.width, frame.height, drawX, drawY, drawWidth, drawHeight);
+      }
+      ctx.restore();
+
+      if (column.effect && effect.enabled) {
+        drawRareWeaponEffect(ctx, feetX, feetY, character.referenceHeight * scale, mirrored, now);
+      }
+    }
+
+    function buildFrame(image) {
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(image, 0, 0);
+      const pixels = ctx.getImageData(0, 0, image.width, image.height).data;
+      let minX = image.width;
+      let minY = image.height;
+      let maxX = -1;
+      let maxY = -1;
+
+      for (let y = 0; y < image.height; y += 1) {
+        for (let x = 0; x < image.width; x += 1) {
+          if (alphaAt(pixels, image.width, x, y) > 8) {
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x);
+            maxY = Math.max(maxY, y);
+          }
+        }
+      }
+
+      if (maxX < minX || maxY < minY) {
+        return { image, width: image.width, height: image.height, anchorX: image.width / 2, anchorY: image.height, bodyHeight: image.height, footWidth: image.width * 0.34 };
+      }
+
+      const foot = findFootAnchor(pixels, image.width, minX, maxX, minY, maxY);
+      return {
+        image,
+        width: image.width,
+        height: image.height,
+        anchorX: foot.x,
+        anchorY: maxY + 1,
+        bodyHeight: maxY - minY + 1,
+        footWidth: foot.width
+      };
+    }
+
+    function findFootAnchor(pixels, imageWidth, minX, maxX, minY, maxY) {
+      const height = maxY - minY + 1;
+      const bandTop = Math.max(minY, maxY - Math.max(18, Math.round(height * 0.22)));
+      let footMinX = maxX;
+      let footMaxX = minX;
+      let found = false;
+
+      for (let y = bandTop; y <= maxY; y += 1) {
+        for (let x = minX; x <= maxX; x += 1) {
+          if (alphaAt(pixels, imageWidth, x, y) > 8) {
+            footMinX = Math.min(footMinX, x);
+            footMaxX = Math.max(footMaxX, x);
+            found = true;
+          }
+        }
+      }
+
+      if (!found) return { x: (minX + maxX) / 2, width: maxX - minX + 1 };
+      return { x: (footMinX + footMaxX) / 2, width: footMaxX - footMinX + 1 };
+    }
+
+    function drawGround(ctx, canvas) {
+      const y = Math.round(canvas.height * 0.86);
+      ctx.fillStyle = "rgba(228, 173, 56, 0.18)";
+      ctx.fillRect(10, y, canvas.width - 20, 1);
+    }
+
+    function drawRareWeaponEffect(ctx, feetX, feetY, playerHeight, mirrored, now) {
+      const side = mirrored ? -1 : 1;
+      const glowX = feetX + side * playerHeight * effect.x;
+      const glowY = feetY - playerHeight * effect.y;
+      const scale = Math.max(0.3, playerHeight / 78) * effect.size;
+      const pulseWave = (Math.sin((now || performance.now()) / 1000 * 5.6) + 1) / 2;
+      const pulse = 1 + (pulseWave * 2 - 1) * 0.36;
+      const auraRadius = 6.6 * 1.8 * scale * pulse * (1 + pulseWave * 0.18);
+      const coreRadius = 1.7 * 1.8 * scale * (0.88 + pulseWave * 0.36);
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.shadowColor = "#52a8ff";
+      ctx.shadowBlur = 6 * 1.8 * scale * (1.15 + pulseWave * 1.25);
+      const aura = ctx.createRadialGradient(glowX, glowY, 1, glowX, glowY, auraRadius);
+      aura.addColorStop(0, `rgba(199, 230, 255, ${0.74 + pulseWave * 0.16})`);
+      aura.addColorStop(0.34, `rgba(82, 168, 255, ${0.39 + pulseWave * 0.18})`);
+      aura.addColorStop(1, "rgba(82, 168, 255, 0)");
+      ctx.fillStyle = aura;
+      ctx.beginPath();
+      ctx.arc(glowX, glowY, auraRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(199, 230, 255, 0.5)";
+      ctx.lineWidth = Math.max(1, scale * (1 + pulseWave * 0.2));
+      const starRadius = 5 * 1.8 * scale;
+      ctx.beginPath();
+      ctx.moveTo(glowX - starRadius, glowY);
+      ctx.lineTo(glowX + starRadius, glowY);
+      ctx.moveTo(glowX, glowY - starRadius);
+      ctx.lineTo(glowX, glowY + starRadius);
+      ctx.stroke();
+
+      ctx.fillStyle = "#c7e6ff";
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 0.78 + pulseWave * 0.14;
+      ctx.beginPath();
+      ctx.arc(glowX, glowY, coreRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function bindControls() {
+      Object.values(controls).forEach((control) => {
+        if (!control || control === controls.output) return;
+        control.addEventListener("input", () => {
+          effect.enabled = controls.enabled.checked;
+          effect.x = Number(controls.x.value);
+          effect.y = Number(controls.y.value);
+          effect.size = Number(controls.size.value);
+          saveEffectSettings();
+          renderEffectOutput();
+        });
+      });
+    }
+
+    function applyControlValues() {
+      controls.enabled.checked = effect.enabled;
+      controls.x.value = String(effect.x);
+      controls.y.value = String(effect.y);
+      controls.size.value = String(effect.size);
+      renderEffectOutput();
+    }
+
+    function loadEffectSettings() {
+      try {
+        return { ...defaultEffect, ...JSON.parse(localStorage.getItem("projeto190_rare_effect_preview") || "{}") };
+      } catch {
+        return { ...defaultEffect };
+      }
+    }
+
+    function saveEffectSettings() {
+      localStorage.setItem("projeto190_rare_effect_preview", JSON.stringify(effect));
+    }
+
+    function renderEffectOutput() {
+      controls.output.value = `rareEffect: { x: ${effect.x.toFixed(3)}, y: ${effect.y.toFixed(3)}, size: ${effect.size.toFixed(2)} }`;
+    }
+
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = src;
+      });
+    }
+
+    function alphaAt(pixels, imageWidth, x, y) {
+      return pixels[(y * imageWidth + x) * 4 + 3];
+    }
+
+    function median(values) {
+      const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+      if (!sorted.length) return 1;
+      const middle = Math.floor(sorted.length / 2);
+      return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      }[char]));
+    }
+  </script>
+</body>
+</html>

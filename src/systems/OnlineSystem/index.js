@@ -1,3 +1,5 @@
+import { DEFAULT_PLAYER_ID } from "../../data/players/index.js?v=players-15";
+
 const DEFAULT_URL = "ws://localhost:4191";
 const SUPABASE_JS_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/+esm";
 const CITY_CHANNEL = "projeto190:city:initial";
@@ -476,7 +478,7 @@ export class OnlineSystem {
       playerId: this.localPlayerId(),
       sessionToken: this.sessionToken(),
       playerName: this.playerName(),
-      characterId: this.state.selectedPlayerId || this.state.player.characterId || "iris",
+      characterId: this.state.selectedPlayerId || this.state.player.characterId || DEFAULT_PLAYER_ID,
       x: Math.round(Number(this.state.run?.playerX || 120)),
       y: 0,
       direction: this.state.run?.playerDirection || "right"
@@ -503,7 +505,7 @@ export class OnlineSystem {
       clientId: raw.clientId || raw.socketId || key,
       playerId,
       playerName: String(raw.playerName || "Jogador"),
-      characterId: String(raw.characterId || "iris"),
+      characterId: String(raw.characterId || DEFAULT_PLAYER_ID),
       x: existing ? existing.x : targetX,
       y: existing ? existing.y : targetY,
       targetX,

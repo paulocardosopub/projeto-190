@@ -1630,7 +1630,6 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 .map-row,
 .slot,
 .inventory-cell,
-.character-card,
 .log-panel {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 50%),
@@ -1657,7 +1656,7 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
 }
 
 .avatar-stage canvas,
-.character-card canvas {
+.character-spotlight canvas {
   image-rendering: pixelated;
 }
 
@@ -3592,58 +3591,87 @@ body.auth-pending .window-layer {
 
 .character-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  min-height: 0;
 }
 
 .character-stage-backdrop .character-grid {
   height: 100%;
   min-height: 0;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.character-card {
-  min-height: 250px;
-  padding: 10px;
-  display: grid;
-  grid-template-rows: 150px auto auto;
-  gap: 7px;
-  text-align: left;
-}
-
-.character-stage-backdrop .character-card {
+.character-carousel {
   min-height: 0;
   height: 100%;
-  grid-template-rows: minmax(92px, 1fr) auto auto;
-  align-content: stretch;
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 56px;
+  align-items: center;
+  gap: 12px;
 }
 
-.character-stage-backdrop .character-card canvas {
-  width: min(132px, 100%);
-  height: auto;
-  max-height: 126px;
-  justify-self: center;
-  align-self: center;
+.character-arrow {
+  width: 52px;
+  height: 76px;
+  display: grid;
+  place-items: center;
+  color: #ffe3a0;
+  background: rgba(17, 14, 12, 0.9);
+  border: 1px solid #6d5130;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05), 0 10px 20px rgba(0, 0, 0, 0.24);
+  font-size: 42px;
+  line-height: 1;
 }
 
-.character-card:hover,
-.character-card:focus-visible,
+.character-spotlight {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  align-items: end;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.character-spotlight canvas {
+  width: auto;
+  max-width: min(220px, 78%);
+  height: min(170px, 38vh);
+  align-self: end;
+}
+
+.character-selected-copy {
+  min-width: 0;
+}
+
+.character-selected-copy .eyebrow {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.character-selected-copy h3 {
+  margin: 0;
+  color: #f4d277;
+  font-size: 22px;
+  line-height: 1;
+  text-transform: uppercase;
+  text-shadow: 2px 2px 0 #230908;
+}
+
+.character-selected-copy p {
+  max-width: 320px;
+  margin: 6px auto 0;
+  font-size: 12px;
+}
+
+.character-arrow:hover,
+.character-arrow:focus-visible,
 .panel-action:hover,
 .compact-button:hover,
 .item-action:hover,
 .bottom-dock button:hover {
   filter: brightness(1.12);
-}
-
-.character-card h3 {
-  margin: 0;
-  color: #f4d277;
-  font-size: 15px;
-}
-
-.character-card p {
-  margin: 0;
-  font-size: 11px;
 }
 
 .modal-actions {
@@ -4146,22 +4174,35 @@ body.auth-pending .window-layer {
   }
 
   .character-stage-backdrop .character-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
   }
 
-  .character-stage-backdrop .character-card {
-    padding: 6px;
-    grid-template-rows: minmax(54px, 1fr) auto;
+  .character-carousel {
+    grid-template-columns: 40px minmax(0, 1fr) 40px;
     gap: 4px;
   }
 
-  .character-stage-backdrop .character-card canvas {
-    width: min(88px, 100%);
-    max-height: 80px;
+  .character-arrow {
+    width: 36px;
+    height: 54px;
+    font-size: 30px;
   }
 
-  .character-stage-backdrop .character-card p {
+  .character-spotlight {
+    gap: 4px;
+  }
+
+  .character-stage-backdrop .character-spotlight canvas {
+    width: auto;
+    max-width: min(118px, 78%);
+    height: min(92px, 36vh);
+  }
+
+  .character-selected-copy h3 {
+    font-size: 15px;
+  }
+
+  .character-selected-copy p {
     display: none;
   }
 
@@ -4813,7 +4854,7 @@ body.auth-pending .window-layer {
   }
 
   .character-stage-backdrop .character-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 }
 

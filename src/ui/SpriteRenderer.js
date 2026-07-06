@@ -1,11 +1,15 @@
 import { ASSETS, SPRITES } from "../data/assets.js?v=petshop-portal-1";
 import { CITY, HIDEOUTS, IDLE_MAPS, MAPS } from "../data/maps/index.js?v=petshop-portal-1";
-import { PLAYERS } from "../data/players/index.js?v=bruno-yellow-1";
+import { DEFAULT_PLAYER_ID, PLAYERS, PLAYER_POSES, getPlayerById } from "../data/players/index.js?v=players-15";
 import { CITY_NPCS } from "../data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "../data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-7";
 import { PETS, PET_FRAME_BOUNDS, getEquippedPet, getPetById } from "../data/pets/index.js?v=pets-manual-1";
+
+const RARE_WEAPON_EFFECT_POSITION = { x: -0.125, y: 0.315, size: 1 };
+const RARE_WEAPON_PLUS_ALPHA = 0.5;
+const RARE_WEAPON_PULSE_SPEED = 5.6;
 
 export class SpriteRenderer {
   constructor(canvas) {
@@ -15,7 +19,7 @@ export class SpriteRenderer {
     this.actorBounds = {};
     this.hideoutItemBounds = {};
     this.lastHideoutItemBounds = [];
-    this.playerAnimations = [];
+    this.playerAnimations = {};
     this.playerAnimationState = {};
     this.petFrames = [];
     this.petAnimationState = {};
@@ -26,22 +30,14 @@ export class SpriteRenderer {
     const entries = Object.entries(ASSETS);
     const loaded = await Promise.all(entries.map(async ([key, src]) => [key, await loadImage(src)]));
     this.images = Object.fromEntries(loaded);
-    this.actorBounds.players = buildActorBounds(this.images.players, actorSheet("players"));
     this.actorBounds.enemies = buildActorBounds(this.images.enemies, actorSheet("enemies"));
     this.actorBounds.enemies2 = buildActorBounds(this.images.enemies2, actorSheet("enemies2"));
     this.actorBounds.enemies3 = buildActorBounds(this.images.enemies3, actorSheet("enemies3"));
+    this.playerAnimations = await loadPlayerAnimations();
     this.petFrames = buildPetFrames(this.images.pets);
     HIDEOUT_ITEM_TYPES.forEach((item) => {
       const config = SPRITES.hideoutItems[item.id];
       this.hideoutItemBounds[item.id] = buildGridBounds(this.images[config.sheet], config);
-    });
-    this.playerAnimations = [
-      buildPlayerAnimation(this.images.playerAnimation1, 0),
-      buildPlayerAnimation(this.images.playerAnimation2, 1)
-    ];
-    const stealAnimations = buildStealAnimations(this.images.playerStealAnimation);
-    this.playerAnimations.forEach((animation, index) => {
-      if (stealAnimations[index]?.length) animation.actions.steal = stealAnimations[index];
     });
   }
 
@@ -98,21 +94,9 @@ export class SpriteRenderer {
     const playerScreenX = this.worldToScreen(state.run.playerX || 120, cameraWorld);
     const playerFeetY = visual.groundY + visual.playerYOffset;
     this.drawPlayerPet(state, cameraWorld, visual, playerScreenX, playerFeetY);
-    const playerConfig = PLAYERS.find((player) => player.id === state.selectedPlayerId);
-    const animationIndex = Number.isInteger(playerConfig?.animationIndex) ? playerConfig.animationIndex : playerRow;
-    const playerAnimation = this.playerAnimations[animationIndex];
+    const playerAnimation = this.playerAnimationFor(state.selectedPlayerId || state.player?.characterId);
     if (playerAnimation) {
       this.drawAnimatedPlayer(playerAnimation, state, playerScreenX, playerFeetY, visual.playerHeight, 1);
-    } else {
-      this.drawActor(
-        this.images.players,
-        playerRow,
-        state.run.playerDirection || "right",
-        playerScreenX,
-        playerFeetY,
-        visual.playerHeight,
-        1
-      );
     }
     this.drawWeaponHandEffect(state, playerScreenX, playerFeetY, visual.playerHeight);
 
@@ -198,11 +182,11 @@ export class SpriteRenderer {
     if (!frame) return;
 
     const actionReferenceHeight = animation.actionReferenceHeights?.[action] || animation.referenceHeight;
-    const scaleBasis = action === "idle" || action === "walk"
+    const scaleBasis = frame.referenceHeight || (action === "idle" || action === "walk"
       ? frame.bodyHeight
       : action === "steal"
         ? frame.referenceHeight || frame.bodyHeight
-        : actionReferenceHeight;
+        : actionReferenceHeight);
     const scale = (height * pulse) / scaleBasis;
     const drawWidth = frame.width * scale;
     const drawHeight = frame.height * scale;
@@ -232,6 +216,11 @@ export class SpriteRenderer {
         drawHeight
       );
     }
+  }
+
+  playerAnimationFor(playerId) {
+    const id = getPlayerById(playerId).id;
+    return this.playerAnimations[id] || this.playerAnimations[DEFAULT_PLAYER_ID];
   }
 
   drawPlayerPet(state, cameraWorld, visual, fallbackPlayerX, playerFeetY) {
@@ -361,11 +350,7 @@ export class SpriteRenderer {
   }
 
   drawActor(imageOrSheet, row, direction, x, feetY, height, pulse = 1, options = {}) {
-    const sheetName = typeof imageOrSheet === "string"
-      ? imageOrSheet
-      : imageOrSheet === this.images.players
-        ? "players"
-        : "enemies";
+    const sheetName = typeof imageOrSheet === "string" ? imageOrSheet : "enemies";
     const image = typeof imageOrSheet === "string" ? this.images[sheetName] : imageOrSheet;
     const actor = actorSheet(sheetName);
     const directionIndex = (actor.direction[direction] ?? actor.direction.right) + Number(options.columnOffset || 0);
@@ -409,8 +394,7 @@ export class SpriteRenderer {
       .forEach((player) => {
         const x = this.worldToScreen(Number(player.x || 120), cameraWorld);
         if (x < -110 || x > this.canvas.width + 110) return;
-        const row = PLAYERS.find((candidate) => candidate.id === player.characterId)?.row || 0;
-        const animation = this.playerAnimations[row];
+        const animation = this.playerAnimationFor(player.characterId);
         const direction = player.direction === "left" ? "left" : "right";
         const fakeState = {
           scene: "city",
@@ -429,8 +413,6 @@ export class SpriteRenderer {
         this.ctx.globalAlpha = 0.96;
         if (animation) {
           this.drawAnimatedPlayer(animation, fakeState, x, feetY, visual.playerHeight * 0.98, 1);
-        } else {
-          this.drawActor("players", row, direction, x, feetY, visual.playerHeight * 0.98, 1);
         }
         this.drawNameplate(x, feetY - visual.playerHeight - 8, player.playerName || "Jogador");
         this.ctx.restore();
@@ -1078,23 +1060,24 @@ export class SpriteRenderer {
     const ctx = this.ctx;
     const direction = state.run?.playerDirection || "right";
     const side = direction === "left" ? -1 : 1;
-    const effectScale = 1.8;
-    const glowX = playerX + side * playerHeight * -0.035;
-    const glowY = feetY - playerHeight * 0.315;
+    const effectScale = 1.8 * RARE_WEAPON_EFFECT_POSITION.size;
+    const glowX = playerX + side * playerHeight * RARE_WEAPON_EFFECT_POSITION.x;
+    const glowY = feetY - playerHeight * RARE_WEAPON_EFFECT_POSITION.y;
     const time = performance.now() / 1000;
     const actionBoost = 1;
-    const pulse = 1 + Math.sin(time * 4.8) * config.pulse;
-    const auraRadius = config.auraRadius * effectScale * pulse * actionBoost;
-    const coreRadius = config.coreRadius * effectScale * (0.92 + (pulse - 1) * 0.22) * actionBoost;
+    const pulseWave = (Math.sin(time * RARE_WEAPON_PULSE_SPEED) + 1) / 2;
+    const pulse = 1 + (pulseWave * 2 - 1) * config.pulse;
+    const auraRadius = config.auraRadius * effectScale * pulse * (1 + pulseWave * 0.18) * actionBoost;
+    const coreRadius = config.coreRadius * effectScale * (0.88 + pulseWave * 0.36) * actionBoost;
 
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.shadowColor = config.color;
-    ctx.shadowBlur = config.blur * effectScale * pulse;
+    ctx.shadowBlur = config.blur * effectScale * (1.15 + pulseWave * 1.25);
 
     const aura = ctx.createRadialGradient(glowX, glowY, 1, glowX, glowY, auraRadius);
-    aura.addColorStop(0, hexToRgba(config.core, Math.min(0.74, config.alpha + 0.22)));
-    aura.addColorStop(0.32, hexToRgba(config.color, config.alpha * 0.62));
+    aura.addColorStop(0, hexToRgba(config.core, Math.min(0.9, config.alpha + 0.24 + pulseWave * 0.18)));
+    aura.addColorStop(0.32, hexToRgba(config.color, Math.min(0.78, config.alpha * (0.78 + pulseWave * 0.38))));
     aura.addColorStop(1, hexToRgba(config.color, 0));
     ctx.fillStyle = aura;
     ctx.globalAlpha = 1;
@@ -1103,8 +1086,8 @@ export class SpriteRenderer {
     ctx.fill();
 
     if (config.starRadius) {
-      ctx.strokeStyle = hexToRgba(config.core, 0.52);
-      ctx.lineWidth = 0.9 * effectScale * actionBoost;
+      ctx.strokeStyle = hexToRgba(config.core, RARE_WEAPON_PLUS_ALPHA);
+      ctx.lineWidth = 0.9 * effectScale * (1 + pulseWave * 0.2) * actionBoost;
       const starRadius = config.starRadius * effectScale;
       ctx.beginPath();
       ctx.moveTo(glowX - starRadius, glowY);
@@ -1116,13 +1099,13 @@ export class SpriteRenderer {
 
     ctx.shadowBlur = 0;
     ctx.fillStyle = config.core;
-    ctx.globalAlpha = Math.min(0.86, config.alpha + 0.42);
+    ctx.globalAlpha = Math.min(0.92, config.alpha + 0.34 + pulseWave * 0.16);
     ctx.beginPath();
     ctx.arc(glowX, glowY, coreRadius, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = "#ffffff";
-    ctx.globalAlpha = Math.min(0.62, config.alpha + 0.18);
+    ctx.globalAlpha = Math.min(0.68, config.alpha + 0.12 + pulseWave * 0.16);
     ctx.beginPath();
     ctx.arc(glowX - side * coreRadius * 0.22, glowY - coreRadius * 0.18, Math.max(0.8, coreRadius * 0.32), 0, Math.PI * 2);
     ctx.fill();
@@ -1134,6 +1117,7 @@ export class SpriteRenderer {
     const ctx = canvas.getContext("2d");
     const image = this.images[sheetName];
     const actor = actorSheet(sheetName);
+    if (!image || !actor) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.imageSmoothingEnabled = false;
 
@@ -1156,6 +1140,37 @@ export class SpriteRenderer {
       canvas.height - drawHeight,
       drawWidth,
       drawHeight
+    );
+  }
+
+  drawPlayerPreview(canvas, playerId, pose = "front") {
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.imageSmoothingEnabled = false;
+
+    const animation = this.playerAnimationFor(playerId);
+    const action = pose === "front" ? "front" : pose === "hurt" ? "hurt" : pose === "attack" ? "attack" : "idle";
+    const frame = animation?.actions?.[action]?.[0] || animation?.actions?.front?.[0] || animation?.actions?.idle?.[0];
+    if (!frame) return;
+
+    const scale = Math.min(
+      canvas.width * 0.82 / frame.width,
+      canvas.height * 0.84 / Math.max(1, frame.anchorY || frame.referenceHeight || frame.bodyHeight || frame.height)
+    );
+    const feetX = canvas.width * 0.5;
+    const feetY = canvas.height * 0.92;
+
+    ctx.drawImage(
+      frame.image,
+      frame.x,
+      frame.y,
+      frame.width,
+      frame.height,
+      Math.round(feetX - frame.anchorX * scale),
+      Math.round(feetY - frame.anchorY * scale),
+      frame.width * scale,
+      frame.height * scale
     );
   }
 
@@ -1272,6 +1287,106 @@ function loadImage(src) {
   });
 }
 
+async function loadPlayerAnimations() {
+  const entries = await Promise.all(PLAYERS.map(async (player) => {
+    const frames = {};
+    await Promise.all(Object.values(PLAYER_POSES).map(async (pose) => {
+      frames[pose] = await loadImage(`${player.assetPath}/${pose}.png?v=players-15`);
+    }));
+    return [player.id, buildPlayerAnimationFromFrames(frames)];
+  }));
+  return Object.fromEntries(entries);
+}
+
+function buildPlayerAnimationFromFrames(frames) {
+  const sideIdle = buildStandalonePlayerFrame(frames[PLAYER_POSES.sideIdle]);
+  const frontIdle = buildStandalonePlayerFrame(frames[PLAYER_POSES.frontIdle]);
+  const walk1 = buildStandalonePlayerFrame(frames[PLAYER_POSES.walk1]);
+  const walk2 = buildStandalonePlayerFrame(frames[PLAYER_POSES.walk2]);
+  const attack = buildStandalonePlayerFrame(frames[PLAYER_POSES.attack]);
+  const hurt = buildStandalonePlayerFrame(frames[PLAYER_POSES.hurt]);
+  const referenceHeight = median([sideIdle, frontIdle, walk1, walk2].map((frame) => frame?.bodyHeight)) || sideIdle?.bodyHeight || 1;
+
+  [sideIdle, frontIdle, walk1, walk2, attack, hurt].filter(Boolean).forEach((frame) => {
+    frame.referenceHeight = referenceHeight;
+  });
+
+  const actions = {
+    idle: [sideIdle].filter(Boolean),
+    front: [frontIdle].filter(Boolean),
+    walk: [walk1, walk2].filter(Boolean),
+    attack: [attack].filter(Boolean),
+    hurt: [hurt].filter(Boolean),
+    steal: [attack].filter(Boolean)
+  };
+
+  return {
+    actions,
+    actionReferenceHeights: {
+      idle: referenceHeight,
+      front: referenceHeight,
+      walk: referenceHeight,
+      attack: referenceHeight,
+      hurt: referenceHeight,
+      steal: referenceHeight
+    },
+    referenceHeight
+  };
+}
+
+function buildStandalonePlayerFrame(image) {
+  if (!image) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(image, 0, 0);
+  const pixels = ctx.getImageData(0, 0, image.width, image.height).data;
+
+  let minX = image.width;
+  let minY = image.height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < image.height; y += 1) {
+    for (let x = 0; x < image.width; x += 1) {
+      if (alphaAt(pixels, image.width, x, y) > 8) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+
+  if (maxX < minX || maxY < minY) {
+    return {
+      image,
+      x: 0,
+      y: 0,
+      width: image.width,
+      height: image.height,
+      anchorX: image.width / 2,
+      anchorY: image.height,
+      bodyHeight: image.height,
+      footWidth: image.width * 0.34
+    };
+  }
+
+  const foot = findFootAnchor(pixels, image.width, minX, maxX, minY, maxY);
+  return {
+    image,
+    x: 0,
+    y: 0,
+    width: image.width,
+    height: image.height,
+    anchorX: foot.x,
+    anchorY: maxY + 1,
+    bodyHeight: maxY - minY + 1,
+    footWidth: foot.width
+  };
+}
+
 function buildActorBounds(image, actor) {
   if (actor.manualBounds) return actor.manualBounds;
 
@@ -1329,59 +1444,6 @@ function buildGridBounds(image, config) {
   return bounds;
 }
 
-function buildPlayerAnimation(image, playerIndex = 0) {
-  const config = SPRITES.playerAnimation;
-  const canvas = document.createElement("canvas");
-  canvas.width = image.width;
-  canvas.height = image.height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(image, 0, 0);
-  const pixels = ctx.getImageData(0, 0, image.width, image.height).data;
-  const rowHeight = Math.floor(image.height / config.rows);
-  const actions = {};
-
-  Object.entries(config.actions).forEach(([action, row]) => {
-    const rowY = row * rowHeight;
-    const runs = config.manualRuns?.[playerIndex]?.[action] ||
-      findAnimationRuns(pixels, image.width, rowY, rowHeight, config.framesPerRow);
-    actions[action] = runs
-      .map((run) => buildAnimationFrame(pixels, image.width, rowY, rowHeight, run))
-      .filter(Boolean);
-  });
-
-  return {
-    image,
-    actions,
-    actionReferenceHeights: Object.fromEntries(
-      Object.entries(actions).map(([action, frames]) => [action, median(frames.map((frame) => frame.bodyHeight))])
-    ),
-    referenceHeight: median(actions.walk.map((frame) => frame.bodyHeight)) || rowHeight
-  };
-}
-
-function buildStealAnimations(image) {
-  const config = SPRITES.playerStealAnimation;
-  const canvas = document.createElement("canvas");
-  canvas.width = image.width;
-  canvas.height = image.height;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(image, 0, 0);
-  const pixels = ctx.getImageData(0, 0, image.width, image.height).data;
-
-  return config.framesByPlayer.map((frames, playerIndex) => {
-    const builtFrames = frames
-      .map((rect) => buildExplicitAnimationFrame(pixels, image.width, image.height, rect, config.anchorMode))
-      .filter(Boolean);
-    const referenceHeight = config.referenceHeights?.[playerIndex] || median(builtFrames.map((frame) => frame.bodyHeight));
-
-    return builtFrames.map((frame) => ({
-      ...frame,
-      image,
-      referenceHeight
-    }));
-  });
-}
-
 function buildPetFrames(image) {
   if (!image) return [];
   const canvas = document.createElement("canvas");
@@ -1437,123 +1499,6 @@ function buildExplicitAnimationFrame(pixels, imageWidth, imageHeight, rect, anch
     anchorX: Number.isFinite(rect.anchorX) ? rect.anchorX : fallbackAnchorX,
     anchorY: Number.isFinite(rect.anchorY) ? rect.anchorY : maxY + 1 - sourceY,
     bodyHeight: maxY - minY + 1,
-    footWidth: foot.width
-  };
-}
-
-function findAnimationRuns(pixels, imageWidth, rowY, rowHeight, targetFrames) {
-  const columnInk = Array.from({ length: imageWidth }, () => 0);
-  for (let x = 0; x < imageWidth; x += 1) {
-    for (let y = rowY; y < rowY + rowHeight; y += 1) {
-      if (alphaAt(pixels, imageWidth, x, y) > 8) columnInk[x] += 1;
-    }
-  }
-
-  const rawRuns = [];
-  let start = null;
-  for (let x = 0; x < columnInk.length; x += 1) {
-    if (columnInk[x] > 0 && start === null) start = x;
-    if ((columnInk[x] === 0 || x === columnInk.length - 1) && start !== null) {
-      const end = columnInk[x] === 0 ? x - 1 : x;
-      rawRuns.push({ x0: start, x1: end });
-      start = null;
-    }
-  }
-
-  let runs = mergeCloseRuns(rawRuns, 4).filter((run) => run.x1 - run.x0 + 1 > 30);
-  while (runs.length < targetFrames) {
-    const widestIndex = runs.reduce((best, run, index) => {
-      const bestWidth = runs[best].x1 - runs[best].x0;
-      return run.x1 - run.x0 > bestWidth ? index : best;
-    }, 0);
-    const widest = runs[widestIndex];
-    if (widest.x1 - widest.x0 < 130) break;
-    const split = bestSplitColumn(columnInk, widest);
-    if (split - widest.x0 < 35 || widest.x1 - split < 35) break;
-    runs.splice(widestIndex, 1, { x0: widest.x0, x1: split }, { x0: split + 1, x1: widest.x1 });
-  }
-
-  while (runs.length > targetFrames) {
-    let closestIndex = 0;
-    let closestGap = Infinity;
-    for (let index = 0; index < runs.length - 1; index += 1) {
-      const gap = runs[index + 1].x0 - runs[index].x1;
-      if (gap < closestGap) {
-        closestGap = gap;
-        closestIndex = index;
-      }
-    }
-    runs.splice(closestIndex, 2, { x0: runs[closestIndex].x0, x1: runs[closestIndex + 1].x1 });
-  }
-
-  return runs.sort((a, b) => a.x0 - b.x0);
-}
-
-function mergeCloseRuns(runs, maxGap) {
-  const merged = [];
-  runs.forEach((run) => {
-    const previous = merged[merged.length - 1];
-    if (previous && run.x0 - previous.x1 <= maxGap) {
-      previous.x1 = run.x1;
-    } else {
-      merged.push({ ...run });
-    }
-  });
-  return merged;
-}
-
-function bestSplitColumn(columnInk, run) {
-  const width = run.x1 - run.x0 + 1;
-  const middle = run.x0 + width / 2;
-  const searchRadius = width * 0.24;
-  let best = Math.round(middle);
-  let bestScore = Infinity;
-  for (let x = Math.round(middle - searchRadius); x <= Math.round(middle + searchRadius); x += 1) {
-    if (x <= run.x0 + 30 || x >= run.x1 - 30) continue;
-    const score = columnInk[x] + Math.abs(x - middle) * 0.08;
-    if (score < bestScore) {
-      best = x;
-      bestScore = score;
-    }
-  }
-  return best;
-}
-
-function buildAnimationFrame(pixels, imageWidth, rowY, rowHeight, run) {
-  let minX = run.x1;
-  let minY = rowY + rowHeight;
-  let maxX = run.x0;
-  let maxY = rowY;
-
-  for (let y = rowY; y < rowY + rowHeight; y += 1) {
-    for (let x = run.x0; x <= run.x1; x += 1) {
-      if (alphaAt(pixels, imageWidth, x, y) > 8) {
-        minX = Math.min(minX, x);
-        minY = Math.min(minY, y);
-        maxX = Math.max(maxX, x);
-        maxY = Math.max(maxY, y);
-      }
-    }
-  }
-
-  if (maxX <= minX || maxY <= minY) return null;
-
-  const bodyHeight = maxY - minY + 1;
-  const foot = findFootAnchor(pixels, imageWidth, minX, maxX, minY, maxY);
-  const margin = Number.isFinite(run.margin) ? run.margin : 4;
-  const sourceX = Math.max(0, minX - margin);
-  const sourceY = Math.max(rowY, minY - margin);
-  const sourceRight = Math.min(imageWidth - 1, maxX + margin);
-  const sourceBottom = Math.min(rowY + rowHeight - 1, maxY + margin);
-
-  return {
-    x: sourceX,
-    y: sourceY,
-    width: sourceRight - sourceX + 1,
-    height: sourceBottom - sourceY + 1,
-    anchorX: foot.x - sourceX,
-    anchorY: maxY + 1 - sourceY,
-    bodyHeight,
     footWidth: foot.width
   };
 }
@@ -1694,7 +1639,7 @@ function weaponEffectConfig(rarity) {
       coreRadius: 1.25,
       blur: 4.2,
       alpha: 0.42,
-      pulse: 0.12
+      pulse: 0.24
     },
     incomum: {
       color: "#55d66b",
@@ -1703,7 +1648,7 @@ function weaponEffectConfig(rarity) {
       coreRadius: 1.3,
       blur: 5,
       alpha: 0.42,
-      pulse: 0.12
+      pulse: 0.24
     },
     raro: {
       color: "#52a8ff",
@@ -1712,7 +1657,7 @@ function weaponEffectConfig(rarity) {
       coreRadius: 1.7,
       blur: 6,
       alpha: 0.5,
-      pulse: 0.2,
+      pulse: 0.36,
       starRadius: 5
     },
     epico: {
@@ -1722,7 +1667,7 @@ function weaponEffectConfig(rarity) {
       coreRadius: 1.75,
       blur: 7,
       alpha: 0.5,
-      pulse: 0.2,
+      pulse: 0.36,
       starRadius: 5
     },
     lendario: {
@@ -1732,7 +1677,7 @@ function weaponEffectConfig(rarity) {
       coreRadius: 1.85,
       blur: 8,
       alpha: 0.5,
-      pulse: 0.2,
+      pulse: 0.36,
       starRadius: 5
     },
     mestre: {
@@ -1742,7 +1687,7 @@ function weaponEffectConfig(rarity) {
       coreRadius: 1.95,
       blur: 9,
       alpha: 0.5,
-      pulse: 0.2,
+      pulse: 0.36,
       starRadius: 5
     }
   }[rarity] || null;
