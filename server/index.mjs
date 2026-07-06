@@ -120,6 +120,8 @@ function joinCity(socketId, client, message) {
     sessionToken: message.sessionToken || client.sessionToken || "",
     playerName: message.playerName || client.name,
     characterId: message.characterId || DEFAULT_PLAYER_ID,
+    equippedPetId: message.equippedPetId || null,
+    weaponRarity: message.weaponRarity || null,
     x: message.x,
     y: message.y,
     direction: message.direction || "right",
@@ -169,6 +171,9 @@ function moveCityPlayer(socketId, client, message) {
 
   current.x = Math.round(nextX);
   current.y = Math.round(nextY);
+  current.characterId = sanitizeId(message.characterId) || current.characterId;
+  current.equippedPetId = sanitizeId(message.equippedPetId) || null;
+  current.weaponRarity = sanitizeId(message.weaponRarity) || null;
   current.direction = message.direction === "left" ? "left" : "right";
   current.isMoving = Boolean(message.isMoving);
   current.timestamp = Number(message.timestamp || now);
@@ -226,6 +231,8 @@ function publicCityPlayer(player) {
     playerId: player.playerId,
     playerName: player.playerName,
     characterId: player.characterId,
+    equippedPetId: player.equippedPetId,
+    weaponRarity: player.weaponRarity,
     x: player.x,
     y: player.y,
     direction: player.direction,
@@ -259,6 +266,8 @@ function sanitizeCityPlayer(player) {
     sessionToken: sanitizeId(player.sessionToken),
     playerName: sanitizeText(player.playerName, 24) || "Jogador",
     characterId: sanitizeId(player.characterId) || DEFAULT_PLAYER_ID,
+    equippedPetId: sanitizeId(player.equippedPetId) || null,
+    weaponRarity: sanitizeId(player.weaponRarity) || null,
     x: clampNumber(player.x, 64, 1856, 120),
     y: clampNumber(player.y, -200, 400, 0),
     direction: player.direction === "left" ? "left" : "right",

@@ -401,7 +401,15 @@ export class OnlineSystem {
       isMoving: this.isLocalMoving(),
       timestamp: Date.now()
     };
-    const signature = `${payload.x}:${payload.y}:${payload.direction}:${payload.isMoving}`;
+    const signature = [
+      payload.x,
+      payload.y,
+      payload.direction,
+      payload.isMoving,
+      payload.characterId,
+      payload.equippedPetId || "",
+      payload.weaponRarity || ""
+    ].join(":");
     if (!force && signature === this.lastMoveSignature) {
       if (this.provider === "supabase" && now - this.lastPresenceTrackAt > PRESENCE_TRACK_INTERVAL_MS) {
         this.trackSupabasePresence();
@@ -479,6 +487,8 @@ export class OnlineSystem {
       sessionToken: this.sessionToken(),
       playerName: this.playerName(),
       characterId: this.state.selectedPlayerId || this.state.player.characterId || DEFAULT_PLAYER_ID,
+      equippedPetId: this.state.player.equippedPetId || null,
+      weaponRarity: this.state.player.equipment?.weapon?.rarity || null,
       x: Math.round(Number(this.state.run?.playerX || 120)),
       y: 0,
       direction: this.state.run?.playerDirection || "right"
@@ -506,6 +516,8 @@ export class OnlineSystem {
       playerId,
       playerName: String(raw.playerName || "Jogador"),
       characterId: String(raw.characterId || DEFAULT_PLAYER_ID),
+      equippedPetId: raw.equippedPetId ? String(raw.equippedPetId) : null,
+      weaponRarity: raw.weaponRarity ? String(raw.weaponRarity) : null,
       x: existing ? existing.x : targetX,
       y: existing ? existing.y : targetY,
       targetX,

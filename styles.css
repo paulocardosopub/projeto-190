@@ -3729,7 +3729,7 @@ body.auth-pending .window-layer {
 
 .toast-region {
   position: absolute;
-  left: calc(50% + 34px);
+  left: calc(50% + 76px);
   right: 8px;
   bottom: 8px;
   z-index: 7;

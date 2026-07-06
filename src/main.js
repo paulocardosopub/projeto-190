@@ -4,7 +4,7 @@ import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=petshop-portal-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=stack-1";
+import { CombatSystem, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=tutorial-raid-1";
 import { calculateStats, calculateStealChancePercent, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -77,7 +77,7 @@ import {
   saveVisualCalibration,
   saveWindowLayout
 } from "./systems/SaveSystem/index.js?v=city-stable-1";
-import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=city-presence-1";
+import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=online-visuals-1";
 import {
   buyReceptadorOffer,
   ensureReceptadorStock,
@@ -163,7 +163,7 @@ import {
 } from "./systems/StaminaSystem/index.js?v=asset-lock-1";
 import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=asset-lock-1";
 import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=pets-manual-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=players-16";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=online-visuals-1";
 import {
   renderCharacterSelect,
   renderConfigWindow,
@@ -3912,8 +3912,9 @@ function defaultWindowLayout() {
 
 function startRaid(mapId, options = {}) {
   const map = MAPS.find((candidate) => candidate.id === mapId);
+  const tutorialFirstRaid = Boolean(options.tutorialFirstRaid || shouldStartTutorialFirstRaid(map));
   hideAutoRaidConfirm();
-  if (options.tutorialFirstRaid) state.settings.autoRepeatRaid = false;
+  if (tutorialFirstRaid) state.settings.autoRepeatRaid = false;
   if (state.run?.mode === "temporary") {
     showToast(temporaryStayText());
     renderAll();
@@ -3939,7 +3940,7 @@ function startRaid(mapId, options = {}) {
   tutorialOverlay?.hide();
   rememberLastRaidMap(map);
   fadeThen("Roube o maximo que conseguir!", () => {
-    combat.enterMap(mapId, { tutorialFirstRaid: Boolean(options.tutorialFirstRaid) });
+    combat.enterMap(mapId, { tutorialFirstRaid });
     dispatchTutorialEvent("raid_started", { mapId, mapIndex: map?.index || 1 }, { render: false });
     online?.sayHello();
     if (options.keepMenus) {
@@ -3947,6 +3948,12 @@ function startRaid(mapId, options = {}) {
       activeRight = activeRight || "configs";
     }
   });
+}
+
+function shouldStartTutorialFirstRaid(map) {
+  if (!map || Number(map.index || 1) !== 1) return false;
+  const step = tutorialStep(state);
+  return step?.id === "assault_menu" || step?.actionRequired === "start_first_raid";
 }
 
 function rememberLastRaidMap(map) {
@@ -5530,7 +5537,7 @@ function syncChoicePrisonRisk() {
 }
 
 function currentPrisonChance() {
-  if (state?.run?.tutorialFirstRaid) return 0;
+  if (isTutorialFirstRaidRun()) return 0;
   return policePrisonChanceForFight(state?.run?.battlesStarted || 0);
 }
 
@@ -5672,7 +5679,11 @@ function syncRaidSummary() {
 }
 
 function isGuidedFirstRaidSummary() {
-  return Boolean(state?.run?.mode === "summary" && state.run?.tutorialFirstRaid);
+  return Boolean(state?.run?.mode === "summary" && isTutorialFirstRaidRun());
+}
+
+function isTutorialFirstRaidRun(sourceState = state) {
+  return Boolean(sourceState?.run?.tutorialFirstRaid || shouldRestoreTutorialFirstRaidFlag(sourceState));
 }
 
 function remainingTargets(sourceState = state) {
@@ -5900,12 +5911,25 @@ function normalizeState() {
   state.run.policeMessage ??= null;
   state.run.policeScene ??= null;
   state.run.tutorialFirstRaid = Boolean(state.run.tutorialFirstRaid);
+  if (!state.run.tutorialFirstRaid && shouldRestoreTutorialFirstRaidFlag(state)) {
+    state.run.tutorialFirstRaid = true;
+    state.settings.autoRepeatRaid = false;
+  }
   state.run.temporaryStay ??= null;
   state.run.summary ??= null;
   state.run.summaryTimer ||= 0;
   normalizePlayerShopState(state);
   calculateProduction(state.player);
   syncShopNpcsForBusinessMap(state);
+}
+
+function shouldRestoreTutorialFirstRaidFlag(sourceState) {
+  const step = tutorialStep(sourceState);
+  if (step?.actionRequired !== "complete_first_raid") return false;
+  if (sourceState?.scene !== "map" && sourceState?.run?.mode !== "summary") return false;
+  const mapId = sourceState.run?.summary?.mapId || sourceState.currentMapId;
+  const map = MAPS.find((candidate) => candidate.id === mapId);
+  return Number(map?.index || 0) === 1;
 }
 
 function applyVisualCalibration() {

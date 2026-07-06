@@ -399,6 +399,11 @@ export class SpriteRenderer {
         const fakeState = {
           scene: "city",
           selectedPlayerId: `online-${player.playerId}`,
+          player: {
+            equipment: {
+              weapon: player.weaponRarity ? { rarity: player.weaponRarity } : null
+            }
+          },
           run: {
             mode: "city",
             playerX: Number(player.x || 120),
@@ -411,12 +416,31 @@ export class SpriteRenderer {
 
         this.ctx.save();
         this.ctx.globalAlpha = 0.96;
+        this.drawOnlinePlayerPet(player, x, feetY, visual.playerHeight * 0.98);
         if (animation) {
           this.drawAnimatedPlayer(animation, fakeState, x, feetY, visual.playerHeight * 0.98, 1);
         }
+        this.drawWeaponHandEffect(fakeState, x, feetY, visual.playerHeight * 0.98);
         this.drawNameplate(x, feetY - visual.playerHeight - 8, player.playerName || "Jogador");
         this.ctx.restore();
       });
+  }
+
+  drawOnlinePlayerPet(player, playerX, feetY, playerHeight) {
+    const pet = getPetById(player?.equippedPetId);
+    if (!pet) return;
+    const direction = player.direction === "left" ? "left" : "right";
+    const petX = playerX + (direction === "left" ? 36 : -36);
+    const action = player.isMoving ? "walk" : "idle";
+    this.drawPetSprite(
+      pet,
+      action,
+      `online-${player.playerId || player.clientId || "player"}-${pet.id}`,
+      petX,
+      feetY + 2,
+      playerHeight * Number(pet.heightRatio || 0.55),
+      direction
+    );
   }
 
   drawDecorativeNpcs(state, cameraWorld, visual) {
