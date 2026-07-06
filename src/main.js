@@ -254,6 +254,7 @@ let hideoutItemDrag = null;
 let stageHoldMove = null;
 let keyboardMoveKeys = new Set();
 let toastTimer = null;
+let viewportRenderTimer = null;
 let activeProfile = null;
 let bootOptions = null;
 let characterSelectionMode = "new";
@@ -907,6 +908,14 @@ function updateWindowLayerState() {
   elements.windowLayer.classList.toggle("has-center-window", activeCenter);
   elements.windowLayer.classList.toggle("has-left-window", Boolean(activeLeft));
   elements.windowLayer.classList.toggle("has-right-window", Boolean(activeRight));
+}
+
+function handleViewportChange() {
+  clearTimeout(viewportRenderTimer);
+  viewportRenderTimer = window.setTimeout(() => {
+    applyWindowLayout();
+    if (state) renderAll();
+  }, 120);
 }
 
 function ensureTutorialOverlay() {
@@ -2434,6 +2443,9 @@ function disconnectActiveAccount(message) {
 }
 
 function openMaster() {
+  if (isMobileWindowLayout()) {
+    closeCityShopPanel({ render: false });
+  }
   activeCenter = true;
   renderAll();
 }
@@ -2606,11 +2618,46 @@ function closeConfig() {
   elements.configWindow.classList.add("hidden");
 }
 
+function isMobileWindowLayout() {
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)")?.matches;
+  const compactLandscape = window.matchMedia?.("(max-width: 960px) and (orientation: landscape)")?.matches;
+  return compactLandscape || window.innerWidth <= 700 || (coarsePointer && window.innerWidth <= 960);
+}
+
+function clearAppliedWindowLayout() {
+  elements.windowLayer.classList.remove("custom-window-layout");
+  elements.windowLayer.style.height = "";
+  elements.windowLayer.style.minHeight = "";
+  document.documentElement.style.removeProperty("--window-ui-scale");
+
+  [
+    elements.leftWindow,
+    elements.inventoryWindow,
+    elements.rightWindow,
+    elements.configWindow
+  ].forEach((node) => {
+    if (!node) return;
+    ["left", "top", "width", "height", "maxHeight"].forEach((property) => {
+      node.style[property] = "";
+    });
+  });
+
+  if (elements.bottomDock) {
+    elements.bottomDock.classList.remove("custom-dock-position");
+    ["left", "top", "width", "height"].forEach((property) => {
+      elements.bottomDock.style[property] = "";
+    });
+  }
+}
+
 function applyWindowLayout() {
   const hasSavedLayout = Boolean(loadWindowLayout());
-  const shouldApply = editorMode || hasSavedLayout;
+  const shouldApply = !isMobileWindowLayout() && (editorMode || hasSavedLayout);
   elements.windowLayer.classList.toggle("custom-window-layout", shouldApply);
-  if (!shouldApply) return;
+  if (!shouldApply) {
+    clearAppliedWindowLayout();
+    return;
+  }
 
   const layout = normalizeWindowLayout(windowLayout);
   document.documentElement.style.setProperty("--window-ui-scale", String(layout.uiScale || 1));
@@ -2624,7 +2671,7 @@ function applyWindowLayout() {
     node.style.top = `${metrics.y || 0}px`;
     node.style.width = `${metrics.wPct}%`;
     node.style.height = `${metrics.h || 280}px`;
-      node.style.maxHeight = `${metrics.h || 280}px`;
+    node.style.maxHeight = `${metrics.h || 280}px`;
   });
 
   if (layout.dock && elements.bottomDock) {
@@ -3862,6 +3909,9 @@ function openCityNpcPanel(npc) {
     dispatchTutorialEvent("npc_visited", { npcId: npc.id }, { render: false });
     renderAll();
     return;
+  }
+  if (isMobileWindowLayout()) {
+    closeMaster({ render: false, force: true });
   }
   closeCityPortalPanel({ render: false });
   activeCityNpc = npc;
@@ -5438,6 +5488,8 @@ elements.canvas.addEventListener("pointerdown", handleStagePointer);
 document.addEventListener("keydown", handleGameKeyDown);
 document.addEventListener("keyup", handleGameKeyUp);
 window.addEventListener("blur", clearKeyboardMovement);
+window.addEventListener("resize", handleViewportChange);
+window.addEventListener("orientationchange", handleViewportChange);
 document.addEventListener("contextmenu", (event) => {
   event.preventDefault();
 }, { capture: true });

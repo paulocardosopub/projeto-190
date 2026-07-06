@@ -3948,7 +3948,635 @@ body.auth-pending .window-layer {
   }
 }
 
-@media (max-width: 700px) and (orientation: portrait) {
+@media (max-width: 960px) and (orientation: landscape) {
+  :root {
+    --window-ui-scale: 0.78;
+    --gear-cell-size: 26px;
+  }
+
+  html,
+  body {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    background: #000;
+  }
+
+  .orientation-lock {
+    display: none !important;
+  }
+
+  .app-shell {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100svh;
+    min-height: 100svh;
+    display: block;
+    overflow: hidden;
+    padding: 0;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .topbar {
+    position: fixed;
+    inset: 0 0 auto 0;
+    z-index: 55;
+    height: 22px;
+    min-height: 22px;
+    padding: 2px 4px;
+    border: 0;
+    background: rgba(6, 6, 6, 0.9);
+  }
+
+  .resource-strip {
+    height: 18px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .resource-strip div {
+    min-width: 0;
+    min-height: 18px;
+    padding: 1px 4px;
+  }
+
+  .resource-strip span {
+    display: block;
+    font-size: 7px;
+    line-height: 1;
+  }
+
+  .resource-strip strong,
+  .resource-strip b {
+    min-width: 0;
+    font-size: 8px;
+    line-height: 1.05;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .game-layout {
+    position: fixed;
+    inset: 0;
+    display: block;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .stage-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    width: 100vw;
+    height: 100svh;
+    min-height: 0;
+    margin: 0;
+    border: 0;
+  }
+
+  #game-canvas {
+    width: 100%;
+    height: 100%;
+  }
+
+  .stage-hud {
+    inset: 26px 6px auto 6px;
+    z-index: 4;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 6px;
+  }
+
+  .status-card {
+    width: min(240px, 38vw);
+    min-width: 0;
+    padding: 3px 5px;
+  }
+
+  .combat-card {
+    width: min(168px, 28vw);
+    min-width: 0;
+    padding: 3px 5px;
+  }
+
+  .raid-timer {
+    width: min(150px, 24vw);
+    min-width: 0;
+    padding: 3px 5px;
+  }
+
+  .status-card span,
+  .combat-card span,
+  .raid-timer span {
+    font-size: 7px;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  .status-card strong,
+  .combat-card strong,
+  .raid-timer strong {
+    font-size: 8px;
+    line-height: 1.08;
+    overflow-wrap: anywhere;
+  }
+
+  .master-toggle {
+    position: fixed;
+    left: 50%;
+    bottom: 6px;
+    z-index: 58;
+    width: 42px;
+    height: 26px;
+  }
+
+  .survival-warning {
+    left: 50%;
+    right: auto;
+    bottom: 38px;
+    max-width: min(460px, calc(100vw - 24px));
+    transform: translateX(-50%);
+    font-size: 8px;
+    line-height: 1.1;
+  }
+
+  .toast-region {
+    left: 8px;
+    right: 8px;
+    bottom: 38px;
+    z-index: 62;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  .toast {
+    max-width: min(460px, calc(100vw - 16px));
+    max-height: none;
+    min-height: 0;
+    font-size: 8px;
+    line-height: 1.12;
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .window-layer,
+  .window-layer.custom-window-layout,
+  .window-layer.has-center-window.has-left-window,
+  .window-layer.has-center-window.has-right-window,
+  .window-layer.has-center-window.has-left-window:not(.has-right-window),
+  .window-layer.has-center-window.has-right-window:not(.has-left-window),
+  .window-layer.has-center-window.has-left-window.has-right-window {
+    position: fixed !important;
+    left: 6px !important;
+    right: 6px !important;
+    bottom: 38px !important;
+    top: auto !important;
+    z-index: 35;
+    height: clamp(150px, 52svh, 236px) !important;
+    min-height: 0 !important;
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 6px;
+    align-items: stretch;
+    padding: 0;
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .window-layer.has-center-window:not(.has-left-window):not(.has-right-window) .center-window {
+    width: min(430px, 58vw) !important;
+    justify-self: center;
+  }
+
+  .window-layer.has-center-window.has-left-window:not(.has-right-window) {
+    grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr) !important;
+  }
+
+  .window-layer.has-center-window.has-right-window:not(.has-left-window) {
+    grid-template-columns: minmax(0, 1.28fr) minmax(0, 0.72fr) !important;
+  }
+
+  .window-layer.has-center-window.has-left-window.has-right-window {
+    grid-template-columns: minmax(0, 0.74fr) minmax(0, 1.2fr) minmax(0, 0.74fr) !important;
+  }
+
+  .window-layer.has-center-window.has-left-window:not(.has-right-window) #left-window,
+  .window-layer.has-center-window.has-left-window.has-right-window #left-window {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+
+  .window-layer.has-center-window.has-left-window:not(.has-right-window) .center-window,
+  .window-layer.has-center-window.has-left-window.has-right-window .center-window,
+  .window-layer.has-center-window.has-right-window:not(.has-left-window) .center-window {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+  }
+
+  .window-layer.has-center-window.has-right-window:not(.has-left-window) .center-window {
+    grid-column: 1 !important;
+  }
+
+  .window-layer.has-center-window.has-right-window:not(.has-left-window) #right-window,
+  .window-layer.has-center-window.has-left-window.has-right-window #right-window {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+  }
+
+  .window-layer.has-center-window.has-left-window.has-right-window #right-window {
+    grid-column: 3 !important;
+  }
+
+  .side-window,
+  .center-window,
+  .config-window,
+  .custom-window-layout .game-window {
+    position: relative !important;
+    left: auto !important;
+    top: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    align-self: stretch;
+    pointer-events: auto;
+  }
+
+  .game-window {
+    overflow: hidden;
+  }
+
+  .window-body,
+  .side-window .window-body,
+  .config-window .window-body,
+  .center-window .window-body {
+    height: calc(100% - 44px);
+    max-height: none;
+    overflow: auto;
+    padding: 5px 6px;
+  }
+
+  .window-scroll-controls,
+  .side-window .window-scroll-controls,
+  .config-window .window-scroll-controls {
+    display: none;
+  }
+
+  .equipment-summary,
+  .window-layer.has-center-window.has-left-window .center-window .equipment-summary,
+  .window-layer.has-center-window.has-right-window .center-window .equipment-summary {
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 3px;
+    align-items: start;
+  }
+
+  .mini-profile {
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 3px;
+    padding: 3px;
+  }
+
+  .mini-profile canvas {
+    width: 28px;
+    height: 42px;
+  }
+
+  .mini-stats .stat-row {
+    gap: 3px;
+    font-size: 7px;
+  }
+
+  .slot-list.compact-slots {
+    grid-template-columns: repeat(3, var(--gear-cell-size));
+    grid-auto-rows: var(--gear-cell-size);
+  }
+
+  .equipment-summary .selected-panel,
+  .window-layer.has-center-window.has-left-window .center-window .selected-panel,
+  .window-layer.has-center-window.has-right-window .center-window .selected-panel {
+    grid-column: 1 / -1;
+    min-height: 34px;
+    max-height: 40px;
+    grid-template-columns: 30px minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .equipment-summary .selected-icon,
+  .window-layer.has-center-window.has-left-window .center-window .selected-icon,
+  .window-layer.has-center-window.has-right-window .center-window .selected-icon {
+    width: 30px;
+    height: 30px;
+  }
+
+  .selected-panel .eyebrow,
+  .equipment-summary .selected-panel .eyebrow {
+    font-size: 6px;
+  }
+
+  .selected-panel h3,
+  .equipment-summary .selected-panel h3 {
+    font-size: 7px;
+  }
+
+  .selected-panel p,
+  .equipment-summary .selected-panel p {
+    font-size: 6px;
+    max-height: 8px;
+  }
+
+  .inventory-action-bar,
+  .inventory-action-bar.has-drug-action,
+  .compact-tools {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px;
+  }
+
+  .inventory-action-bar .item-action,
+  .compact-tools .item-action {
+    min-height: 18px;
+    height: 18px;
+    padding: 1px 2px;
+    font-size: 7px;
+  }
+
+  .backpack-header {
+    padding: 2px 4px;
+  }
+
+  .backpack-header strong {
+    font-size: 8px;
+  }
+
+  .backpack-pages button {
+    min-width: 20px;
+    height: 16px;
+    font-size: 7px;
+  }
+
+  .inventory-grid.compact-inventory,
+  .window-layer.has-center-window.has-left-window .center-window .inventory-grid.compact-inventory,
+  .window-layer.has-center-window.has-right-window .center-window .inventory-grid.compact-inventory {
+    grid-template-columns: repeat(auto-fill, var(--gear-cell-size));
+    gap: 2px;
+    justify-content: center;
+  }
+
+  .inventory-grid.compact-inventory .inventory-cell {
+    width: var(--gear-cell-size);
+    height: var(--gear-cell-size);
+  }
+
+  .master-tabs {
+    gap: 2px;
+  }
+
+  .master-tab {
+    min-height: 20px;
+    padding: 2px 3px;
+    font-size: 7px;
+    line-height: 1;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .panel-action,
+  .item-action,
+  .business-product-button {
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .business-card,
+  .business-stock-panel,
+  .active-player-shop,
+  .player-shop-form {
+    gap: 5px;
+    padding: 6px;
+    border-radius: 6px;
+  }
+
+  .business-card-stats,
+  .active-shop-stats,
+  .business-actions,
+  .business-production-list,
+  .business-stock-grid {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .business-stock-cell,
+  .active-shop-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+    min-height: 0;
+    padding: 5px;
+  }
+
+  .player-shop-listing-row,
+  .player-shop-buy-row {
+    grid-template-columns: minmax(0, 1fr) 46px 58px;
+    gap: 4px;
+    padding: 5px;
+  }
+
+  .player-shop-listing-row input,
+  .player-shop-buy-row input {
+    padding: 5px;
+  }
+
+  .city-shop-panel,
+  .city-shop-panel.drug-shop-panel {
+    position: fixed;
+    top: 30px;
+    right: 8px;
+    bottom: 38px;
+    left: auto;
+    z-index: 45;
+    width: min(380px, 46vw);
+    max-width: none;
+    max-height: none;
+    transform: none;
+    overflow: auto;
+    padding: 8px;
+  }
+
+  .city-shop-panel h2 {
+    font-size: 14px;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+  }
+
+  .city-shop-actions,
+  .shop-sell-footer {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .shop-sell-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: none;
+  }
+
+  .drug-shop-panel .drug-shop-list {
+    max-height: none;
+  }
+
+  .drug-shop-panel .drug-shop-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .raid-summary {
+    position: fixed;
+    left: 50%;
+    right: auto;
+    top: 50%;
+    bottom: auto;
+    z-index: 45;
+    width: min(460px, calc(100vw - 24px));
+    max-height: calc(100svh - 56px);
+    transform: translate(-50%, -50%);
+    overflow: auto;
+    padding: 8px;
+  }
+
+  .tutorial-panel {
+    top: 78px;
+    right: 8px;
+    bottom: calc(44px + clamp(150px, 52svh, 236px));
+    left: auto;
+    z-index: 50;
+    width: min(360px, 42vw);
+    max-width: none;
+    max-height: none;
+    overflow: auto;
+  }
+
+  body:not(:has(.window-layer.has-center-window)) .tutorial-panel {
+    bottom: auto;
+    max-height: calc(100svh - 88px);
+  }
+
+  body:has(.city-shop-panel:not(.hidden)) .tutorial-panel {
+    right: auto;
+    left: 8px;
+    width: min(340px, 40vw);
+  }
+
+  .tutorial-bubble.stage-top {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .tutorial-actions,
+  .tutorial-bubble .tutorial-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .modal-backdrop {
+    padding: 8px;
+  }
+
+  .modal {
+    width: min(420px, calc(100vw - 18px));
+    max-height: calc(100svh - 18px);
+    overflow: auto;
+  }
+
+  .character-stage-panel {
+    grid-template-columns: minmax(180px, 0.42fr) minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .character-stage-copy h1 {
+    font-size: 22px;
+  }
+
+  .character-stage-backdrop .character-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) and (orientation: landscape) {
+  :root {
+    --window-ui-scale: 0.72;
+    --gear-cell-size: 24px;
+  }
+
+  .window-layer,
+  .window-layer.custom-window-layout {
+    left: 4px !important;
+    right: 4px !important;
+    bottom: 34px !important;
+    height: clamp(140px, 50svh, 190px) !important;
+    gap: 4px;
+  }
+
+  .window-layer.has-center-window.has-left-window.has-right-window {
+    grid-template-columns: minmax(0, 0.68fr) minmax(0, 1.18fr) minmax(0, 0.68fr) !important;
+  }
+
+  .window-body,
+  .side-window .window-body,
+  .config-window .window-body,
+  .center-window .window-body {
+    padding: 4px;
+  }
+
+  .city-shop-panel,
+  .city-shop-panel.drug-shop-panel {
+    top: 28px;
+    right: 6px;
+    bottom: 34px;
+    width: min(340px, 52vw);
+  }
+
+  .tutorial-panel {
+    top: 64px;
+    right: 6px;
+    width: min(320px, 48vw);
+    bottom: calc(40px + clamp(140px, 50svh, 190px));
+    max-height: none;
+  }
+
+  body:not(:has(.window-layer.has-center-window)) .tutorial-panel {
+    bottom: auto;
+    max-height: calc(100svh - 74px);
+  }
+
+  .stage-hud {
+    inset: 24px 5px auto 5px;
+  }
+
+  .status-card {
+    width: min(210px, 37vw);
+  }
+
+  .combat-card {
+    width: min(145px, 27vw);
+  }
+
+  .resource-strip span {
+    display: none;
+  }
+}
+
+@media (max-width: 700px) and (orientation: portrait),
+  (max-width: 960px) and (orientation: portrait) and (pointer: coarse) {
   body {
     overflow: hidden;
   }
@@ -3957,15 +4585,15 @@ body.auth-pending .window-layer {
   .animation-test-bar,
   .map-npc-test-panel,
   .hideout-item-editor-panel {
-    visibility: hidden;
-    pointer-events: none;
+    visibility: hidden !important;
+    pointer-events: none !important;
   }
 
   .orientation-lock {
     position: fixed;
     inset: 0;
     z-index: 200;
-    display: grid;
+    display: grid !important;
     place-items: center;
     padding: 22px;
     background:
