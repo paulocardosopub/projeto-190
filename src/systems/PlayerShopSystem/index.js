@@ -250,26 +250,10 @@ export function closeShop(state, playerId, now = Date.now()) {
 }
 
 export function buyFromShop(state, buyerId, shopId, drugType, quantity, now = Date.now()) {
-  const registry = normalizePlayerShopState(state, now);
-  const buyer = state.player;
-  normalizeBusinessState(buyer, now);
-  const cleanBuyerId = String(buyerId || buyer.playerId || "local-player");
-  if (playerLevel(buyer) < BUSINESS_UNLOCK_LEVEL) {
-    return { ok: false, reason: playerShopLockedMessage() };
-  }
-  const shop = registry.shops.find((candidate) => candidate.shopId === shopId);
-  if (!shop || !shop.active) return { ok: false, reason: "Loja indisponivel." };
-  if (shop.ownerPlayerId === cleanBuyerId) return { ok: false, reason: BUSINESS_CONFIG.messages.ownShop };
+  const prepared = prepareShopPurchase(state, buyerId, shopId, drugType, quantity, now);
+  if (!prepared.ok) return prepared;
 
-  const listing = shop.listings.find((candidate) => candidate.drugType === drugType);
-  const amount = Math.floor(Number(quantity || 0));
-  if (!listing || amount <= 0 || listing.quantity < amount) return { ok: false, reason: "Estoque indisponivel." };
-
-  const total = safeMoney(listing.pricePerUnit) * amount;
-  if (total <= 0 || safeMoney(buyer.money) < total) return { ok: false, reason: "Dinheiro insuficiente." };
-
-  const itemResult = addDrugUnitsToInventoryPreview(buyer, drugType, amount);
-  if (!itemResult.ok) return itemResult;
+  const { registry, buyer, cleanBuyerId, shop, listing, amount, total, itemResult } = prepared;
 
   buyer.money = safeMoney(buyer.money) - total;
   buyer.inventory = itemResult.inventory;
@@ -306,6 +290,49 @@ export function buyFromShop(state, buyerId, shopId, drugType, quantity, now = Da
     shop,
     total,
     sellerGets,
+    message: BUSINESS_CONFIG.messages.purchaseDone
+  };
+}
+
+export function previewShopPurchase(state, buyerId, shopId, drugType, quantity, now = Date.now()) {
+  const prepared = prepareShopPurchase(state, buyerId, shopId, drugType, quantity, now);
+  if (!prepared.ok) return prepared;
+  return {
+    ok: true,
+    shop: prepared.shop,
+    listing: prepared.listing,
+    amount: prepared.amount,
+    total: prepared.total
+  };
+}
+
+export function completeCloudShopPurchase(state, buyerId, shopId, drugType, quantity, purchase = {}, cloudShop = null, preflight = null, now = Date.now()) {
+  const prepared = prepareShopPurchase(state, buyerId, shopId, drugType, quantity, now);
+  const baseline = prepared.ok ? prepared : preflight;
+  if (!baseline?.ok) return prepared;
+
+  const registry = prepared.registry || normalizePlayerShopState(state, now);
+  const buyer = state.player;
+  normalizeBusinessState(buyer, now);
+  const amount = Math.max(1, Math.floor(Number(purchase?.quantity ?? baseline.amount)));
+  if (amount !== baseline.amount) return { ok: false, reason: "Compra alterada pela nuvem. Tente novamente." };
+
+  const total = safeMoney(purchase?.total ?? baseline.total);
+  if (total <= 0) return { ok: false, reason: "Compra invalida." };
+
+  const itemResult = addDrugUnitsToInventoryPreview(buyer, drugType, amount);
+  if (!itemResult.ok) return itemResult;
+
+  buyer.money = Math.max(0, safeMoney(buyer.money) - total);
+  buyer.inventory = itemResult.inventory;
+
+  const currentShop = registry.shops.find((shop) => shop.shopId === shopId) || baseline.shop;
+  const syncedShop = syncCloudShopSnapshot(registry, currentShop, cloudShop, drugType, amount, total, now);
+  syncShopNpcsForBusinessMap(state);
+  return {
+    ok: true,
+    shop: syncedShop,
+    total,
     message: BUSINESS_CONFIG.messages.purchaseDone
   };
 }
@@ -437,6 +464,60 @@ function closeShopRecord(registry, shop, reason, now) {
   shop.closedAt = now;
   shop.closeReason = reason;
   shop.updatedAt = now;
+}
+
+function prepareShopPurchase(state, buyerId, shopId, drugType, quantity, now) {
+  const registry = normalizePlayerShopState(state, now);
+  const buyer = state.player;
+  normalizeBusinessState(buyer, now);
+  const cleanBuyerId = String(buyerId || buyer.playerId || "local-player");
+  if (playerLevel(buyer) < BUSINESS_UNLOCK_LEVEL) {
+    return { ok: false, reason: playerShopLockedMessage() };
+  }
+  const shop = registry.shops.find((candidate) => candidate.shopId === shopId);
+  if (!shop || !shop.active) return { ok: false, reason: "Loja indisponivel." };
+  if (shop.ownerPlayerId === cleanBuyerId) return { ok: false, reason: BUSINESS_CONFIG.messages.ownShop };
+
+  const listing = shop.listings.find((candidate) => candidate.drugType === drugType);
+  const amount = Math.floor(Number(quantity || 0));
+  if (!listing || amount <= 0 || listing.quantity < amount) return { ok: false, reason: "Estoque indisponivel." };
+
+  const total = safeMoney(listing.pricePerUnit) * amount;
+  if (total <= 0 || safeMoney(buyer.money) < total) return { ok: false, reason: "Dinheiro insuficiente." };
+
+  const itemResult = addDrugUnitsToInventoryPreview(buyer, drugType, amount);
+  if (!itemResult.ok) return itemResult;
+
+  return { ok: true, registry, buyer, cleanBuyerId, shop, listing, amount, total, itemResult };
+}
+
+function syncCloudShopSnapshot(registry, currentShop, cloudShop, drugType, amount, total, now) {
+  const index = registry.shops.findIndex((shop) => shop.shopId === currentShop.shopId);
+  const normalizedCloudShop = normalizeShop(cloudShop, now);
+  if (normalizedCloudShop) {
+    const merged = {
+      ...currentShop,
+      ...normalizedCloudShop,
+      npcSlotId: currentShop.npcSlotId || normalizedCloudShop.npcSlotId,
+      remoteOnline: Boolean(currentShop.remoteOnline && normalizedCloudShop.remoteOnline),
+      remoteLastSeen: normalizedCloudShop.remoteLastSeen || currentShop.remoteLastSeen || now
+    };
+    if (index >= 0) registry.shops[index] = merged;
+    return merged;
+  }
+
+  const listing = currentShop.listings.find((candidate) => candidate.drugType === drugType);
+  if (listing) {
+    listing.quantity = Math.max(0, listing.quantity - amount);
+    consumeListingReservation(listing, amount);
+    listing.soldQuantity += amount;
+  }
+  currentShop.grossSales += total;
+  currentShop.sellerRevenue += Math.floor(total * (1 - BUSINESS_CONFIG.saleTaxRate));
+  currentShop.salesCount += amount;
+  currentShop.updatedAt = now;
+  if (currentShop.listings.every((entry) => entry.quantity <= 0)) closeShopRecord(registry, currentShop, "sold-out", now);
+  return currentShop;
 }
 
 function normalizeShop(shop, now) {

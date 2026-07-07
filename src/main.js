@@ -115,13 +115,15 @@ import {
 import {
   buyFromShop,
   closeShop,
+  completeCloudShopPurchase,
   createShop,
   getPlayerActiveShop,
   getShopById,
   normalizePlayerShopState,
+  previewShopPurchase,
   syncOnlinePlayerShops,
   syncShopNpcsForBusinessMap
-} from "./systems/PlayerShopSystem/index.js?v=shop-sync-8";
+} from "./systems/PlayerShopSystem/index.js?v=shop-sync-11";
 import {
   CHARACTER_SELECT_TUTORIAL,
   TutorialOverlay,
@@ -167,7 +169,7 @@ import {
 } from "./systems/StaminaSystem/index.js?v=shop-sync-2";
 import { MOTORCYCLE_UNLOCK_LEVEL, getHouseConfig, getItemConfigById, getLandConfig, getMotorcycleConfig } from "./data/balance/index.js?v=shop-sync-2";
 import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=shop-sync-2";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=shop-sync-9";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=shop-sync-11";
 import {
   renderCharacterSelect,
   renderConfigWindow,
@@ -4517,10 +4519,24 @@ function stopHideoutItemDrag() {
 
 function canvasPoint(event) {
   const rect = elements.canvas.getBoundingClientRect();
+  const cssWidth = elements.canvas.clientWidth || rect.width || elements.canvas.width;
+  const cssHeight = elements.canvas.clientHeight || rect.height || elements.canvas.height;
+  if (isForcedLandscapePortrait()) {
+    const visualX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+    const visualY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+    return {
+      x: (visualY / cssWidth) * elements.canvas.width,
+      y: ((cssHeight - visualX) / cssHeight) * elements.canvas.height
+    };
+  }
   return {
     x: ((event.clientX - rect.left) / rect.width) * elements.canvas.width,
     y: ((event.clientY - rect.top) / rect.height) * elements.canvas.height
   };
+}
+
+function isForcedLandscapePortrait() {
+  return Boolean(window.matchMedia?.("(orientation: portrait)")?.matches && isMobileWindowLayout());
 }
 
 function ensureHideoutEditorState() {
@@ -6241,7 +6257,7 @@ async function handlePlayerShopBuy(shop, drugType, quantity) {
   const cloudShop = online?.provider === "supabase" && shop?.ownerPlayerId !== (state.player.playerId || "local-player");
   if (cloudShop) {
     const preview = structuredClone(state);
-    const preflight = buyFromShop(preview, preview.player.playerId, shop.shopId, drugType, amount);
+    const preflight = previewShopPurchase(preview, preview.player.playerId, shop.shopId, drugType, amount);
     if (!preflight?.ok) {
       handleShopResult(preflight);
       return;
@@ -6253,12 +6269,23 @@ async function handlePlayerShopBuy(shop, drugType, quantity) {
       online.refreshPersistentShops?.(true);
       return;
     }
+
+    const result = completeCloudShopPurchase(
+      state,
+      state.player.playerId,
+      shop.shopId,
+      drugType,
+      amount,
+      cloudResult.purchase,
+      cloudResult.shop,
+      preflight
+    );
+    online.refreshPersistentShops?.(true);
+    handleShopResult(result);
+    return;
   }
 
   const result = buyFromShop(state, state.player.playerId, shop.shopId, drugType, amount);
-  if (result?.ok && cloudShop) {
-    online.refreshPersistentShops?.(true);
-  }
   handleShopResult(result);
 }
 
@@ -7486,6 +7513,7 @@ window.addEventListener("blur", clearKeyboardMovement);
 window.addEventListener("resize", handleViewportChange);
 window.addEventListener("orientationchange", handleViewportChange);
 installMobileZoomBlock();
+installMobileLandscapeLock();
 document.addEventListener("contextmenu", (event) => {
   event.preventDefault();
 }, { capture: true });
@@ -7509,6 +7537,21 @@ function installMobileZoomBlock() {
   }, { passive: false });
   document.addEventListener("gesturestart", (event) => event.preventDefault(), { passive: false });
   document.addEventListener("dblclick", (event) => event.preventDefault(), { passive: false, capture: true });
+}
+
+function installMobileLandscapeLock() {
+  const tryLock = () => {
+    if (!isMobileWindowLayout()) return;
+    try {
+      const attempt = screen.orientation?.lock?.("landscape");
+      attempt?.catch?.(() => {});
+    } catch {
+      // Some mobile browsers only allow locking after fullscreen/PWA install.
+    }
+  };
+  tryLock();
+  document.addEventListener("pointerdown", tryLock, { once: true, capture: true });
+  document.addEventListener("touchstart", tryLock, { once: true, capture: true, passive: true });
 }
 
 elements.saveButton.addEventListener("click", () => {

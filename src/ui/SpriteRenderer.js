@@ -151,8 +151,8 @@ export class SpriteRenderer {
 
   syncCanvasSize() {
     const rect = this.canvas.getBoundingClientRect();
-    const width = Math.max(1, Math.round(rect.width || this.canvas.width));
-    const height = Math.max(1, Math.round(rect.height || this.canvas.height));
+    const width = Math.max(1, Math.round(this.canvas.clientWidth || rect.width || this.canvas.width));
+    const height = Math.max(1, Math.round(this.canvas.clientHeight || rect.height || this.canvas.height));
     if (this.canvas.width === width && this.canvas.height === height) return;
     this.canvas.width = width;
     this.canvas.height = height;
@@ -638,7 +638,7 @@ export class SpriteRenderer {
       const tier = state.settings?.visualPreview ? (previewTier || ownedTier || 1) : ownedTier;
       if (!tier) return;
 
-      const placement = hideoutItemPlacement(state, item.id, tier);
+      const placement = scaleHideoutItemPlacementForCanvas(hideoutItemPlacement(state, item.id, tier), this.canvas.height);
       const selected = state.settings?.visualPreview && editor.selectedType === item.id;
       this.drawHideoutItem(item.id, tier, placement, cameraWorld, selected);
       if (item.id === "house" && state.run?.hideoutRestHint) {
@@ -2182,6 +2182,16 @@ function scaleVisualForCanvas(visual, canvasHeight) {
     groundY: visual.groundY * scale,
     playerYOffset: visual.playerYOffset * scale,
     npcYOffset: visual.npcYOffset * scale
+  };
+}
+
+function scaleHideoutItemPlacementForCanvas(placement, canvasHeight) {
+  const scale = canvasVerticalScale(canvasHeight);
+  if (Math.abs(scale - 1) < 0.01) return placement;
+  return {
+    ...placement,
+    y: placement.y * scale,
+    height: placement.height * scale
   };
 }
 
