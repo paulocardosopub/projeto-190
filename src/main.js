@@ -5,7 +5,7 @@ import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=zeca-actions-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemMaxTier, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-8";
-import { CombatSystem, applyOfflineAfkRaidProgress, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=afk-return-1";
+import { CombatSystem, applyOfflineAfkRaidProgress, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=afk-cloud-return-1";
 import { calculateStats, calculateStealChancePercent, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -77,7 +77,7 @@ import {
   saveGame,
   saveVisualCalibration,
   saveWindowLayout
-} from "./systems/SaveSystem/index.js?v=offline-2";
+} from "./systems/SaveSystem/index.js?v=afk-cloud-return-1";
 import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=shop-sync-9";
 import {
   buyReceptadorOffer,
@@ -337,6 +337,7 @@ const AFK_GAME_STEP_SECONDS = 1;
 const SIMPLE_GAME_STEP_SECONDS = 1;
 const OFFLINE_PROGRESS_MAX_SECONDS = 30 * 24 * 60 * 60;
 const AFK_UNLOCK_STAMINA_THRESHOLD = 10;
+const AFK_RETURN_NOTICE_MIN_SECONDS = 60;
 const FRIEND_REQUEST_TTL_MS = 30 * 60 * 1000;
 const PET_TUTORIAL_FIRST_STEP = "pet_city";
 const PET_TUTORIAL_STEPS = [
@@ -543,6 +544,7 @@ async function loadSavedGameForActiveProfile() {
     const cloudState = await loadCloudProfileGame(token);
     if (cloudState) {
       saveProfileGame(activeProfile.id, cloudState);
+      cloudState.__loadedFromCloud = true;
       return cloudState;
     }
   }
@@ -7149,6 +7151,8 @@ function needsCharacterSelection(sourceState, profile = activeProfile) {
 }
 
 function normalizeState() {
+  const loadedFromCloud = Boolean(state.__loadedFromCloud);
+  delete state.__loadedFromCloud;
   if (!isValidPlayerId(state.selectedPlayerId)) {
     state.selectedPlayerId = DEFAULT_PLAYER_ID;
   }
@@ -7315,6 +7319,7 @@ function normalizeState() {
   state.run.groundLoots ||= [];
   state.run.decorativeNpcs ||= [];
   state.run.afkRaid = Boolean(state.run.afkRaid);
+  state.run.afkStartedAt = Math.max(0, Number(state.run.afkStartedAt || 0));
   state.run.afkElapsed = Math.max(0, Number(state.run.afkElapsed || 0));
   state.run.afkWave = Math.max(0, Number(state.run.afkWave || 0));
   state.run.afkNextSpawnX = Number(state.run.afkNextSpawnX || 0);
@@ -7334,7 +7339,7 @@ function normalizeState() {
   state.run.summary ??= null;
   state.run.summaryTimer ||= 0;
   normalizeOfflineCooldowns(offlineSeconds);
-  applyOfflineClosedProgress(offlineSeconds);
+  applyOfflineClosedProgress(offlineSeconds, { loadedFromCloud });
   applyOfflinePassiveIncome(state);
   normalizePlayerShopState(state);
   calculateProduction(state.player);
@@ -7399,21 +7404,64 @@ function countdownAfterOffline(value, seconds) {
   return Math.max(0, current - seconds);
 }
 
-function applyOfflineClosedProgress(offlineSeconds) {
+function afkOfflineReturnContext(offlineSeconds, options = {}) {
+  const seconds = Math.max(0, Number(offlineSeconds || 0));
+  const run = state?.run;
+  if (!run?.afkRaid || run.mode === "summary") {
+    return { seconds: 0, shouldConclude: false, forceConclude: false, returnSeconds: 0 };
+  }
+
+  const now = Date.now();
+  const afkElapsed = Math.max(0, Number(run.afkElapsed || 0));
+  let startedAt = Math.max(0, Number(run.afkStartedAt || 0));
+  if (!startedAt && afkElapsed > 0) {
+    startedAt = now - afkElapsed * 1000;
+    run.afkStartedAt = startedAt;
+  } else if (!startedAt) {
+    const savedAt = Math.max(0, Number(state.offlineSavedAt || state.lastSavedAt || 0));
+    startedAt = savedAt || now;
+    run.afkStartedAt = startedAt;
+  }
+
+  const clockElapsed = startedAt > 0 ? Math.max(0, (now - startedAt) / 1000) : 0;
+  const missingFromClock = Math.max(0, clockElapsed - afkElapsed);
+  const secondsToApply = Math.max(seconds, missingFromClock);
+  const returnSeconds = Math.max(seconds, clockElapsed, afkElapsed);
+  const shouldConclude = returnSeconds >= AFK_RETURN_NOTICE_MIN_SECONDS && (
+    seconds > 1 ||
+    Boolean(options.loadedFromCloud) ||
+    afkElapsed >= AFK_RETURN_NOTICE_MIN_SECONDS ||
+    clockElapsed >= AFK_RETURN_NOTICE_MIN_SECONDS
+  );
+
+  return {
+    seconds: secondsToApply,
+    shouldConclude,
+    forceConclude: shouldConclude && secondsToApply <= 1,
+    returnSeconds
+  };
+}
+
+function applyOfflineClosedProgress(offlineSeconds, options = {}) {
   if (!state?.player) return;
   const seconds = Math.max(0, Number(offlineSeconds || 0));
+  const afkContext = afkOfflineReturnContext(seconds, options);
   state.offlineSavedAt = Date.now();
-  if (seconds <= 1) return;
 
-  const staminaRecovered = applyOfflineStaminaRecovery(seconds);
-  const afkResult = applyOfflineAfkRaidProgress(state, seconds, { concludeOnReturn: true });
+  const staminaRecovered = seconds > 1 ? applyOfflineStaminaRecovery(seconds) : 0;
+  const afkResult = applyOfflineAfkRaidProgress(state, afkContext.seconds, {
+    concludeOnReturn: afkContext.shouldConclude,
+    forceConclude: afkContext.forceConclude,
+    returnSeconds: afkContext.returnSeconds
+  });
 
   if (staminaRecovered >= 1) {
     addLog(state, `Stamina recuperada offline: +${Math.floor(staminaRecovered)}.`);
   }
-  if (afkResult.seconds >= 60) {
+  if (afkResult.seconds >= 60 || afkContext.returnSeconds >= 60) {
     const prefix = afkResult.summary?.offlineReturn ? "Enquanto voce estava fora, " : "";
-    addLog(state, `${prefix}Roubo AFK processado offline por ${formatTime(Math.round(afkResult.seconds))}.`);
+    const loggedSeconds = Math.max(afkResult.seconds, afkContext.returnSeconds);
+    addLog(state, `${prefix}Roubo AFK processado offline por ${formatTime(Math.round(loggedSeconds))}.`);
   }
 }
 

@@ -455,6 +455,7 @@ export class CombatSystem {
       policeScene: null,
       tutorialFirstRaid: false,
       afkRaid: true,
+      afkStartedAt: Date.now(),
       afkElapsed: 0,
       afkWave: 1,
       afkNextSpawnX: afkNextSpawnX(npcs),
@@ -869,8 +870,13 @@ export class CombatSystem {
     summary.remaining = 0;
     summary.durationSeconds = Math.round(Number(run.afkElapsed || 0));
     summary.limitReached = reason === "limit";
-    summary.offlineReturn = reason === "offline-return" || Number(run.offlineAfkAppliedSeconds || 0) > 0;
-    summary.offlineSeconds = Math.round(Number(run.offlineAfkAppliedSeconds || 0));
+    summary.offlineReturn = reason === "offline-return" ||
+      Number(run.offlineAfkAppliedSeconds || 0) > 0 ||
+      Number(run.offlineAfkReturnSeconds || 0) > 0;
+    summary.offlineSeconds = Math.round(Math.max(
+      Number(run.offlineAfkAppliedSeconds || 0),
+      Number(run.offlineAfkReturnSeconds || 0)
+    ));
     summary.finished = true;
     summary.finishedAt = Date.now();
 
@@ -1660,10 +1666,20 @@ export function applyOfflineAfkRaidProgress(state, elapsedSeconds, options = {})
   const alreadyElapsed = Math.max(0, Number(run.afkElapsed || 0));
   const remainingLimit = Math.max(0, AFK_RAID_MAX_SECONDS - alreadyElapsed);
   const secondsToApply = Math.min(Math.max(0, Number(elapsedSeconds || 0)), remainingLimit);
+  const returnSeconds = Math.max(
+    0,
+    Number(options.returnSeconds || 0),
+    Number(elapsedSeconds || 0)
+  );
   const offlineCombat = new CombatSystem(state, {});
+
+  if (options.concludeOnReturn && returnSeconds > 0 && state.run?.afkRaid) {
+    state.run.offlineAfkReturnSeconds = returnSeconds;
+  }
 
   if (remainingLimit <= 0) {
     state.run.offlineAfkAppliedSeconds = Math.max(0, Number(elapsedSeconds || 0));
+    state.run.offlineAfkReturnSeconds = returnSeconds;
     offlineCombat.finishAfkRaid("limit");
     return { seconds: 0, limitReached: true, summary: state.run?.summary || null };
   }
@@ -1678,8 +1694,11 @@ export function applyOfflineAfkRaidProgress(state, elapsedSeconds, options = {})
   }
 
   const appliedSeconds = secondsToApply - Math.max(0, remaining);
-  if (appliedSeconds > 0 && state.run?.afkRaid) state.run.offlineAfkAppliedSeconds = appliedSeconds;
-  if (appliedSeconds > 0 && options.concludeOnReturn && state.run?.afkRaid && state.run.mode !== "summary") {
+  if ((appliedSeconds > 0 || options.forceConclude) && state.run?.afkRaid) {
+    state.run.offlineAfkAppliedSeconds = appliedSeconds;
+    state.run.offlineAfkReturnSeconds = returnSeconds;
+  }
+  if ((appliedSeconds > 0 || options.forceConclude) && options.concludeOnReturn && state.run?.afkRaid && state.run.mode !== "summary") {
     offlineCombat.finishAfkRaid("offline-return");
   }
   return {

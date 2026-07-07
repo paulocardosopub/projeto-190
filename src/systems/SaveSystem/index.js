@@ -84,6 +84,7 @@ export function sanitizeStateForSave(state) {
   const persisted = structuredClone(state);
   persisted.offlineSavedAt = Date.now();
   if (persisted.settings) persisted.settings.visualPreview = false;
+  delete persisted.__loadedFromCloud;
   delete persisted.onlineCityPlayers;
   delete persisted.onlinePlayerShops;
   if (persisted.playerShops?.shops) {
