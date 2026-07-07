@@ -78,7 +78,7 @@ import {
   saveVisualCalibration,
   saveWindowLayout
 } from "./systems/SaveSystem/index.js?v=city-stable-1";
-import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=shop-sync-2";
+import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=shop-sync-8";
 import {
   buyReceptadorOffer,
   ensureReceptadorStock,
@@ -121,7 +121,7 @@ import {
   normalizePlayerShopState,
   syncOnlinePlayerShops,
   syncShopNpcsForBusinessMap
-} from "./systems/PlayerShopSystem/index.js?v=shop-sync-2";
+} from "./systems/PlayerShopSystem/index.js?v=shop-sync-8";
 import {
   CHARACTER_SELECT_TUTORIAL,
   TutorialOverlay,

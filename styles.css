@@ -243,6 +243,11 @@ button:disabled {
   box-shadow: none;
 }
 
+.stage-shell:has(.modal-backdrop:not(.hidden)) {
+  z-index: 80;
+  overflow: visible;
+}
+
 #game-canvas {
   width: 100%;
   height: 100%;
@@ -4671,8 +4676,8 @@ body.auth-pending .window-layer {
     --mobile-window-bottom: 38px;
     --mobile-window-height: clamp(150px, 52svh, 236px);
     --mobile-window-toggle-gap: 6px;
-    --mobile-window-toggle-top: 58px;
-    --mobile-auto-panel-top: 90px;
+    --mobile-window-toggle-top: 74px;
+    --mobile-auto-panel-top: 106px;
   }
 
   .orientation-lock {
@@ -4871,6 +4876,12 @@ body.auth-pending .window-layer {
     z-index: 62;
     justify-content: center;
     pointer-events: none;
+  }
+
+  body:has(.window-layer.has-center-window) .toast-region,
+  body:has(.window-layer.has-left-window) .toast-region,
+  body:has(.window-layer.has-right-window) .toast-region {
+    bottom: calc(var(--mobile-window-bottom) + var(--mobile-window-height) + 6px);
   }
 
   .toast {
@@ -5263,6 +5274,30 @@ body.auth-pending .window-layer {
     gap: 6px;
   }
 
+  body:has(.tutorial-layer:not(.hidden) .tutorial-bubble.stage-top:not(.hidden)) .stage-hud,
+  body:has(.tutorial-layer:not(.hidden) .tutorial-bubble.stage-top:not(.hidden)) .master-toggle,
+  body:has(.tutorial-layer:not(.hidden) .tutorial-bubble.stage-top:not(.hidden)) .afk-raid-toggle,
+  body:has(.tutorial-layer:not(.hidden) .tutorial-bubble.stage-top:not(.hidden)) .auto-raid-toggle {
+    display: none;
+  }
+
+  body.character-selecting .tutorial-highlight,
+  body.character-selecting .tutorial-arrow {
+    display: none;
+  }
+
+  body.character-selecting .tutorial-bubble {
+    top: 8px !important;
+    right: 8px !important;
+    bottom: auto !important;
+    left: auto !important;
+    width: min(340px, calc(100vw - 444px)) !important;
+    min-width: 230px;
+    max-height: calc(100svh - 16px);
+    overflow: auto;
+    transform: none !important;
+  }
+
   .tutorial-actions,
   .tutorial-bubble .tutorial-actions {
     display: grid;
@@ -5305,8 +5340,8 @@ body.auth-pending .window-layer {
     --mobile-window-bottom: 34px;
     --mobile-window-height: clamp(140px, 50svh, 190px);
     --mobile-window-toggle-gap: 4px;
-    --mobile-window-toggle-top: 52px;
-    --mobile-auto-panel-top: 82px;
+    --mobile-window-toggle-top: 70px;
+    --mobile-auto-panel-top: 98px;
   }
 
   .window-layer,
@@ -5348,6 +5383,24 @@ body.auth-pending .window-layer {
   body:not(:has(.window-layer.has-center-window)) .tutorial-panel {
     bottom: auto;
     max-height: calc(100svh - 74px);
+  }
+
+  body.character-selecting .character-stage-panel {
+    width: min(360px, 58vw);
+    grid-template-columns: minmax(120px, 0.45fr) minmax(0, 1fr);
+    gap: 7px;
+    padding: 8px;
+  }
+
+  body.character-selecting .tutorial-bubble {
+    width: calc(42vw - 14px) !important;
+    min-width: 0;
+    padding: 8px;
+  }
+
+  body.character-selecting .tutorial-bubble p {
+    font-size: 10px;
+    line-height: 1.2;
   }
 
   .stage-hud {

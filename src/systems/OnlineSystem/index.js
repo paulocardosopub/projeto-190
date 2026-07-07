@@ -974,7 +974,7 @@ export class OnlineSystem {
   localActiveShopPayload() {
     const playerId = this.localPlayerId();
     const shop = (this.state.playerShops?.shops || [])
-      .find((candidate) => candidate?.active && !candidate.remoteOnline && candidate.ownerPlayerId === playerId);
+      .find((candidate) => candidate?.active && candidate.ownerPlayerId === playerId);
     if (!shop) return null;
     return normalizeActiveShop({
       shopId: shop.shopId,

@@ -71,7 +71,7 @@ export function syncOnlinePlayerShops(state, shops = [], now = Date.now()) {
     if (!local) return;
     Object.assign(local, mergeRemoteShopSnapshot(local, normalized, now), {
       npcSlotId: local.npcSlotId || normalized.npcSlotId,
-      remoteOnline: true,
+      remoteOnline: false,
       remoteLastSeen: now
     });
   });
