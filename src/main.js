@@ -238,6 +238,10 @@ const elements = {
   saveButton: document.querySelector("#save-button"),
   masterToggle: document.querySelector("#master-toggle"),
   afkRaidToggle: document.querySelector("#afk-raid-toggle"),
+  afkRaidPanel: document.querySelector("#afk-raid-panel"),
+  afkRaidMapLabel: document.querySelector("#afk-raid-map-label"),
+  afkRaidCancel: document.querySelector("#afk-raid-cancel"),
+  afkRaidConfirm: document.querySelector("#afk-raid-confirm"),
   autoRaidToggle: document.querySelector("#auto-raid-toggle"),
   autoRaidPanel: document.querySelector("#auto-raid-panel"),
   autoRaidTitle: document.querySelector("#auto-raid-title"),
@@ -2252,6 +2256,8 @@ function syncAfkRaidButton() {
   elements.afkRaidToggle.textContent = active ? "Concluir" : "AFK";
   elements.afkRaidToggle.setAttribute("aria-label", active ? "Concluir roubo AFK" : "Roubar AFK");
   elements.afkRaidToggle.setAttribute("title", active ? "Concluir roubo AFK" : "Roubar AFK");
+  elements.afkRaidToggle.setAttribute("aria-expanded", String(visible && !elements.afkRaidPanel?.classList.contains("hidden")));
+  if (!visible) hideAfkRaidConfirm();
 }
 
 function syncRaidAutoRepeatControl(isRaid = null, isAfkRaid = null) {
@@ -2296,15 +2302,26 @@ function handleAfkRaidToggleClick() {
     return;
   }
   if (!canShowAfkRaidButton()) return;
-  showGameConfirm({
-    eyebrow: "Roubo AFK",
-    title: "Roubar AFK?",
-    message: "Entrar no modo idle de assalto agora?",
-    detail: "Nao consome stamina, nao da XP e as recompensas sao reduzidas.",
-    confirmLabel: "Iniciar",
-    cancelLabel: "Cancelar",
-    onConfirm: startAfkRaid
-  });
+  if (elements.afkRaidPanel?.classList.contains("hidden")) {
+    showAfkRaidConfirm();
+  } else {
+    hideAfkRaidConfirm();
+  }
+}
+
+function showAfkRaidConfirm() {
+  if (!canShowAfkRaidButton()) return;
+  const rewardMap = afkRewardMapForUi();
+  if (!rewardMap) return;
+  elements.afkRaidMapLabel.textContent = `${rewardMap.code || rewardMap.index || ""} ${rewardMap.name}`.trim();
+  elements.afkRaidPanel?.classList.remove("hidden");
+  elements.afkRaidToggle?.setAttribute("aria-expanded", "true");
+  hideAutoRaidConfirm();
+}
+
+function hideAfkRaidConfirm() {
+  elements.afkRaidPanel?.classList.add("hidden");
+  elements.afkRaidToggle?.setAttribute("aria-expanded", "false");
 }
 
 function startAfkRaid() {
@@ -2313,6 +2330,7 @@ function startAfkRaid() {
     showToast("Conclua um mapa primeiro para liberar o AFK.");
     return;
   }
+  hideAfkRaidConfirm();
   hideAutoRaidConfirm();
   closeCityShopPanel({ render: false, force: true });
   closeMaster({ render: false, force: true });
@@ -2367,6 +2385,7 @@ function showAutoRaidConfirm() {
   if (!canShowAutoRaidButton()) return;
   const map = autoRaidMap();
   if (!map) return;
+  hideAfkRaidConfirm();
   elements.autoRaidTitle.textContent = "Auto assalto";
   elements.autoRaidMapLabel.textContent = `${map.code || map.index || ""} ${map.name}`.trim();
   elements.autoRaidRepeatToggle.checked = Boolean(state.settings.autoRepeatRaid);
@@ -7432,6 +7451,8 @@ function actionLabel(mode, map) {
 
 elements.masterToggle?.addEventListener("click", toggleMaster);
 elements.afkRaidToggle?.addEventListener("click", handleAfkRaidToggleClick);
+elements.afkRaidCancel?.addEventListener("click", hideAfkRaidConfirm);
+elements.afkRaidConfirm?.addEventListener("click", startAfkRaid);
 elements.autoRaidToggle?.addEventListener("click", () => {
   if (elements.autoRaidPanel?.classList.contains("hidden")) {
     showAutoRaidConfirm();
