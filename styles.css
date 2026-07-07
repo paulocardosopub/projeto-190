@@ -5307,7 +5307,28 @@ body.auth-pending .window-layer {
 
   .tutorial-bubble.stage-top {
     grid-template-columns: 1fr;
-    gap: 6px;
+    gap: 4px;
+    left: 8px !important;
+    top: 8px !important;
+    width: min(280px, 40vw) !important;
+    max-width: min(280px, 40vw) !important;
+    min-height: 0;
+    padding: 7px 8px;
+  }
+
+  .tutorial-bubble p {
+    font-size: 10px;
+    line-height: 1.22;
+  }
+
+  .tutorial-primary,
+  .tutorial-back,
+  .tutorial-skip {
+    min-height: 25px;
+    padding: 4px 7px;
+    font-size: 9px;
+    line-height: 1;
+    white-space: nowrap;
   }
 
   body:has(.tutorial-layer:not(.hidden) .tutorial-bubble.stage-top:not(.hidden)) .stage-hud,
@@ -5323,12 +5344,13 @@ body.auth-pending .window-layer {
   }
 
   body.character-selecting .tutorial-bubble {
-    top: 8px !important;
-    right: 8px !important;
-    bottom: auto !important;
-    left: auto !important;
-    width: min(340px, calc(100vw - 444px)) !important;
-    min-width: 230px;
+    top: auto !important;
+    right: auto !important;
+    bottom: 8px !important;
+    left: 8px !important;
+    width: min(260px, 38vw) !important;
+    max-width: min(260px, 38vw) !important;
+    min-width: 0;
     max-height: calc(100svh - 16px);
     overflow: auto;
     transform: none !important;
@@ -5336,9 +5358,29 @@ body.auth-pending .window-layer {
 
   .tutorial-actions,
   .tutorial-bubble .tutorial-actions {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 5px;
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  .tutorial-bubble .tutorial-actions {
+    justify-content: flex-start;
+  }
+
+  .tutorial-primary {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 168px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tutorial-back,
+  .tutorial-skip {
+    width: 25px;
+    min-width: 25px;
+    padding: 0;
   }
 
   .modal-backdrop {
@@ -5352,6 +5394,11 @@ body.auth-pending .window-layer {
   }
 
   .character-stage-panel {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    max-height: none;
+    overflow: hidden;
     grid-template-columns: minmax(180px, 0.42fr) minmax(0, 1fr);
     gap: 10px;
     padding: 10px;
@@ -5363,6 +5410,81 @@ body.auth-pending .window-layer {
 
   .character-stage-backdrop .character-grid {
     grid-template-columns: 1fr;
+  }
+
+  body.character-selecting .character-stage-backdrop {
+    padding: 6px;
+  }
+
+  body.character-selecting .character-stage-panel {
+    grid-template-columns: minmax(116px, 0.28fr) minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px;
+  }
+
+  body.character-selecting .character-stage-copy {
+    align-self: center;
+  }
+
+  body.character-selecting .character-stage-copy .eyebrow {
+    font-size: 9px;
+    line-height: 1;
+  }
+
+  body.character-selecting .character-stage-copy h1 {
+    font-size: clamp(16px, 2.7vw, 21px);
+    line-height: 1;
+  }
+
+  body.character-selecting .character-stage-copy p {
+    display: none;
+  }
+
+  body.character-selecting .character-carousel {
+    grid-template-columns: 38px minmax(0, 1fr) 38px;
+    gap: 5px;
+  }
+
+  body.character-selecting .character-arrow {
+    width: 36px;
+    height: 58px;
+    font-size: 30px;
+  }
+
+  body.character-selecting .character-spotlight {
+    grid-template-rows: minmax(118px, 1fr) 48px auto;
+    gap: 5px;
+  }
+
+  body.character-selecting .character-preview-strip {
+    width: 100%;
+    height: min(166px, 48svh);
+    grid-template-columns: minmax(64px, 0.7fr) minmax(110px, 1fr) minmax(64px, 0.7fr);
+    gap: 5px;
+  }
+
+  body.character-selecting .character-main-preview {
+    max-width: min(184px, 100%);
+    height: min(156px, 45svh);
+  }
+
+  body.character-selecting .character-side-preview {
+    max-width: min(126px, 100%);
+    height: min(116px, 34svh);
+    opacity: 0.4;
+  }
+
+  body.character-selecting .character-selected-copy {
+    height: 48px;
+    grid-template-rows: 11px 24px;
+  }
+
+  body.character-selecting .character-selected-copy h3 {
+    font-size: 16px;
+  }
+
+  body.character-selecting .character-selected-copy p {
+    display: none;
   }
 }
 
@@ -5422,21 +5544,90 @@ body.auth-pending .window-layer {
   }
 
   body.character-selecting .character-stage-panel {
-    width: min(360px, 58vw);
-    grid-template-columns: minmax(120px, 0.45fr) minmax(0, 1fr);
-    gap: 7px;
-    padding: 8px;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none;
+    max-height: none;
+    grid-template-columns: minmax(88px, 0.26fr) minmax(0, 1fr);
+    grid-template-rows: 1fr;
+    gap: 5px;
+    padding: 6px;
+    overflow: hidden;
   }
 
   body.character-selecting .tutorial-bubble {
-    width: calc(42vw - 14px) !important;
+    left: 6px !important;
+    bottom: 6px !important;
+    width: min(220px, 34vw) !important;
+    max-width: min(220px, 34vw) !important;
     min-width: 0;
-    padding: 8px;
+    padding: 6px;
   }
 
   body.character-selecting .tutorial-bubble p {
-    font-size: 10px;
-    line-height: 1.2;
+    font-size: 9px;
+    line-height: 1.16;
+  }
+
+  body.character-selecting .character-stage-copy {
+    align-self: center;
+  }
+
+  body.character-selecting .character-stage-copy .eyebrow {
+    font-size: 8px;
+    line-height: 1;
+  }
+
+  body.character-selecting .character-stage-copy h1 {
+    font-size: clamp(14px, 3vw, 17px);
+  }
+
+  body.character-selecting .character-carousel {
+    grid-template-columns: 30px minmax(0, 1fr) 30px;
+    gap: 3px;
+  }
+
+  body.character-selecting .character-arrow {
+    width: 28px;
+    height: 48px;
+    font-size: 24px;
+    border-radius: 4px;
+  }
+
+  body.character-selecting .character-spotlight {
+    grid-template-rows: minmax(104px, 1fr) 42px auto;
+    gap: 4px;
+  }
+
+  body.character-selecting .character-preview-strip {
+    width: 100%;
+    height: min(146px, 46svh);
+    grid-template-columns: minmax(56px, 0.68fr) minmax(96px, 1fr) minmax(56px, 0.68fr);
+    gap: 4px;
+  }
+
+  body.character-selecting .character-main-preview {
+    max-width: min(158px, 100%);
+    height: min(136px, 44svh);
+  }
+
+  body.character-selecting .character-side-preview {
+    max-width: min(110px, 100%);
+    height: min(104px, 34svh);
+    opacity: 0.4;
+  }
+
+  body.character-selecting .character-selected-copy {
+    height: 42px;
+    grid-template-rows: 10px 22px;
+  }
+
+  body.character-selecting .character-selected-copy h3 {
+    font-size: 14px;
+  }
+
+  body.character-selecting .character-selected-copy p {
+    display: none;
   }
 
   .stage-hud {
