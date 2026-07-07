@@ -4783,7 +4783,7 @@ body.auth-pending .window-layer {
       linear-gradient(180deg, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.68)),
       url("./assets/backgroundlogin.png");
     background-position: center, center;
-    background-size: 100% 100%, contain;
+    background-size: 100% 100%, 100% 100%;
     background-repeat: no-repeat, no-repeat;
   }
 
