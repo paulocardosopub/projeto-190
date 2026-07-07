@@ -129,6 +129,41 @@ export function hideoutRestCooldown(player, now = Date.now()) {
   return { ready: remainingMs <= 0, remainingMs, readyAt };
 }
 
+export function normalizeHideoutRestCooldown(player, now = Date.now(), offlineMs = 0) {
+  if (!player) return { ready: true, remainingMs: 0, readyAt: now };
+
+  const safeNow = Math.max(0, Number(now) || Date.now());
+  const offlineElapsed = Math.max(0, Number(offlineMs || 0));
+  const lastRest = Math.max(0, Number(player.lastHideoutRestAt || 0));
+  if (lastRest > 0) {
+    player.lastHideoutRestAt = lastRest;
+    return hideoutRestCooldown(player, safeNow);
+  }
+
+  const legacyRemaining = [
+    player.hideoutRestCooldownMs,
+    player.hideoutRestCooldownRemainingMs,
+    player.restCooldownRemainingMs,
+    player.staminaRechargeCooldownMs
+  ]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .sort((a, b) => b - a)[0] || 0;
+
+  delete player.hideoutRestCooldownMs;
+  delete player.hideoutRestCooldownRemainingMs;
+  delete player.restCooldownRemainingMs;
+  delete player.staminaRechargeCooldownMs;
+
+  if (legacyRemaining <= 0) return hideoutRestCooldown(player, safeNow);
+
+  const remainingMs = Math.max(0, Math.min(HIDEOUT_REST_COOLDOWN_MS, legacyRemaining - offlineElapsed));
+  player.lastHideoutRestAt = remainingMs > 0
+    ? safeNow - (HIDEOUT_REST_COOLDOWN_MS - remainingMs)
+    : 0;
+  return hideoutRestCooldown(player, safeNow);
+}
+
 export function restNow(player, now = Date.now()) {
   updateStaminaDerivedStats(player);
   const house = getHouseConfig(player.casaAtual);

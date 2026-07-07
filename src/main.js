@@ -159,6 +159,7 @@ import {
   landOptions,
   motorcycleOptions,
   motorcyclesUnlocked,
+  normalizeHideoutRestCooldown,
   normalizeProgressionSystems,
   restNow,
   staminaRaidBlockedMessage,
@@ -166,7 +167,7 @@ import {
   staminaState,
   updatePassiveIncome,
   motorcycleTutorialCleared
-} from "./systems/StaminaSystem/index.js?v=shop-sync-2";
+} from "./systems/StaminaSystem/index.js?v=offline-cooldowns-1";
 import { MOTORCYCLE_UNLOCK_LEVEL, getHouseConfig, getItemConfigById, getLandConfig, getMotorcycleConfig } from "./data/balance/index.js?v=shop-sync-2";
 import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=shop-sync-2";
 import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=sprite-scale-1";
@@ -7317,6 +7318,7 @@ function normalizeState() {
   state.run.temporaryStay ??= null;
   state.run.summary ??= null;
   state.run.summaryTimer ||= 0;
+  normalizeOfflineCooldowns(offlineSeconds);
   applyOfflineClosedProgress(offlineSeconds);
   applyOfflinePassiveIncome(state);
   normalizePlayerShopState(state);
@@ -7333,6 +7335,53 @@ function offlineElapsedSeconds(sourceState) {
   ].map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0 && value <= now);
   const lastSavedAt = candidates[0] || now;
   return Math.min(OFFLINE_PROGRESS_MAX_SECONDS, Math.max(0, (now - lastSavedAt) / 1000));
+}
+
+function normalizeOfflineCooldowns(offlineSeconds) {
+  if (!state?.player) return;
+  const now = Date.now();
+  const seconds = Math.max(0, Number(offlineSeconds || 0));
+
+  normalizeHideoutRestCooldown(state.player, now, seconds * 1000);
+  normalizeDrugCooldowns(now);
+  ensureReceptadorStock(state);
+  advanceRunCooldownsOffline(seconds);
+}
+
+function normalizeDrugCooldowns(now) {
+  const drugState = normalizeDrugState(state.player, now);
+  Object.entries(drugState.cooldowns || {}).forEach(([drugId, cooldownUntil]) => {
+    if (Number(cooldownUntil || 0) <= now) delete drugState.cooldowns[drugId];
+  });
+  if (Number(drugState.blockUntil || 0) <= now) drugState.blockUntil = 0;
+}
+
+function advanceRunCooldownsOffline(seconds) {
+  if (!state?.run || seconds <= 0) return;
+  const run = state.run;
+  run.choiceTimer = countdownAfterOffline(run.choiceTimer, seconds);
+  run.playerActionTimer = countdownAfterOffline(run.playerActionTimer, seconds);
+
+  if (run.pet) {
+    run.pet.attackCooldownTimer = countdownAfterOffline(run.pet.attackCooldownTimer, seconds);
+    run.pet.actionTimer = countdownAfterOffline(run.pet.actionTimer, seconds);
+  }
+
+  if (run.mode === "summary" && !run.summary?.afkRaid) {
+    run.summaryTimer = countdownAfterOffline(run.summaryTimer, seconds);
+  }
+  if (run.mode === "police") {
+    run.policeTimer = countdownAfterOffline(run.policeTimer, seconds);
+  }
+  if (run.mode === "temporary" && run.temporaryStay) {
+    run.temporaryStay.remaining = countdownAfterOffline(run.temporaryStay.remaining, seconds);
+  }
+}
+
+function countdownAfterOffline(value, seconds) {
+  const current = Number(value || 0);
+  if (!Number.isFinite(current) || current <= 0) return 0;
+  return Math.max(0, current - seconds);
 }
 
 function applyOfflineClosedProgress(offlineSeconds) {
