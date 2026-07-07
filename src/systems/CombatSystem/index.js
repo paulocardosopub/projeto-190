@@ -1647,6 +1647,39 @@ export class CombatSystem {
   }
 }
 
+export function applyOfflineAfkRaidProgress(state, elapsedSeconds) {
+  const run = state?.run;
+  if (!run?.afkRaid || run.mode === "summary") {
+    return { seconds: 0, limitReached: false, summary: run?.summary || null };
+  }
+
+  const alreadyElapsed = Math.max(0, Number(run.afkElapsed || 0));
+  const remainingLimit = Math.max(0, AFK_RAID_MAX_SECONDS - alreadyElapsed);
+  const secondsToApply = Math.min(Math.max(0, Number(elapsedSeconds || 0)), remainingLimit);
+  const offlineCombat = new CombatSystem(state, {});
+
+  if (remainingLimit <= 0) {
+    offlineCombat.finishAfkRaid("limit");
+    return { seconds: 0, limitReached: true, summary: state.run?.summary || null };
+  }
+
+  let remaining = secondsToApply;
+  let safety = 0;
+  while (remaining > 0.0001 && state.run?.afkRaid && state.run.mode !== "summary" && safety < AFK_RAID_MAX_SECONDS + 10) {
+    const step = Math.min(1, remaining);
+    offlineCombat.update(step);
+    remaining -= step;
+    safety += 1;
+  }
+
+  const appliedSeconds = secondsToApply - Math.max(0, remaining);
+  return {
+    seconds: appliedSeconds,
+    limitReached: Boolean(state.run?.mode === "summary" && state.run.summary?.limitReached),
+    summary: state.run?.summary || null
+  };
+}
+
 function createRaidSummary(map, totalTargets = 0) {
   return {
     mapId: map?.id || null,

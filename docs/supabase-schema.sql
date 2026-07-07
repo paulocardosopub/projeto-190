@@ -263,6 +263,9 @@ set search_path = public, extensions
 as $$
 declare
   v_account_id uuid;
+  v_shop jsonb;
+  v_shop_id text;
+  v_now_ms numeric := floor(extract(epoch from clock_timestamp()) * 1000);
 begin
   select account_id into v_account_id
     from public.app_sessions
@@ -278,6 +281,41 @@ begin
   on conflict (account_id) do update
     set save_data = excluded.save_data,
         updated_at = now();
+
+  if jsonb_typeof(p_save_data #> '{playerShops,shops}') = 'array' then
+    select elem.value into v_shop
+      from jsonb_array_elements(coalesce(p_save_data #> '{playerShops,shops}', '[]'::jsonb)) as elem(value)
+      where elem.value->>'active' = 'true'
+        and public.app_shop_has_stock(elem.value)
+      limit 1;
+
+    if v_shop is null then
+      update public.app_player_shops
+        set active = false,
+            shop_data = shop_data || jsonb_build_object('active', false, 'updatedAt', v_now_ms),
+            updated_at = clock_timestamp()
+        where account_id = v_account_id
+          and active;
+    else
+      v_shop_id := nullif(v_shop->>'shopId', '');
+      if v_shop_id is not null then
+        v_shop := v_shop || jsonb_build_object(
+          'shopId', v_shop_id,
+          'ownerPlayerId', v_account_id::text,
+          'active', true,
+          'updatedAt', v_now_ms
+        );
+
+        insert into public.app_player_shops (shop_id, account_id, owner_player_id, shop_data, active, updated_at)
+        values (v_shop_id, v_account_id, v_account_id::text, v_shop, true, clock_timestamp())
+        on conflict (shop_id) do update
+          set shop_data = excluded.shop_data,
+              active = excluded.active,
+              updated_at = clock_timestamp()
+          where public.app_player_shops.account_id = v_account_id;
+      end if;
+    end if;
+  end if;
 
   return jsonb_build_object('ok', true);
 end;

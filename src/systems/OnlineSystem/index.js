@@ -10,6 +10,7 @@ const CITY_CHANNEL = "projeto190:city:initial";
 const MOVE_SEND_INTERVAL_MS = 120;
 const PRESENCE_TRACK_INTERVAL_MS = 5000;
 const SHOP_REFRESH_INTERVAL_MS = 15000;
+const SHOP_PUBLISH_RETRY_MS = 5000;
 const RECONNECT_BASE_DELAY_MS = 3200;
 const RECONNECT_MAX_DELAY_MS = 18000;
 const PRESENCE_GRACE_MS = 6500;
@@ -49,7 +50,9 @@ export class OnlineSystem {
     this.lastPresenceTrackAt = 0;
     this.lastShopRefreshAt = 0;
     this.lastPayoutClaimAt = 0;
+    this.lastShopPublishAttemptAt = 0;
     this.lastPublishedShopSignature = "";
+    this.pendingShopPublishSignature = "";
     this.lastMoveSignature = "";
     this.manualDisconnect = false;
     this.reconnectConfig = null;
@@ -389,15 +392,31 @@ export class OnlineSystem {
     const localShop = this.localActiveShopPayload();
     const signature = activeShopSignature(localShop);
     if (!force && signature === this.lastPublishedShopSignature) return;
-    this.lastPublishedShopSignature = signature;
+    const now = performance.now();
+    if (
+      !force &&
+      signature === this.pendingShopPublishSignature &&
+      now - this.lastShopPublishAttemptAt < SHOP_PUBLISH_RETRY_MS
+    ) {
+      return;
+    }
 
     if (this.provider === "local") {
       this.sendLocal({ type: "player:shop_snapshot", shop: localShop });
+      this.lastPublishedShopSignature = signature;
       return;
     }
 
     if (this.provider === "supabase") {
-      this.publishPersistentShop(localShop);
+      this.pendingShopPublishSignature = signature;
+      this.lastShopPublishAttemptAt = now;
+      this.publishPersistentShop(localShop).then((ok) => {
+        if (this.pendingShopPublishSignature !== signature) return;
+        if (ok) {
+          this.lastPublishedShopSignature = signature;
+          this.pendingShopPublishSignature = "";
+        }
+      });
       this.refreshPersistentShops(true);
     }
   }
@@ -872,13 +891,14 @@ export class OnlineSystem {
     this.claimPersistentShopPayouts(force);
   }
 
-  publishPersistentShop(shop) {
+  async publishPersistentShop(shop) {
     const token = activeSessionToken();
-    if (!token) return;
-    cloudRpc("app_upsert_player_shop", {
-      p_session_token: token,
-      p_shop: shop || null
-    }).then((result) => {
+    if (!token) return false;
+    try {
+      const result = await cloudRpc("app_upsert_player_shop", {
+        p_session_token: token,
+        p_shop: shop || null
+      });
       if (result?.shop) this.applyPublishedShopState(result.shop);
       if (result?.ok && result.shop) {
         this.playerShops = normalizeShopList([
@@ -888,7 +908,10 @@ export class OnlineSystem {
         this.syncStatePlayers();
         this.emit();
       }
-    }).catch(() => {});
+      return Boolean(result?.ok);
+    } catch {
+      return false;
+    }
   }
 
   applyPublishedShopState(shop) {

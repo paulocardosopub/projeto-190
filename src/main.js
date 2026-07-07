@@ -5,7 +5,7 @@ import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=zeca-actions-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemMaxTier, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-8";
-import { CombatSystem, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=shop-sync-2";
+import { CombatSystem, applyOfflineAfkRaidProgress, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=shop-sync-3";
 import { calculateStats, calculateStealChancePercent, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -77,8 +77,8 @@ import {
   saveGame,
   saveVisualCalibration,
   saveWindowLayout
-} from "./systems/SaveSystem/index.js?v=city-stable-1";
-import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=shop-sync-8";
+} from "./systems/SaveSystem/index.js?v=offline-1";
+import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=shop-sync-9";
 import {
   buyReceptadorOffer,
   ensureReceptadorStock,
@@ -333,6 +333,7 @@ const BACKGROUND_TICK_MS = 1000;
 const DETAILED_GAME_STEP_SECONDS = 0.05;
 const AFK_GAME_STEP_SECONDS = 1;
 const SIMPLE_GAME_STEP_SECONDS = 1;
+const OFFLINE_PROGRESS_MAX_SECONDS = 30 * 24 * 60 * 60;
 const AFK_UNLOCK_STAMINA_THRESHOLD = 10;
 const FRIEND_REQUEST_TTL_MS = 30 * 60 * 1000;
 const PET_TUTORIAL_FIRST_STEP = "pet_city";
@@ -4519,24 +4520,10 @@ function stopHideoutItemDrag() {
 
 function canvasPoint(event) {
   const rect = elements.canvas.getBoundingClientRect();
-  const cssWidth = elements.canvas.clientWidth || rect.width || elements.canvas.width;
-  const cssHeight = elements.canvas.clientHeight || rect.height || elements.canvas.height;
-  if (isForcedLandscapePortrait()) {
-    const visualX = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
-    const visualY = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
-    return {
-      x: (visualY / cssWidth) * elements.canvas.width,
-      y: ((cssHeight - visualX) / cssHeight) * elements.canvas.height
-    };
-  }
   return {
     x: ((event.clientX - rect.left) / rect.width) * elements.canvas.width,
     y: ((event.clientY - rect.top) / rect.height) * elements.canvas.height
   };
-}
-
-function isForcedLandscapePortrait() {
-  return Boolean(window.matchMedia?.("(orientation: portrait)")?.matches && isMobileWindowLayout());
 }
 
 function ensureHideoutEditorState() {
@@ -6256,6 +6243,7 @@ async function handlePlayerShopBuy(shop, drugType, quantity) {
   const amount = Math.max(1, Math.floor(Number(quantity || 1)));
   const cloudShop = online?.provider === "supabase" && shop?.ownerPlayerId !== (state.player.playerId || "local-player");
   if (cloudShop) {
+    ensurePlayerShopPurchaseSnapshot(shop);
     const preview = structuredClone(state);
     const preflight = previewShopPurchase(preview, preview.player.playerId, shop.shopId, drugType, amount);
     if (!preflight?.ok) {
@@ -6287,6 +6275,25 @@ async function handlePlayerShopBuy(shop, drugType, quantity) {
 
   const result = buyFromShop(state, state.player.playerId, shop.shopId, drugType, amount);
   handleShopResult(result);
+}
+
+function ensurePlayerShopPurchaseSnapshot(shop) {
+  if (!shop?.shopId) return;
+  const registry = normalizePlayerShopState(state);
+  const snapshot = structuredClone(shop);
+  const index = registry.shops.findIndex((candidate) => candidate.shopId === snapshot.shopId);
+  if (index < 0) {
+    registry.shops.push(snapshot);
+    syncShopNpcsForBusinessMap(state);
+    return;
+  }
+  registry.shops[index] = {
+    ...registry.shops[index],
+    ...snapshot,
+    npcSlotId: registry.shops[index].npcSlotId || snapshot.npcSlotId,
+    listings: Array.isArray(snapshot.listings) ? snapshot.listings : registry.shops[index].listings
+  };
+  syncShopNpcsForBusinessMap(state);
 }
 
 function broadcastPlayerShopUpdate() {
@@ -7234,6 +7241,7 @@ function normalizeState() {
     state.selectedVaultIndex = null;
   }
   normalizeProgressionSystems(state.player);
+  const offlineSeconds = offlineElapsedSeconds(state);
   normalizePets(state.player, { silent: true });
   state.player.petTutorialCompleted = Boolean(state.player.petTutorialCompleted || starterPetOwned());
   state.player.petTutorialSkipped = Boolean(state.player.petTutorialSkipped);
@@ -7267,7 +7275,6 @@ function normalizeState() {
     !state.player.afkRaidTutorialCompleted &&
     !state.player.afkRaidTutorialSkipped
   );
-  applyOfflinePassiveIncome(state);
   state.run ||= createNewGame(state.selectedPlayerId || DEFAULT_PLAYER_ID).run;
   state.run.playerDirection ||= "right";
   state.run.cityTargetX ??= null;
@@ -7310,9 +7317,52 @@ function normalizeState() {
   state.run.temporaryStay ??= null;
   state.run.summary ??= null;
   state.run.summaryTimer ||= 0;
+  applyOfflineClosedProgress(offlineSeconds);
+  applyOfflinePassiveIncome(state);
   normalizePlayerShopState(state);
   calculateProduction(state.player);
   syncShopNpcsForBusinessMap(state);
+}
+
+function offlineElapsedSeconds(sourceState) {
+  const now = Date.now();
+  const candidates = [
+    sourceState?.offlineSavedAt,
+    sourceState?.lastSavedAt,
+    sourceState?.player?.passiveVault?.lastUpdatedAt
+  ].map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0 && value <= now);
+  const lastSavedAt = candidates[0] || now;
+  return Math.min(OFFLINE_PROGRESS_MAX_SECONDS, Math.max(0, (now - lastSavedAt) / 1000));
+}
+
+function applyOfflineClosedProgress(offlineSeconds) {
+  if (!state?.player) return;
+  const seconds = Math.max(0, Number(offlineSeconds || 0));
+  state.offlineSavedAt = Date.now();
+  if (seconds <= 1) return;
+
+  const staminaRecovered = applyOfflineStaminaRecovery(seconds);
+  const afkResult = applyOfflineAfkRaidProgress(state, seconds);
+
+  if (staminaRecovered >= 1) {
+    addLog(state, `Stamina recuperada offline: +${Math.floor(staminaRecovered)}.`);
+  }
+  if (afkResult.seconds >= 60) {
+    addLog(state, `Roubo AFK processado offline por ${formatTime(Math.round(afkResult.seconds))}.`);
+  }
+}
+
+function applyOfflineStaminaRecovery(seconds) {
+  if (!state?.player || seconds <= 0) return 0;
+  normalizeProgressionSystems(state.player);
+  const current = Number(state.player.staminaAtual || 0);
+  if (current >= state.player.staminaMax) return 0;
+  const recovered = Math.min(
+    state.player.staminaMax - current,
+    SOCIAL_STAMINA_RECOVERY_PER_SECOND * seconds
+  );
+  state.player.staminaAtual = Math.min(state.player.staminaMax, current + recovered);
+  return recovered;
 }
 
 function shouldRestoreTutorialFirstRaidFlag(sourceState) {
@@ -7513,7 +7563,6 @@ window.addEventListener("blur", clearKeyboardMovement);
 window.addEventListener("resize", handleViewportChange);
 window.addEventListener("orientationchange", handleViewportChange);
 installMobileZoomBlock();
-installMobileLandscapeLock();
 document.addEventListener("contextmenu", (event) => {
   event.preventDefault();
 }, { capture: true });
@@ -7537,21 +7586,6 @@ function installMobileZoomBlock() {
   }, { passive: false });
   document.addEventListener("gesturestart", (event) => event.preventDefault(), { passive: false });
   document.addEventListener("dblclick", (event) => event.preventDefault(), { passive: false, capture: true });
-}
-
-function installMobileLandscapeLock() {
-  const tryLock = () => {
-    if (!isMobileWindowLayout()) return;
-    try {
-      const attempt = screen.orientation?.lock?.("landscape");
-      attempt?.catch?.(() => {});
-    } catch {
-      // Some mobile browsers only allow locking after fullscreen/PWA install.
-    }
-  };
-  tryLock();
-  document.addEventListener("pointerdown", tryLock, { once: true, capture: true });
-  document.addEventListener("touchstart", tryLock, { once: true, capture: true, passive: true });
 }
 
 elements.saveButton.addEventListener("click", () => {
