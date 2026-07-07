@@ -216,11 +216,7 @@ export class SpriteRenderer {
     if (!frame) return;
 
     const actionReferenceHeight = animation.actionReferenceHeights?.[action] || animation.referenceHeight;
-    const scaleBasis = frame.referenceHeight || (action === "idle" || action === "walk"
-      ? frame.bodyHeight
-      : action === "steal"
-        ? frame.referenceHeight || frame.bodyHeight
-        : actionReferenceHeight);
+    const scaleBasis = stableSpriteScaleBasis(frame, actionReferenceHeight);
     const scale = (height * pulse) / scaleBasis;
     const drawWidth = frame.width * scale;
     const drawHeight = frame.height * scale;
@@ -260,7 +256,7 @@ export class SpriteRenderer {
 
     const visualCalibration = motorcycleVisualCalibration(state, level);
     const targetHeight = playerHeight * (MOTORCYCLE_HEIGHT_RATIO_BY_LEVEL[level] || MOTORCYCLE_HEIGHT_RATIO_BY_LEVEL[1]) * visualCalibration.scale;
-    const scale = targetHeight / Math.max(1, frame.referenceHeight || frame.bodyHeight || frame.height);
+    const scale = targetHeight / Math.max(1, Number(frame.bodyHeight || frame.referenceHeight || frame.height) || 0);
     const drawWidth = frame.width * scale;
     const drawHeight = frame.height * scale;
     const mirrored = state.run.playerDirection === "left";
@@ -2129,6 +2125,15 @@ function motorcycleVisualCalibration(state, level) {
 
 function alphaAt(pixels, imageWidth, x, y) {
   return pixels[(y * imageWidth + x) * 4 + 3];
+}
+
+function stableSpriteScaleBasis(frame, referenceHeight) {
+  return Math.max(
+    1,
+    Number(referenceHeight) || 0,
+    Number(frame?.referenceHeight) || 0,
+    Number(frame?.bodyHeight) || 0
+  );
 }
 
 function median(values) {

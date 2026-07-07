@@ -169,7 +169,7 @@ import {
 } from "./systems/StaminaSystem/index.js?v=shop-sync-2";
 import { MOTORCYCLE_UNLOCK_LEVEL, getHouseConfig, getItemConfigById, getLandConfig, getMotorcycleConfig } from "./data/balance/index.js?v=shop-sync-2";
 import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=shop-sync-2";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=shop-sync-11";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=sprite-scale-1";
 import {
   renderCharacterSelect,
   renderConfigWindow,
