@@ -1,11 +1,11 @@
 import { DEFAULT_PLAYER_ID, PLAYERS } from "./data/players/index.js?v=players-16";
 import { EQUIPMENT_SLOTS, SLOT_LABELS } from "./data/equipment/index.js?v=gloves-1";
-import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=afk-unlock-1";
+import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=shop-sync-2";
 import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=zeca-actions-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
-import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemMaxTier, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-8";
-import { CombatSystem, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=afk-unlock-1";
+import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemMaxTier, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-8";
+import { CombatSystem, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=shop-sync-2";
 import { calculateStats, calculateStealChancePercent, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -41,7 +41,7 @@ import {
   sellNonFavoriteInventoryItems,
   unequipToInventory
 } from "./systems/InventorySystem/index.js?v=stack-1";
-import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=afk-unlock-1";
+import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=shop-sync-2";
 import {
   applyProfileToState,
   createAccount,
@@ -78,14 +78,14 @@ import {
   saveVisualCalibration,
   saveWindowLayout
 } from "./systems/SaveSystem/index.js?v=city-stable-1";
-import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=social-friends-1";
+import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=shop-sync-2";
 import {
   buyReceptadorOffer,
   ensureReceptadorStock,
   getReceptadorRefreshCost,
   getReceptadorRefreshSecondsLeft,
   refreshReceptadorStock
-} from "./systems/ShopSystem/index.js?v=stack-1";
+} from "./systems/ShopSystem/index.js?v=shop-sync-2";
 import {
   AUTO_RAID_UNLOCK_LEVEL,
   BUSINESS_CONFIG,
@@ -121,7 +121,7 @@ import {
   normalizePlayerShopState,
   syncOnlinePlayerShops,
   syncShopNpcsForBusinessMap
-} from "./systems/PlayerShopSystem/index.js";
+} from "./systems/PlayerShopSystem/index.js?v=shop-sync-2";
 import {
   CHARACTER_SELECT_TUTORIAL,
   TutorialOverlay,
@@ -162,18 +162,19 @@ import {
   staminaRaidBlockedMessage,
   staminaPercent,
   staminaState,
-  updatePassiveIncome
-} from "./systems/StaminaSystem/index.js?v=moto-garage-1";
-import { MOTORCYCLE_UNLOCK_LEVEL, getHouseConfig, getItemConfigById, getLandConfig, getMotorcycleConfig } from "./data/balance/index.js?v=asset-lock-1";
-import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=pets-manual-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=social-friends-1";
+  updatePassiveIncome,
+  motorcycleTutorialCleared
+} from "./systems/StaminaSystem/index.js?v=shop-sync-2";
+import { MOTORCYCLE_UNLOCK_LEVEL, getHouseConfig, getItemConfigById, getLandConfig, getMotorcycleConfig } from "./data/balance/index.js?v=shop-sync-2";
+import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=shop-sync-2";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=shop-sync-2";
 import {
   renderCharacterSelect,
   renderConfigWindow,
   renderInventoryWindow,
   renderVaultWindow,
   renderPanel
-} from "./ui/WindowSystem.js?v=moto-garage-1";
+} from "./ui/WindowSystem.js?v=shop-sync-2";
 
 const elements = {
   canvas: document.querySelector("#game-canvas"),
@@ -190,6 +191,8 @@ const elements = {
   raidTimerLabel: document.querySelector("#raid-timer-label"),
   raidCountLabel: document.querySelector("#raid-count-label"),
   raidCaughtRiskLabel: document.querySelector("#raid-caught-risk-label"),
+  raidAutoRepeatControl: document.querySelector("#raid-auto-repeat-control"),
+  raidAutoRepeatToggle: document.querySelector("#raid-auto-repeat-toggle"),
   raidSummary: document.querySelector("#raid-summary"),
   raidSummaryTitle: document.querySelector("#raid-summary-title"),
   raidSummaryMoney: document.querySelector("#raid-summary-money"),
@@ -318,6 +321,7 @@ const HIDEOUT_REST_FAST_HP_PER_SECOND = 0.1;
 const HIDEOUT_REST_SLOW_HP_PER_SECOND = 0.006;
 const HIDEOUT_REST_FAST_STAMINA_PER_SECOND = HIDEOUT_STAMINA_RECOVERY_CONFIG.nearHousePerMinute / 60;
 const HIDEOUT_REST_SLOW_STAMINA_PER_SECOND = HIDEOUT_STAMINA_RECOVERY_CONFIG.awayPerMinute / 60;
+const SOCIAL_STAMINA_RECOVERY_PER_SECOND = HIDEOUT_REST_SLOW_STAMINA_PER_SECOND * 0.5;
 const BACKGROUND_TICK_MS = 1000;
 const DETAILED_GAME_STEP_SECONDS = 0.05;
 const AFK_GAME_STEP_SECONDS = 1;
@@ -624,9 +628,17 @@ function completeCharacterSelection(playerId) {
     activeProfile = updateProfile(activeProfile.id, { characterId: playerId }) || activeProfile;
   }
 
-  if (state && characterSelectionMode === "existing") {
+  if (state && (characterSelectionMode === "existing" || characterSelectionMode === "appearance")) {
     state.selectedPlayerId = playerId;
     state.player.characterId = playerId;
+    if (characterSelectionMode === "appearance") {
+      hideCharacterSelection();
+      showToast("Aparencia atualizada.");
+      persistGame();
+      online?.sendMovement?.(true);
+      renderAll();
+      return;
+    }
   } else {
     state = createNewGame(playerId);
   }
@@ -916,7 +928,10 @@ function persistBeforeExit(event = null) {
   return undefined;
 }
 
-window.addEventListener("pagehide", () => persistGame({ keepalive: true }));
+window.addEventListener("pagehide", () => {
+  online?.disconnect();
+  persistGame({ keepalive: true });
+});
 window.addEventListener("beforeunload", persistBeforeExit);
 document.addEventListener("pointerdown", updateInventoryPointer);
 document.addEventListener("pointermove", updateInventoryPointer);
@@ -986,6 +1001,7 @@ function advanceGameStep(dt) {
   calculateProduction(state.player);
   syncOnlinePlayerShops(state, state.onlinePlayerShops);
   syncShopNpcsForBusinessMap(state);
+  updateSocialStaminaRecovery(dt);
   updateHideoutRestRecovery(dt);
   updateTutorialCityNpcArrival();
   updatePendingCityNpcArrival();
@@ -2087,6 +2103,22 @@ function canvasRectToViewport(canvasX, canvasY, canvasWidth, canvasHeight) {
   };
 }
 
+function updateSocialStaminaRecovery(dt) {
+  if (!state?.player || !socialStaminaRecoveryActive() || dt <= 0) return;
+  normalizeProgressionSystems(state.player);
+  const current = Number(state.player.staminaAtual || 0);
+  if (current >= state.player.staminaMax) return;
+  state.player.staminaAtual = Math.min(
+    state.player.staminaMax,
+    current + SOCIAL_STAMINA_RECOVERY_PER_SECOND * dt
+  );
+}
+
+function socialStaminaRecoveryActive() {
+  if (state.run?.afkRaid) return true;
+  return state.scene === "city" || state.scene === "idle";
+}
+
 function updateHideoutRestRecovery(dt) {
   if (!state?.player || !state?.run) return;
   if (state.scene !== "hideout" || state.run.mode !== "hideout") {
@@ -2182,6 +2214,7 @@ function syncHud() {
       elements.raidCaughtRiskLabel.textContent = `Ser pego: ${formatPercent(caughtRisk)}`;
     }
   }
+  syncRaidAutoRepeatControl(isRaid, isAfkRaid);
   elements.playerHpFill.style.width = `${Math.round(hpPercent * 100)}%`;
   elements.playerHp.textContent = `HP ${state.player.hp} / ${stats.maxHp}`;
   syncAfkRaidButton();
@@ -2219,6 +2252,17 @@ function syncAfkRaidButton() {
   elements.afkRaidToggle.textContent = active ? "Concluir" : "AFK";
   elements.afkRaidToggle.setAttribute("aria-label", active ? "Concluir roubo AFK" : "Roubar AFK");
   elements.afkRaidToggle.setAttribute("title", active ? "Concluir roubo AFK" : "Roubar AFK");
+}
+
+function syncRaidAutoRepeatControl(isRaid = null, isAfkRaid = null) {
+  if (!elements.raidAutoRepeatControl || !elements.raidAutoRepeatToggle) return;
+  const raidVisible = isRaid ?? (state.scene === "map" && state.run?.raidTimeLeft > 0 && state.run?.mode !== "returning");
+  const afkRaid = isAfkRaid ?? Boolean(state.run?.afkRaid);
+  const guidedFirstRaid = isTutorialFirstRaidRun();
+  const visible = Boolean(raidVisible && !afkRaid && !guidedFirstRaid && !state.run?.animationTest);
+  elements.raidAutoRepeatControl.classList.toggle("hidden", !visible);
+  elements.raidAutoRepeatToggle.checked = Boolean(state.settings?.autoRepeatRaid);
+  elements.raidAutoRepeatToggle.disabled = !visible;
 }
 
 function isAfkRaidActive() {
@@ -3074,7 +3118,6 @@ function panelCallbacks(close) {
       combat.enterHideout();
       renderAll();
     },
-    buyHideoutItem,
     restNow: () => {
       const result = restNow(state.player);
       handleResult(result);
@@ -3129,6 +3172,10 @@ function renderConfigPanel(container) {
     },
     logout: () => {
       disconnectActiveAccount("Conta desconectada.");
+    },
+    changeCharacter: () => {
+      elements.configWindow.classList.add("hidden");
+      showCharacterSelection("appearance");
     },
     resetGame: resetCurrentProgress
   });
@@ -4522,28 +4569,6 @@ function selectedHideoutItemTier(typeId) {
   return Math.max(1, Math.min(hideoutItemMaxTier(typeId), Number(editor.previewTiers?.[typeId] || state.player.hideoutItems?.[typeId] || 1)));
 }
 
-function buyHideoutItem(typeId) {
-  const type = hideoutItemType(typeId);
-  const currentTier = state.player.hideoutItems?.[type.id] || 0;
-  const maxTier = hideoutItemMaxTier(type.id);
-  if (currentTier >= maxTier) {
-    showToast(`${type.name} ja esta no tier maximo.`);
-    return;
-  }
-  const nextTier = currentTier + 1;
-  const price = hideoutItemCost(type.id, nextTier);
-  if (state.player.money < price) {
-    showToast(`Dinheiro insuficiente para ${type.name} T${nextTier}.`);
-    return;
-  }
-  state.player.money -= price;
-  state.player.hideoutItems[type.id] = nextTier;
-  ensureHideoutEditorState().previewTiers[type.id] = nextTier;
-  addLog(state, `${type.name} do esconderijo evoluiu para T${nextTier}.`);
-  showToast(`${type.name} T${nextTier} comprado.`);
-  renderAll();
-}
-
 function enableDockEditor() {
   const dock = elements.bottomDock;
   if (!dock) return;
@@ -5683,7 +5708,8 @@ function petShopRow(pet) {
   const price = petPrice(pet);
   const statusLabel = {
     "locked-system": `Libera no nivel ${PET_UNLOCK_LEVEL}`,
-    "locked-level": `Libera no nivel ${pet.requiredLevel}`,
+    "locked-discovery": `Encontre nos assaltos | compra no nivel ${pet.requiredLevel}`,
+    "locked-level": `Coracoes liberados | compra no nivel ${pet.requiredLevel}`,
     equipped: "Equipado",
     owned: "Comprado",
     claimable: "Disponivel gratis",
@@ -5916,8 +5942,7 @@ function renderPlayerShopBuyPanel(panel, npc) {
     button.addEventListener("click", () => {
       const drugType = button.dataset.buyPlayerShop;
       const input = panel.querySelector(`[data-buy-player-shop-qty="${drugType}"]`);
-      const result = buyFromShop(state, state.player.playerId, shop.shopId, drugType, Number(input?.value || 1));
-      handleShopResult(result);
+      handlePlayerShopBuy(shop, drugType, Number(input?.value || 1));
     });
   });
 }
@@ -6191,8 +6216,35 @@ function handleShopResult(result) {
   renderAll();
 }
 
+async function handlePlayerShopBuy(shop, drugType, quantity) {
+  const amount = Math.max(1, Math.floor(Number(quantity || 1)));
+  const cloudShop = online?.provider === "supabase" && shop?.ownerPlayerId !== (state.player.playerId || "local-player");
+  if (cloudShop) {
+    const preview = structuredClone(state);
+    const preflight = buyFromShop(preview, preview.player.playerId, shop.shopId, drugType, amount);
+    if (!preflight?.ok) {
+      handleShopResult(preflight);
+      return;
+    }
+
+    const cloudResult = await online.buyPlayerShop(shop.shopId, drugType, amount);
+    if (!cloudResult?.ok) {
+      handleShopResult({ ok: false, reason: cloudResult?.reason || "Estoque indisponivel." });
+      online.refreshPersistentShops?.(true);
+      return;
+    }
+  }
+
+  const result = buyFromShop(state, state.player.playerId, shop.shopId, drugType, amount);
+  if (result?.ok && cloudShop) {
+    online.refreshPersistentShops?.(true);
+  }
+  handleShopResult(result);
+}
+
 function broadcastPlayerShopUpdate() {
   online?.syncCityMembership?.();
+  online?.syncPlayerShops?.(true);
   online?.sendMovement?.(true);
 }
 
@@ -6223,7 +6275,7 @@ function formatMultiplier(value) {
 function renderBuyPanel(panel, npc) {
   const shop = ensureReceptadorStock(state);
   const refreshCost = getReceptadorRefreshCost(state);
-  const secondsLeft = getReceptadorRefreshSecondsLeft();
+  const secondsLeft = getReceptadorRefreshSecondsLeft(state);
   panel.innerHTML = `
     <header>
       <span class="eyebrow">${npc.shopName}</span>
@@ -6265,7 +6317,7 @@ function renderAssetPanel(panel, npc, type) {
       <h2>${title}</h2>
       <button type="button" class="close-button" data-shop-close aria-label="Fechar">X</button>
     </header>
-    <div class="asset-shop-list">
+    <div class="asset-shop-list ${type === "motorcycle" ? "motorcycle-shop-list" : ""}">
       ${options.map((asset) => assetShopRow(asset, type)).join("")}
     </div>
     <div class="shop-sell-footer">
@@ -6283,6 +6335,10 @@ function renderAssetPanel(panel, npc, type) {
   panel.querySelectorAll("[data-buy-motorcycle]").forEach((button) => {
     button.addEventListener("click", () => {
       const tier = Number(button.dataset.buyMotorcycle);
+      if (!motorcycleTutorialCleared(state.player) && !state.player.ownedMotorcycles.includes(tier)) {
+        showToast("Veja o tutorial das motos antes de comprar.");
+        return;
+      }
       handleAssetBuy(buyMotorcycle(state.player, tier), "motorcycle", tier);
     });
   });
@@ -6701,13 +6757,17 @@ function assetShopRow(asset, type) {
   const expected = expectedTutorialAssetPurchase(state);
   const isTutorialTarget = expected?.type === type && expected?.tier === asset.tier;
   const blockedByTutorial = Boolean(expected && !isTutorialTarget);
-  const disabled = blockedByTutorial || (!isTutorialTarget && (active || !unlocked || (!owned && state.player.money < asset.price)));
+  const motorcycleTutorialLocked = type === "motorcycle" && !owned && !motorcycleTutorialCleared(state.player);
+  const disabled = blockedByTutorial || motorcycleTutorialLocked || (!isTutorialTarget && (active || !unlocked || (!owned && state.player.money < asset.price)));
+  const statusText = motorcycleTutorialLocked
+    ? "Bloqueado: veja o tutorial das motos."
+    : unlocked ? "Disponivel" : assetRequirementText(asset, state.player);
   return `
-    <article class="asset-shop-row">
+    <article class="asset-shop-row ${type === "motorcycle" ? "motorcycle-shop-row" : ""}">
       <div>
         <h3>T${asset.tier} ${asset.name}</h3>
         <p>${assetStatsText(asset, type)}</p>
-        <small>${unlocked ? "Disponivel" : assetRequirementText(asset, state.player)}</small>
+        <small>${statusText}</small>
       </div>
       <button type="button" class="panel-action" ${action}="${asset.tier}" ${disabled ? "disabled" : ""}>
         ${active && isTutorialTarget ? "Confirmar" : active ? "Ativo" : owned ? "Ativar" : formatMoney(asset.price)}
@@ -6721,7 +6781,7 @@ function assetStatsText(asset, type) {
     return `Renda ${formatMoney(asset.passiveIncomePerMinute)}/min | Stamina +${asset.staminaMaxBonus} | Regen +${asset.staminaRegenBonus}/min`;
   }
   if (type === "motorcycle") {
-    return `Vel. assalto ${asset.speedMultiplier.toFixed(1)}x | Fuga policia ${formatPercent(asset.policeEscapeChance * 100)}`;
+    return `Vel ${asset.speedMultiplier.toFixed(1)}x | Fuga ${formatPercent(asset.policeEscapeChance * 100)}`;
   }
   return `Espaco ${asset.visualSpace} | Renda +${asset.passiveIncomeBonusPercent}% | Offline +${asset.offlineHoursBonus}h`;
 }
@@ -7078,6 +7138,7 @@ function normalizeState() {
   state.player.needsHideoutRest = Boolean(state.player.needsHideoutRest);
   normalizeDrugState(state.player);
   normalizeBusinessState(state.player);
+  normalizeProgressionSystems(state.player);
   HIDEOUT_ITEM_TYPES.forEach((item) => {
     state.settings.hideoutEditor.previewTiers[item.id] ||= state.player.hideoutItems[item.id] || 1;
   });
@@ -7465,14 +7526,33 @@ elements.raidReturnButton?.addEventListener("click", () => {
   renderAll();
 });
 
-elements.autoRepeatToggle?.addEventListener("change", () => {
+function updateAutoRepeatRaid(checked, sourceToggle = null) {
   if (isGuidedFirstRaidSummary()) {
     state.settings.autoRepeatRaid = false;
-    elements.autoRepeatToggle.checked = false;
+    if (sourceToggle) sourceToggle.checked = false;
     showToast("Auto repetir libera depois do tutorial.");
     return;
   }
-  state.settings.autoRepeatRaid = elements.autoRepeatToggle.checked;
+  state.settings.autoRepeatRaid = Boolean(checked);
+  if (elements.autoRepeatToggle && elements.autoRepeatToggle !== sourceToggle) {
+    elements.autoRepeatToggle.checked = state.settings.autoRepeatRaid;
+  }
+  if (elements.raidAutoRepeatToggle && elements.raidAutoRepeatToggle !== sourceToggle) {
+    elements.raidAutoRepeatToggle.checked = state.settings.autoRepeatRaid;
+  }
+  if (elements.autoRaidRepeatToggle && elements.autoRaidRepeatToggle !== sourceToggle) {
+    elements.autoRaidRepeatToggle.checked = state.settings.autoRepeatRaid;
+  }
+  persistGame();
   syncRaidSummary();
+  syncRaidAutoRepeatControl();
   showToast(state.settings.autoRepeatRaid ? "Auto repetir ativado." : "Auto repetir desativado.");
+}
+
+elements.autoRepeatToggle?.addEventListener("change", () => {
+  updateAutoRepeatRaid(elements.autoRepeatToggle.checked, elements.autoRepeatToggle);
+});
+
+elements.raidAutoRepeatToggle?.addEventListener("change", () => {
+  updateAutoRepeatRaid(elements.raidAutoRepeatToggle.checked, elements.raidAutoRepeatToggle);
 });

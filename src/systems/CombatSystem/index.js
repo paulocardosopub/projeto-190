@@ -1,4 +1,4 @@
-import { IDLE_MAPS, MAPS } from "../../data/maps/index.js?v=afk-unlock-1";
+import { IDLE_MAPS, MAPS } from "../../data/maps/index.js?v=shop-sync-2";
 import { SPRITES } from "../../data/assets.js?v=petshop-portal-1";
 import { NPC_ALERT_LINES } from "../../data/enemies/index.js?v=npc-crops-1";
 import { decorativeNpcsForIdleMap } from "../../data/decorativeNpcs/index.js?v=idle-npcs-1";
@@ -14,10 +14,10 @@ import {
   raidMotorcycleMoveSpeedMultiplier,
   raidMotorcyclePoliceEscapeChance,
   staminaRaidBlockedMessage
-} from "../StaminaSystem/index.js?v=moto-garage-1";
+} from "../StaminaSystem/index.js?v=shop-sync-2";
 import { confiscateDrugItems } from "../DrugSystem/index.js?v=stack-1";
 import { theftConfig } from "../../data/balance/index.js?v=phase1-1";
-import { getEquippedPet, normalizePets, petDamageForAttack } from "../../data/pets/index.js?v=pets-manual-1";
+import { PETS, discoverPet, getEquippedPet, nextPetToDiscover, normalizePets, petDamageForAttack } from "../../data/pets/index.js?v=shop-sync-2";
 
 const CHOICE_AUTO_FIGHT_SECONDS = 5;
 const ITEM_THEFT_CHAT_SECONDS = 5.5;
@@ -34,16 +34,19 @@ const AFK_RAID_ITEM_CHANCE_MULTIPLIER = 0.1;
 const AFK_RAID_STEAL_SECONDS = 0.85;
 const AFK_RAID_WAVE_GAP = 260;
 const AFK_RAID_CLEANUP_DISTANCE = 540;
+const AFK_RAID_INITIAL_PLAYER_X = 120;
+const AFK_RAID_SPAWN_AHEAD_DISTANCE = 1280;
 const POLICE_SIREN_SECONDS = 3.2;
 const CITY_SPAWN_X = 190;
 const HIDEOUT_SPAWN_X = 260;
-const RAID_DOG_ATTACK_CHANCE = 0.1;
+const RAID_DOG_ATTACK_CHANCE = 0.12;
+const RAID_DOG_DISCOVERY_CHANCE = 0.42;
+const RAID_NEXT_DOG_DISCOVERY_BONUS = 0.18;
 const RAID_DOG_TRIGGER_DISTANCE = 52;
 const RAID_DOG_ATTACK_SECONDS = 0.42;
 const RAID_DOG_HIT_AT_SECONDS = 0.2;
 const RAID_DOG_ATTACK_SPEED = 250;
 const RAID_DOG_FLEE_SPEED = 340;
-const RAID_DOG_PET_IDS = ["boxer", "doberman", "rottweiler", "cane-corso", "american-bully", "bull-terrier"];
 
 const POLICE_WARNINGS = [
   "Dessa vez ficou so no prejuizo. Na proxima, voce vai junto.",
@@ -349,7 +352,7 @@ export class CombatSystem {
     this.state.scene = "map";
     this.state.currentMapId = map.id;
     const npcs = createNpcWave(map);
-    const raidDogs = createRaidDogs(map, npcs);
+    const raidDogs = createRaidDogs(map, npcs, this.state.player);
     this.state.run = {
       mode: "seeking",
       playerX: 82,
@@ -400,7 +403,8 @@ export class CombatSystem {
   enterAfkRaid(options = {}) {
     const rewardMap = afkRewardMapForPlayer(this.state.player);
     const backgroundMap = options.backgroundMap || randomAfkBackgroundMap();
-    const npcs = createAfkNpcWave(rewardMap, 0, 380);
+    const playerX = AFK_RAID_INITIAL_PLAYER_X;
+    const npcs = createAfkNpcWave(rewardMap, 0, afkSpawnAheadX(playerX));
     const summary = createRaidSummary({ ...rewardMap, name: "Roubo AFK" }, 0);
     summary.afkRaid = true;
     summary.mapId = rewardMap.id;
@@ -415,7 +419,7 @@ export class CombatSystem {
     this.state.currentMapId = rewardMap.id;
     this.state.run = {
       mode: "afk-seeking",
-      playerX: 82,
+      playerX,
       playerDirection: "right",
       npcs,
       targetId: null,
@@ -474,6 +478,7 @@ export class CombatSystem {
     this.updateDamageNumbers(dt);
     this.updateItemTheftChats(dt);
     this.updateGroundLoots(dt);
+    this.updateNpcFleeLeft(dt);
     if (run.mode === "police") {
       this.updatePoliceConfiscation(dt);
       return;
@@ -589,8 +594,7 @@ export class CombatSystem {
   chooseFlee() {
     const target = this.targetNpc();
     if (target) {
-      target.alerted = false;
-      setNpcDirection(target, "right");
+      startNpcFleeLeft(target);
     }
     const run = this.state.run;
     run.choiceTimer = 0;
@@ -715,6 +719,7 @@ export class CombatSystem {
       const rewardResult = this.rewardTarget(false);
       if (rewardResult.itemStolen) {
         this.showItemTheftReaction(target);
+        startNpcFleeLeft(target);
       }
       this.finishTargetAfterSteal(target);
     } else {
@@ -838,7 +843,8 @@ export class CombatSystem {
   appendAfkNpcWave(map) {
     const run = this.state.run;
     const wave = Number(run.afkWave || 0);
-    const npcs = createAfkNpcWave(map, wave, Number(run.afkNextSpawnX || run.playerX + 360));
+    const startX = Math.max(Number(run.afkNextSpawnX || 0), afkSpawnAheadX(run.playerX));
+    const npcs = createAfkNpcWave(map, wave, startX);
     run.afkWave = wave + 1;
     run.afkNextSpawnX = afkNextSpawnX(npcs);
     run.npcs.push(...npcs);
@@ -996,6 +1002,18 @@ export class CombatSystem {
     this.state.run.mode = "seeking";
   }
 
+  updateNpcFleeLeft(dt) {
+    const npcs = this.state.run?.npcs;
+    if (!Array.isArray(npcs) || dt <= 0) return;
+    for (const npc of npcs) {
+      if (!npc?.fleeingLeft || npc.hidden) continue;
+      npc.x = Number(npc.x || 0) - dt * FLEE_SPEED * 0.72;
+      npc.walkPhase = Number(npc.walkPhase || 0) + dt;
+      setNpcDirection(npc, "left");
+      if (npc.x < -140) npc.hidden = true;
+    }
+  }
+
   showItemTheftReaction(target) {
     const line = randomItemTheftLine();
     this.state.run.itemTheftChats ||= [];
@@ -1062,8 +1080,7 @@ export class CombatSystem {
     }
 
     if (run.enemyHp <= 0) {
-      target.done = true;
-      target.alerted = false;
+      startNpcFleeLeft(target);
       run.enemy = null;
       run.enemyHp = 0;
       run.enemyMaxHp = 0;
@@ -1137,6 +1154,12 @@ export class CombatSystem {
         continue;
       }
 
+      if (dog.state === "hearts") {
+        dog.heartsTimer = Math.max(0, Number(dog.heartsTimer || 0) - dt);
+        if (dog.heartsTimer <= 0) startRaidDogFlee(dog, playerX);
+        continue;
+      }
+
       const drift = Math.sin(dog.walkPhase * 0.9) * dt * 9;
       dog.x = clamp(dog.x + drift, 120, SPRITES.background.width - 90);
       if (Math.abs(drift) > 0.02) dog.direction = drift >= 0 ? "right" : "left";
@@ -1145,6 +1168,9 @@ export class CombatSystem {
       if (Math.abs(playerX - dog.x) > RAID_DOG_TRIGGER_DISTANCE) continue;
 
       dog.checked = true;
+      if (this.tryDiscoverRaidDog(dog, playerX)) {
+        continue;
+      }
       if (Math.random() <= RAID_DOG_ATTACK_CHANCE) {
         startRaidDogAttack(dog, playerX);
         addLog(this.state, "Um cachorro de guarda avancou em voce!");
@@ -1154,6 +1180,25 @@ export class CombatSystem {
 
     run.raidDogs = run.raidDogs.filter((dog) => dog && !dog.done);
     return flowChanged;
+  }
+
+  tryDiscoverRaidDog(dog, playerX) {
+    const nextPet = nextPetToDiscover(this.state.player);
+    const isNextPet = nextPet?.id && dog.petId === nextPet.id;
+    const chance = RAID_DOG_DISCOVERY_CHANCE + (isNextPet ? RAID_NEXT_DOG_DISCOVERY_BONUS : 0);
+    if (Math.random() > chance) return false;
+
+    dog.state = "hearts";
+    dog.heartsTimer = 1.25;
+    dog.direction = dog.x >= playerX ? "left" : "right";
+    const result = discoverPet(this.state.player, dog.petId);
+    if (result?.ok) {
+      addLog(this.state, `${result.pet.name} soltou coracoes. Ele ficou liberado no Petshop.`);
+      this.hooks.onToast?.(`${result.pet.name} liberado no Petshop.`);
+      return true;
+    }
+    addLog(this.state, "Um cachorro soltou coracoes e fugiu.");
+    return true;
   }
 
   applyRaidDogHit(dog, map) {
@@ -1367,8 +1412,7 @@ export class CombatSystem {
     const run = this.state.run;
     const target = this.targetNpc();
     if (target) {
-      target.alerted = false;
-      setNpcDirection(target, "right");
+      startNpcFleeLeft(target);
     }
     run.choiceTimer = 0;
     run.targetId = null;
@@ -1390,8 +1434,7 @@ export class CombatSystem {
     const message = randomPoliceWarning();
     const target = this.targetNpc();
     if (target) {
-      target.alerted = false;
-      setNpcDirection(target, "left");
+      startNpcFleeLeft(target);
     }
 
     const confiscated = this.confiscateRaidLoot();
@@ -1657,14 +1700,19 @@ function afkNextSpawnX(npcs = []) {
   return (Number.isFinite(maxX) ? maxX : 380) + AFK_RAID_WAVE_GAP;
 }
 
+function afkSpawnAheadX(playerX) {
+  return Math.round(Number(playerX || 0) + AFK_RAID_SPAWN_AHEAD_DISTANCE);
+}
+
 export function policePrisonChanceForFight(battlesStarted = 0) {
   const count = Math.max(0, Number(battlesStarted || 0));
   if (count < POLICE_RISK_STARTS_AFTER_FIGHTS) return 0;
   return Math.min(1, (count - POLICE_RISK_STARTS_AFTER_FIGHTS + 1) * 0.1);
 }
 
-function createRaidDogs(map, npcs = []) {
-  const count = Math.random() < 0.52 ? 1 : 2;
+function createRaidDogs(map, npcs = [], player = null) {
+  const mapIndex = Math.max(1, Number(map?.index || 1));
+  const count = mapIndex <= 6 ? 2 : (Math.random() < 0.58 ? 1 : 2);
   const damage = averageEnemyDamage(map, npcs);
   const firstNpcX = Math.min(...npcs.map((npc) => Number(npc.x)).filter(Number.isFinite));
   const lastNpcX = Math.max(...npcs.map((npc) => Number(npc.x)).filter(Number.isFinite));
@@ -1678,7 +1726,7 @@ function createRaidDogs(map, npcs = []) {
     const x = clamp(minX + span * lane + jitter, 210, SPRITES.background.width - 110);
     return {
       id: `${map.id}-dog-${index}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-      petId: RAID_DOG_PET_IDS[(Number(map.index || 1) + index) % RAID_DOG_PET_IDS.length],
+      petId: chooseRaidDogPetId(player, map, index),
       x: Math.round(x),
       direction: index % 2 === 0 ? "left" : "right",
       state: "idle",
@@ -1688,6 +1736,33 @@ function createRaidDogs(map, npcs = []) {
       walkPhase: Math.random() * 10
     };
   });
+}
+
+function chooseRaidDogPetId(player, map, index = 0) {
+  const mapIndex = Math.max(1, Number(map?.index || 1));
+  const nextPet = nextPetToDiscover(player);
+  const maxNaturalPetIndex = Math.min(PETS.length - 1, Math.max(1, Math.floor((mapIndex + 2) / 3)));
+  const entries = [];
+
+  PETS.slice(0, maxNaturalPetIndex + 1).forEach((pet, petIndex) => {
+    entries.push({
+      pet,
+      weight: pet.id === nextPet?.id ? 9 : Math.max(1, 4 - Math.abs(maxNaturalPetIndex - petIndex))
+    });
+  });
+
+  if (nextPet && !entries.some((entry) => entry.pet.id === nextPet.id)) {
+    entries.push({ pet: nextPet, weight: 10 });
+  }
+
+  if (!entries.length) return PETS[index % PETS.length]?.id || "pinscher";
+  const total = entries.reduce((sum, entry) => sum + entry.weight, 0);
+  let roll = Math.random() * total;
+  for (const entry of entries) {
+    roll -= entry.weight;
+    if (roll <= 0) return entry.pet.id;
+  }
+  return entries[entries.length - 1].pet.id;
 }
 
 function averageEnemyDamage(map, npcs = []) {
@@ -1712,10 +1787,21 @@ function startRaidDogAttack(dog, playerX) {
   dog.direction = dog.x >= playerX ? "left" : "right";
 }
 
-function startRaidDogFlee(dog, playerX) {
+function startRaidDogFlee(dog) {
   dog.state = "fleeing";
-  dog.fleeDirection = dog.x >= playerX ? "right" : "left";
+  dog.fleeDirection = "left";
   dog.direction = dog.fleeDirection;
+}
+
+function startNpcFleeLeft(npc) {
+  if (!npc) return;
+  npc.done = true;
+  npc.robbed = true;
+  npc.alerted = false;
+  npc.alertLine = null;
+  npc.fleeingLeft = true;
+  npc.hidden = false;
+  setNpcDirection(npc, "left");
 }
 
 function randomAlertLine() {

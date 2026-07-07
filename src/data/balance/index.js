@@ -461,7 +461,7 @@ export const theftConfig = {
 
 export const npcShopConfig = {
   npcName: "Receptador",
-  refreshMs: 6 * 60 * 60 * 1000,
+  refreshMs: 15 * 60 * 1000,
   sellPercent: priceConfig.sellPercent,
   manualRefreshCostByMapTier: {
     1: 1000,
@@ -569,11 +569,11 @@ const motorcycleRequirements = [
 ];
 
 export const motorcyclesConfig = [
-  ["Scooter Antiga", 65000],
-  ["Moto de Entrega com Bau", 750000],
-  ["Moto Intermediaria Vermelha", 5200000],
-  ["Moto Esportiva Preta com Bau", 42000000],
-  ["Moto Esportiva 190", 360000000]
+  ["Scooter Antiga", 25000],
+  ["Moto de Entrega com Bau", 100000],
+  ["Moto Intermediaria Vermelha", 250000],
+  ["Moto Esportiva Preta com Bau", 500000],
+  ["Moto Esportiva 190", 1000000]
 ].map(([name, price], index) => ({
   id: `motorcycle-t${index + 1}`,
   tier: index + 1,

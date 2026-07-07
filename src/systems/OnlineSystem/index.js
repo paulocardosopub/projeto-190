@@ -1,12 +1,15 @@
 import { DEFAULT_PLAYER_ID } from "../../data/players/index.js?v=players-16";
 import { EQUIPMENT_SLOTS } from "../../data/equipment/index.js?v=gloves-1";
 import { itemPower } from "../EquipmentSystem/index.js?v=equipment-2";
+import { cloudRpc } from "../CloudSystem/index.js?v=city-stable-1";
+import { activeSessionToken } from "../AccountSystem/index.js?v=city-stable-1";
 
 const DEFAULT_URL = "ws://localhost:4191";
 const SUPABASE_JS_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/+esm";
 const CITY_CHANNEL = "projeto190:city:initial";
 const MOVE_SEND_INTERVAL_MS = 120;
 const PRESENCE_TRACK_INTERVAL_MS = 5000;
+const SHOP_REFRESH_INTERVAL_MS = 15000;
 const RECONNECT_BASE_DELAY_MS = 3200;
 const RECONNECT_MAX_DELAY_MS = 18000;
 const PRESENCE_GRACE_MS = 6500;
@@ -44,6 +47,9 @@ export class OnlineSystem {
     this.joinedCity = false;
     this.lastSentMoveAt = 0;
     this.lastPresenceTrackAt = 0;
+    this.lastShopRefreshAt = 0;
+    this.lastPayoutClaimAt = 0;
+    this.lastPublishedShopSignature = "";
     this.lastMoveSignature = "";
     this.manualDisconnect = false;
     this.reconnectConfig = null;
@@ -51,6 +57,8 @@ export class OnlineSystem {
     this.reconnectAttempts = 0;
     this.offlineToastShown = false;
     this.recentCityLeaves = new Map();
+    this.playerShops = [];
+    this.persistentShopSyncDisabled = false;
   }
 
   connect(options = null) {
@@ -138,6 +146,7 @@ export class OnlineSystem {
       this.offlineToastShown = false;
       this.sayHello();
       this.syncCityMembership();
+      this.syncPlayerShops(true);
       this.emit();
       this.hooks.onToast?.(ONLINE_MESSAGE);
     });
@@ -167,6 +176,8 @@ export class OnlineSystem {
       this.offlineToastShown = false;
       this.sayHello();
       this.syncCityMembership();
+      this.refreshPersistentShops(true);
+      this.syncPlayerShops(true);
       this.emit();
       if (!wasOnline) this.hooks.onToast?.(ONLINE_MESSAGE);
       return;
@@ -232,6 +243,8 @@ export class OnlineSystem {
     this.interpolatePlayers(dt);
     if (this.status !== "online") return;
     this.syncCityMembership();
+    this.refreshPersistentShops();
+    this.syncPlayerShops();
     if (this.joinedCity) this.sendMovement();
   }
 
@@ -314,6 +327,7 @@ export class OnlineSystem {
     if (message.type === "online:welcome") {
       this.clientId = message.id || this.clientId;
       this.shops = message.shops || this.shops;
+      this.playerShops = normalizeShopList(message.playerShops || this.playerShops);
     }
 
     if (message.type === "online:error") {
@@ -322,6 +336,7 @@ export class OnlineSystem {
 
     if (message.type === "city:presence") {
       this.players = message.players || [];
+      if (Array.isArray(message.playerShops)) this.playerShops = normalizeShopList(message.playerShops);
       (message.cityPlayers || []).forEach((player) => this.upsertCityPlayer(player));
     }
 
@@ -368,6 +383,49 @@ export class OnlineSystem {
       return;
     }
     if (this.joinedCity) this.leaveCity();
+  }
+
+  syncPlayerShops(force = false) {
+    const localShop = this.localActiveShopPayload();
+    const signature = activeShopSignature(localShop);
+    if (!force && signature === this.lastPublishedShopSignature) return;
+    this.lastPublishedShopSignature = signature;
+
+    if (this.provider === "local") {
+      this.sendLocal({ type: "player:shop_snapshot", shop: localShop });
+      return;
+    }
+
+    if (this.provider === "supabase") {
+      this.publishPersistentShop(localShop);
+      this.refreshPersistentShops(true);
+    }
+  }
+
+  async buyPlayerShop(shopId, drugType, quantity) {
+    if (this.provider !== "supabase") {
+      return { ok: false, reason: "Compra online indisponivel." };
+    }
+    const token = activeSessionToken();
+    if (!token) return { ok: false, reason: "Entre com conta online para comprar." };
+    const result = await cloudRpc("app_buy_player_shop", {
+      p_session_token: token,
+      p_shop_id: String(shopId || ""),
+      p_drug_type: String(drugType || ""),
+      p_quantity: Math.max(1, Math.floor(Number(quantity || 1)))
+    });
+    if (result?.ok) {
+      if (result.shop) {
+        this.playerShops = normalizeShopList([
+          result.shop,
+          ...this.playerShops.filter((shop) => shop.shopId !== result.shop.shopId)
+        ]);
+      }
+      this.refreshPersistentShops(true);
+      this.syncStatePlayers();
+      this.emit();
+    }
+    return result || { ok: false, reason: "Compra online indisponivel." };
   }
 
   joinCity() {
@@ -534,6 +592,11 @@ export class OnlineSystem {
     const areaId = String(raw.areaId || raw.area || CITY_AREA_ID);
     const sameArea = existing?.areaId === areaId;
     const timestamp = Number(raw.timestamp || Date.now());
+    const lastSeen = safeRemoteTimestamp(raw.lastSeen) || safeRemoteTimestamp(raw.timestamp) || Date.now();
+    if (Date.now() - lastSeen > PLAYER_REMOVE_AFTER_MS) {
+      this.removeCityPlayer(key);
+      return;
+    }
     if (this.wasRecentlyLeft(raw, timestamp)) return;
     if (existing?.lastRemoteTimestamp && timestamp < existing.lastRemoteTimestamp - 120) return;
     if (!this.removeOlderPlayerDuplicates(key, playerId, timestamp)) return;
@@ -562,7 +625,7 @@ export class OnlineSystem {
       timestamp,
       lastRemoteTimestamp: timestamp,
       missingSince: null,
-      lastSeen: Date.now()
+      lastSeen
     });
   }
 
@@ -763,13 +826,104 @@ export class OnlineSystem {
 
   syncStatePlayers() {
     const socialAreaId = this.currentSocialAreaId();
+    this.pruneStaleCityPlayers();
     const players = [...this.cityPlayers.values()];
     this.state.onlineCityPlayers = socialAreaId
       ? players.filter((player) => player.areaId === socialAreaId)
       : [];
-    this.state.onlinePlayerShops = players
-      .map((player) => normalizeActiveShop(player.activeShop))
-      .filter(Boolean);
+    this.state.onlinePlayerShops = uniqueShops([
+      ...this.playerShops,
+      ...players.map((player) => normalizeActiveShop(player.activeShop))
+    ]);
+  }
+
+  pruneStaleCityPlayers(now = Date.now()) {
+    for (const [key, player] of this.cityPlayers.entries()) {
+      if (
+        now - Number(player.lastSeen || 0) > PLAYER_REMOVE_AFTER_MS ||
+        (player.missingSince && now - player.missingSince > PRESENCE_GRACE_MS)
+      ) {
+        this.cityPlayers.delete(key);
+      }
+    }
+  }
+
+  refreshPersistentShops(force = false) {
+    if (this.provider !== "supabase" || this.persistentShopSyncDisabled) return;
+    const now = performance.now();
+    if (!force && now - this.lastShopRefreshAt < SHOP_REFRESH_INTERVAL_MS) return;
+    this.lastShopRefreshAt = now;
+    cloudRpc("app_list_player_shops")
+      .then((result) => {
+        if (result?.ok) {
+          this.playerShops = normalizeShopList(result.shops)
+            .map((shop) => ({ ...shop, remoteOnline: false, remoteLastSeen: Number(shop.remoteLastSeen || Date.now()) }));
+          this.syncStatePlayers();
+          this.emit();
+          return;
+        }
+        if (String(result?.reason || "").toLowerCase().includes("function")) {
+          this.persistentShopSyncDisabled = true;
+        }
+      })
+      .catch(() => {
+        this.persistentShopSyncDisabled = true;
+      });
+    this.claimPersistentShopPayouts(force);
+  }
+
+  publishPersistentShop(shop) {
+    const token = activeSessionToken();
+    if (!token) return;
+    cloudRpc("app_upsert_player_shop", {
+      p_session_token: token,
+      p_shop: shop || null
+    }).then((result) => {
+      if (result?.shop) this.applyPublishedShopState(result.shop);
+      if (result?.ok && result.shop) {
+        this.playerShops = normalizeShopList([
+          result.shop,
+          ...this.playerShops.filter((candidate) => candidate.shopId !== result.shop.shopId)
+        ]);
+        this.syncStatePlayers();
+        this.emit();
+      }
+    }).catch(() => {});
+  }
+
+  applyPublishedShopState(shop) {
+    if (!shop?.shopId || !this.state?.playerShops?.shops) return;
+    const local = this.state.playerShops.shops.find((candidate) => candidate.shopId === shop.shopId);
+    if (!local) return;
+    local.listings = Array.isArray(shop.listings) ? shop.listings : local.listings;
+    local.grossSales = Math.max(Number(local.grossSales || 0), Number(shop.grossSales || 0));
+    local.sellerRevenue = Math.max(Number(local.sellerRevenue || 0), Number(shop.sellerRevenue || 0));
+    local.salesCount = Math.max(Number(local.salesCount || 0), Number(shop.salesCount || 0));
+    local.updatedAt = Math.max(Number(local.updatedAt || 0), Number(shop.updatedAt || Date.now()));
+    if (shop.active === false || !local.listings.some((listing) => Number(listing.quantity || 0) > 0)) {
+      local.active = false;
+      local.closedAt ||= Date.now();
+      local.closeReason ||= "sold-out";
+      if (this.state.player?.activeShopId === local.shopId) this.state.player.activeShopId = null;
+      this.hooks.onToast?.("Sua lojinha esgotou o estoque.");
+    }
+  }
+
+  claimPersistentShopPayouts(force = false) {
+    const token = activeSessionToken();
+    if (!token) return;
+    const now = performance.now();
+    if (!force && now - this.lastPayoutClaimAt < SHOP_REFRESH_INTERVAL_MS) return;
+    this.lastPayoutClaimAt = now;
+    cloudRpc("app_claim_player_shop_payouts", {
+      p_session_token: token
+    }).then((result) => {
+      const amount = Math.max(0, Math.floor(Number(result?.amount || 0)));
+      if (!result?.ok || amount <= 0) return;
+      this.state.player.money = Math.max(0, Math.floor(Number(this.state.player.money || 0))) + amount;
+      this.hooks.onToast?.(`Vendas da lojinha: +R$ ${amount}.`);
+      this.emit();
+    }).catch(() => {});
   }
 
   isInCity() {
@@ -899,6 +1053,27 @@ function loadSupabaseModule() {
   return supabaseModulePromise;
 }
 
+function normalizeShopList(shops) {
+  return uniqueShops((Array.isArray(shops) ? shops : []).map(normalizeActiveShop));
+}
+
+function uniqueShops(shops) {
+  const seen = new Set();
+  return (Array.isArray(shops) ? shops : [])
+    .filter(Boolean)
+    .filter((shop) => {
+      if (!shop.shopId || seen.has(shop.shopId)) return false;
+      seen.add(shop.shopId);
+      return true;
+    });
+}
+
+function safeRemoteTimestamp(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return 0;
+  return number;
+}
+
 function createClientId() {
   if (crypto?.randomUUID) return `client-${crypto.randomUUID()}`;
   return `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -937,7 +1112,9 @@ function normalizeActiveShop(shop) {
     listings,
     grossSales: Math.max(0, Math.floor(Number(shop.grossSales || 0))),
     sellerRevenue: Math.max(0, Math.floor(Number(shop.sellerRevenue || 0))),
-    salesCount: Math.max(0, Math.floor(Number(shop.salesCount || 0)))
+    salesCount: Math.max(0, Math.floor(Number(shop.salesCount || 0))),
+    remoteOnline: shop.remoteOnline !== false,
+    remoteLastSeen: safeRemoteTimestamp(shop.remoteLastSeen)
   };
 }
 

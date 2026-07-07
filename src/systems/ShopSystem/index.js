@@ -3,24 +3,29 @@ import {
   getShopTierForHighestMap,
   itemsConfig,
   npcShopConfig
-} from "../../data/balance/index.js";
+} from "../../data/balance/index.js?v=shop-sync-2";
 import { addItem, createItem } from "../InventorySystem/index.js?v=stack-1";
 
 export function ensureReceptadorStock(state, force = false) {
   const shop = state.player.receptadorShop ||= {};
+  const now = Date.now();
   const highestMapUnlocked = state.player.highestMapUnlocked || 1;
   const shopTier = getShopTierForHighestMap(highestMapUnlocked);
-  const windowKey = currentShopWindowKey();
+  const nextRefreshAt = Number(shop.nextRefreshAt || 0);
+  const expired = nextRefreshAt <= now;
 
   if (
     force ||
-    shop.windowKey !== windowKey ||
+    expired ||
     shop.shopTier !== shopTier ||
     !Array.isArray(shop.stock)
   ) {
+    shop.manualRefreshCounter = Number(shop.manualRefreshCounter || 0);
+    const windowKey = `${Math.floor(now / npcShopConfig.refreshMs)}:${shop.manualRefreshCounter}`;
     shop.windowKey = windowKey;
     shop.shopTier = shopTier;
-    shop.manualRefreshCounter ||= 0;
+    shop.refreshedAt = now;
+    shop.nextRefreshAt = now + npcShopConfig.refreshMs;
     shop.stock = generateStock(highestMapUnlocked, `${windowKey}:${shopTier}:${shop.manualRefreshCounter}`);
   }
 
@@ -71,9 +76,11 @@ export function getReceptadorRefreshCost(state) {
   return npcShopConfig.manualRefreshCostByMapTier[shopTier] || 0;
 }
 
-export function getReceptadorRefreshSecondsLeft() {
-  const elapsed = Date.now() % npcShopConfig.refreshMs;
-  return Math.ceil((npcShopConfig.refreshMs - elapsed) / 1000);
+export function getReceptadorRefreshSecondsLeft(state = null) {
+  const now = Date.now();
+  const nextRefreshAt = Number(state?.player?.receptadorShop?.nextRefreshAt || 0);
+  if (nextRefreshAt > now) return Math.ceil((nextRefreshAt - now) / 1000);
+  return Math.ceil(npcShopConfig.refreshMs / 1000);
 }
 
 function generateStock(highestMapUnlocked, seedText) {
@@ -113,10 +120,6 @@ function generateStock(highestMapUnlocked, seedText) {
   }
 
   return stock;
-}
-
-function currentShopWindowKey() {
-  return Math.floor(Date.now() / npcShopConfig.refreshMs);
 }
 
 function rollWeighted(entries, rng) {

@@ -52,19 +52,31 @@ export function syncOnlinePlayerShops(state, shops = [], now = Date.now()) {
   const slotIds = BUSINESS_CONFIG.shopSlots.map((slot) => slot.id);
   const remoteShops = [];
   const remoteShopIds = new Set();
+  const incomingShops = (Array.isArray(shops) ? shops : [])
+    .map((shop) => normalizeShop({
+      ...shop,
+      active: true,
+      remoteOnline: shop.remoteOnline !== false,
+      remoteLastSeen: now
+    }, now))
+    .filter((shop) => shop?.active);
   const nextFreeSlot = (preferredSlot) => {
     if (slotIds.includes(preferredSlot) && !usedSlots.has(preferredSlot)) return preferredSlot;
     return slotIds.find((slotId) => !usedSlots.has(slotId));
   };
 
-  (Array.isArray(shops) ? shops : []).forEach((shop) => {
-    const normalized = normalizeShop({
-      ...shop,
-      active: true,
+  incomingShops.forEach((normalized) => {
+    if (normalized.ownerPlayerId !== localOwnerId) return;
+    const local = localShops.find((shop) => shop.shopId === normalized.shopId);
+    if (!local) return;
+    Object.assign(local, mergeRemoteShopSnapshot(local, normalized, now), {
+      npcSlotId: local.npcSlotId || normalized.npcSlotId,
       remoteOnline: true,
       remoteLastSeen: now
-    }, now);
-    if (!normalized?.active) return;
+    });
+  });
+
+  incomingShops.forEach((normalized) => {
     if (!normalized.ownerPlayerId || normalized.ownerPlayerId === localOwnerId) return;
     if (localShopIds.has(normalized.shopId) || remoteShopIds.has(normalized.shopId)) return;
 
@@ -76,7 +88,7 @@ export function syncOnlinePlayerShops(state, shops = [], now = Date.now()) {
     if (!preferredSlot) return;
 
     merged.npcSlotId = preferredSlot;
-    merged.remoteOnline = true;
+    merged.remoteOnline = normalized.remoteOnline;
     merged.remoteLastSeen = now;
     usedSlots.add(preferredSlot);
     remoteShopIds.add(merged.shopId);

@@ -8,7 +8,7 @@ import {
   getMotorcycleConfig,
   passiveIncomeConfig,
   staminaConfig
-} from "../../data/balance/index.js?v=asset-lock-1";
+} from "../../data/balance/index.js?v=shop-sync-2";
 
 export const HIDEOUT_REST_COOLDOWN_MS = 30 * 60 * 1000;
 
@@ -39,9 +39,9 @@ export function normalizeProgressionSystems(player) {
   player.passiveVault.amount ||= 0;
   player.passiveVault.accumulatedSeconds ||= 0;
   player.passiveVault.lastUpdatedAt ||= Date.now();
-  if (player.hideoutItems?.vehicle) {
-    player.hideoutItems.vehicle = Math.max(1, Math.min(5, Number(player.hideoutItems.vehicle) || 1));
-  }
+  player.hideoutItems ||= {};
+  player.hideoutItems.house = Number(player.casaAtual || 0);
+  player.hideoutItems.vehicle = Number(player.equippedMotorcycleLevel || 0);
 }
 
 export function calculateStaminaMax(player) {
@@ -166,7 +166,7 @@ export function buyHouse(player, tier) {
   player.ownedHouses.push(house.tier);
   player.casaAtual = house.tier;
   player.hideoutItems ||= {};
-  player.hideoutItems.house = Math.max(Number(player.hideoutItems.house || 0), house.tier);
+  player.hideoutItems.house = house.tier;
   updateStaminaDerivedStats(player);
   return { ok: true, message: `${house.name} comprada e ativada.` };
 }
@@ -183,6 +183,7 @@ export function buyMotorcycle(player, tier) {
   if (!hasOwnedLand(player)) return { ok: false, reason: "Voce precisa de um terreno mocado antes." };
   if (!canUnlockAsset(player, motorcycle)) return { ok: false, reason: assetRequirementText(motorcycle, player) };
   if (player.ownedMotorcycles.includes(motorcycle.tier)) return activateMotorcycle(player, motorcycle.tier);
+  if (!motorcycleTutorialCleared(player)) return { ok: false, reason: "Veja o tutorial das motos antes de comprar." };
   if (player.money < motorcycle.price) return { ok: false, reason: "Moedas insuficientes para comprar essa moto." };
 
   player.money -= motorcycle.price;
@@ -194,7 +195,7 @@ export function buyMotorcycle(player, tier) {
   player.hasMotorcycleEquipped = true;
   player.carroAtual = motorcycle.tier;
   player.hideoutItems ||= {};
-  player.hideoutItems.vehicle = Math.max(Number(player.hideoutItems.vehicle || 0), motorcycle.tier);
+  player.hideoutItems.vehicle = motorcycle.tier;
   return { ok: true, message: `${motorcycle.name} comprada e equipada.` };
 }
 
@@ -217,7 +218,7 @@ export function activateHouse(player, tier) {
   if (!player.ownedHouses.includes(Number(tier))) return { ok: false, reason: "Voce ainda nao possui essa casa." };
   player.casaAtual = Number(tier);
   player.hideoutItems ||= {};
-  player.hideoutItems.house = Math.max(Number(player.hideoutItems.house || 0), Number(tier));
+  player.hideoutItems.house = Number(tier);
   updateStaminaDerivedStats(player);
   return { ok: true, message: `${getHouseConfig(tier)?.name || "Casa"} ativada.` };
 }
@@ -236,7 +237,7 @@ export function activateMotorcycle(player, tier) {
   player.hasMotorcycleEquipped = true;
   player.carroAtual = safeTier;
   player.hideoutItems ||= {};
-  player.hideoutItems.vehicle = Math.max(Number(player.hideoutItems.vehicle || 0), safeTier);
+  player.hideoutItems.vehicle = safeTier;
   return { ok: true, message: `${getMotorcycleConfig(tier)?.name || "Moto"} equipada.` };
 }
 
@@ -336,6 +337,10 @@ export function motorcyclesUnlocked(player) {
   return playerLevel(player) >= MOTORCYCLE_UNLOCK_LEVEL;
 }
 
+export function motorcycleTutorialCleared(player) {
+  return Boolean(player?.motorcycleTutorialCompleted || player?.motorcycleTutorialSkipped);
+}
+
 export function motorcycleSpeedMultiplier(level) {
   return getMotorcycleConfig(level)?.speedMultiplier || 1;
 }
@@ -399,7 +404,6 @@ function normalizeOwnedMotorcycles(player) {
   }
   migrated.push(player.equippedMotorcycleLevel || player.motoAtual || 0);
   migrated.push(motorcycleTierFromLegacyCarTier(player.carroAtual));
-  migrated.push(player.hideoutItems?.vehicle || 0);
   if (!motorcyclesUnlocked(player)) return [];
   return [...new Set(migrated.map(normalizeMotorcycleTier).filter(Boolean))]
     .sort((a, b) => a - b);
@@ -409,8 +413,7 @@ function normalizeEquippedMotorcycle(player) {
   if (!motorcyclesUnlocked(player)) return null;
   const raw = player.equippedMotorcycleLevel
     || player.motoAtual
-    || motorcycleTierFromLegacyCarTier(player.carroAtual)
-    || player.hideoutItems?.vehicle;
+    || motorcycleTierFromLegacyCarTier(player.carroAtual);
   const safeTier = normalizeMotorcycleTier(raw);
   if (!safeTier) return null;
   return player.ownedMotorcycles.includes(safeTier) ? safeTier : null;

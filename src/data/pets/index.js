@@ -1,4 +1,4 @@
-import { getHouseConfig, getMotorcycleConfig } from "../balance/index.js?v=phase1-1";
+import { getHouseConfig, getMotorcycleConfig } from "../balance/index.js?v=shop-sync-2";
 
 export const PET_UNLOCK_LEVEL = 5;
 export const STARTER_PET_ID = "pinscher";
@@ -49,9 +49,12 @@ export function normalizePets(player, options = {}) {
   if (!player) return [];
   const messages = [];
   const owned = new Set(Array.isArray(player.petsOwned) ? player.petsOwned.filter((id) => getPetById(id)) : []);
+  const discovered = new Set(Array.isArray(player.petDiscoveryIds) ? player.petDiscoveryIds.filter((id) => getPetById(id)) : []);
   const level = playerLevel(player);
   const shouldUnlock = level >= PET_UNLOCK_LEVEL;
 
+  discovered.add(STARTER_PET_ID);
+  owned.forEach((id) => discovered.add(id));
   player.petSystemUnlocked = Boolean(player.petSystemUnlocked || shouldUnlock);
   if (!player.petStarterClaimed && owned.has(STARTER_PET_ID)) {
     owned.delete(STARTER_PET_ID);
@@ -62,6 +65,7 @@ export function normalizePets(player, options = {}) {
   }
 
   player.petsOwned = [...owned];
+  player.petDiscoveryIds = [...discovered];
   if (!shouldUnlock || !owned.has(player.equippedPetId)) player.equippedPetId = null;
   player.lastPetFollowDirection = player.lastPetFollowDirection === "left" ? "left" : "right";
   return messages;
@@ -72,8 +76,9 @@ export function buyPet(player, petId) {
   const pet = getPetById(petId);
   if (!pet) return { ok: false, reason: "Pet nao encontrado." };
   if (!petsUnlocked(player)) return { ok: false, reason: "Pets liberados no nivel 5." };
-  if (playerLevel(player) < pet.requiredLevel) return { ok: false, reason: `${pet.name} libera no nivel ${pet.requiredLevel}.` };
   if (player.petsOwned.includes(pet.id)) return { ok: false, reason: `${pet.name} ja esta com voce.` };
+  if (!petDiscovered(player, pet)) return { ok: false, reason: `${pet.name} precisa soltar coracoes nos assaltos primeiro.` };
+  if (playerLevel(player) < pet.requiredLevel) return { ok: false, reason: `${pet.name} libera no nivel ${pet.requiredLevel}.` };
 
   const price = petPrice(pet);
   if (price > 0 && Number(player.money || 0) < price) return { ok: false, reason: `Dinheiro insuficiente para ${pet.name}.` };
@@ -116,6 +121,30 @@ export function getEquippedPet(player) {
   return pet;
 }
 
+export function discoverPet(player, petId) {
+  normalizePets(player, { silent: true });
+  const pet = getPetById(petId);
+  if (!pet) return { ok: false, reason: "Pet nao encontrado." };
+  if (petDiscovered(player, pet)) return { ok: false, alreadyDiscovered: true, pet };
+  player.petDiscoveryIds.push(pet.id);
+  return { ok: true, pet, message: `${pet.name} soltou coracoes e ficou liberado no Petshop.` };
+}
+
+export function petDiscovered(player, petOrId) {
+  const petId = typeof petOrId === "string" ? petOrId : petOrId?.id;
+  if (!petId) return false;
+  if (petId === STARTER_PET_ID) return true;
+  return Boolean(
+    player?.petDiscoveryIds?.includes(petId) ||
+    player?.petsOwned?.includes(petId)
+  );
+}
+
+export function nextPetToDiscover(player) {
+  normalizePets(player, { silent: true });
+  return PETS.find((pet) => pet.id !== STARTER_PET_ID && !petDiscovered(player, pet)) || null;
+}
+
 export function petsUnlocked(player) {
   return Boolean(player?.petSystemUnlocked && playerLevel(player) >= PET_UNLOCK_LEVEL);
 }
@@ -141,10 +170,11 @@ export function petPrice(pet) {
 }
 
 export function petStatus(player, pet) {
-  if (!petsUnlocked(player)) return "locked-system";
-  if (playerLevel(player) < pet.requiredLevel) return "locked-level";
   if (player.equippedPetId === pet.id) return "equipped";
   if (player.petsOwned?.includes(pet.id)) return "owned";
+  if (!petsUnlocked(player)) return "locked-system";
+  if (!petDiscovered(player, pet)) return "locked-discovery";
+  if (playerLevel(player) < pet.requiredLevel) return "locked-level";
   return petPrice(pet) <= 0 ? "claimable" : "available";
 }
 

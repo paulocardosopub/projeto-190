@@ -5,6 +5,7 @@ import { WebSocketServer } from "ws";
 const PORT = Number(process.env.PORT || 4191);
 const clients = new Map();
 const cityPlayers = new Map();
+const activePlayerShops = new Map();
 const MOVE_MIN_INTERVAL_MS = 45;
 const MAX_MOVE_SPEED = 260;
 const INACTIVE_TIMEOUT_MS = 30_000;
@@ -41,7 +42,7 @@ wss.on("connection", (socket) => {
     socket
   });
 
-  send(socket, { type: "online:welcome", id, shops });
+  send(socket, { type: "online:welcome", id, shops, playerShops: playerShopSnapshot() });
   broadcastPresence();
 
   socket.on("message", (raw) => {
@@ -78,6 +79,11 @@ wss.on("connection", (socket) => {
 
     if (message.type === "player:leave_city") {
       leaveCity(id);
+      return;
+    }
+
+    if (message.type === "player:shop_snapshot") {
+      updatePlayerShop(id, client, message.shop);
       return;
     }
 
@@ -155,6 +161,7 @@ function joinCity(socketId, client, message) {
     lastMoveAt: 0,
     lastSeen: Date.now()
   });
+  updatePlayerShop(socketId, client, player.activeShop, { silent: true });
 
   send(client.socket, {
     type: "city:players_snapshot",
@@ -199,6 +206,7 @@ function moveCityPlayer(socketId, client, message) {
   current.lastSeen = now;
   client.area = current.areaId || client.area;
   client.level = current.level || client.level;
+  updatePlayerShop(socketId, client, current.activeShop, { silent: true });
 
   broadcastToOthers(socketId, {
     type: current.isMoving ? "city:player_moved" : "city:player_stopped",
@@ -233,16 +241,45 @@ function removeInactiveCityPlayers() {
   broadcastPresence();
 }
 
+function updatePlayerShop(socketId, client, shop, options = {}) {
+  const normalized = sanitizeActiveShop(shop);
+  const ownerId = normalized?.ownerPlayerId || client.publicPlayerId;
+  if (!normalized) {
+    for (const [shopId, current] of activePlayerShops.entries()) {
+      if (current.ownerPlayerId === ownerId || current.socketId === socketId) activePlayerShops.delete(shopId);
+    }
+    if (!options.silent) broadcastPresence();
+    return;
+  }
+
+  activePlayerShops.set(normalized.shopId, {
+    ...normalized,
+    socketId,
+    remoteOnline: cityPlayers.has(socketId),
+    remoteLastSeen: Date.now()
+  });
+  if (!options.silent) broadcastPresence();
+}
+
 function broadcastPresence() {
   broadcast({
     type: "city:presence",
     players: [...clients.values()].map(({ socket, sessionToken, ...player }) => player),
-    cityPlayers: citySnapshot()
+    cityPlayers: citySnapshot(),
+    playerShops: playerShopSnapshot()
   });
 }
 
 function citySnapshot() {
   return [...cityPlayers.values()].map(publicCityPlayer);
+}
+
+function playerShopSnapshot() {
+  return [...activePlayerShops.values()].map((shop) => ({
+    ...shop,
+    remoteOnline: cityPlayers.has(shop.socketId),
+    remoteLastSeen: shop.remoteLastSeen || Date.now()
+  }));
 }
 
 function publicCityPlayer(player) {

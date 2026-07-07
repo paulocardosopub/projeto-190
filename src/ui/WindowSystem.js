@@ -1,10 +1,9 @@
-import { IDLE_MAPS, MAPS, MAP_TIERS } from "../data/maps/index.js?v=petshop-portal-1";
+import { IDLE_MAPS, MAPS, MAP_TIERS } from "../data/maps/index.js?v=shop-sync-2";
 import { DEFAULT_PLAYER_ID, PLAYERS } from "../data/players/index.js?v=players-16";
 import { EQUIPMENT_SLOTS, SLOT_LABELS } from "../data/equipment/index.js?v=gloves-1";
-import { HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemMaxTier } from "../data/hideoutItems/index.js";
-import { calculateStats, formatStat, statLabel } from "../systems/EquipmentSystem/index.js?v=equipment-2";
+import { calculateStats, calculateStealChancePercent, formatStat, statLabel } from "../systems/EquipmentSystem/index.js?v=equipment-2";
 import { ITEM_STACK_LIMIT, itemQuantity } from "../systems/InventorySystem/index.js?v=stack-1";
-import { PETS, PET_UNLOCK_LEVEL, petsUnlocked } from "../data/pets/index.js?v=pets-1";
+import { PETS, PET_UNLOCK_LEVEL, petsUnlocked } from "../data/pets/index.js?v=shop-sync-2";
 import {
   assetRequirementText,
   canUnlockAsset,
@@ -14,8 +13,8 @@ import {
   hideoutRestCooldown,
   staminaPercent,
   staminaState
-} from "../systems/StaminaSystem/index.js?v=moto-garage-1";
-import { getHouseConfig, getLandConfig, getMotorcycleConfig } from "../data/balance/index.js?v=asset-lock-1";
+} from "../systems/StaminaSystem/index.js?v=shop-sync-2";
+import { getHouseConfig, getLandConfig, getMotorcycleConfig } from "../data/balance/index.js?v=shop-sync-2";
 
 const BACKPACK_PAGE_SIZE = 36;
 const BACKPACK_PAGE_COUNT = 4;
@@ -317,9 +316,6 @@ export function renderPanel(container, type, state, renderer, callbacks) {
   container.querySelectorAll("[data-shop-visit]").forEach((button) => {
     button.addEventListener("click", () => callbacks.visitShop(button.dataset.shopVisit));
   });
-  container.querySelectorAll("[data-buy-hideout-item]").forEach((button) => {
-    button.addEventListener("click", () => callbacks.buyHideoutItem(button.dataset.buyHideoutItem));
-  });
   container.querySelector("[data-hideout-rest]")?.addEventListener("click", callbacks.restNow);
   container.querySelector("[data-vault-collect]")?.addEventListener("click", callbacks.collectVault);
   container.querySelector("#city-chat-form")?.addEventListener("submit", (event) => {
@@ -362,6 +358,11 @@ export function renderConfigWindow(container, state, callbacks) {
           <p>Preview local sem conta conectada.</p>
         `}
       </section>
+      <section class="account-config-panel">
+        <span class="eyebrow">Aparencia</span>
+        <p>Troca apenas o personagem visual desta conta.</p>
+        <button type="button" class="panel-action" data-config-change-character>Trocar aparencia</button>
+      </section>
       <div class="inventory-tools">
         <button class="panel-action primary-action" id="config-save">Forcar salvamento</button>
       </div>
@@ -390,6 +391,7 @@ export function renderConfigWindow(container, state, callbacks) {
   container.querySelector("#config-save")?.addEventListener("click", callbacks.save);
   container.querySelector("[data-config-create-account]")?.addEventListener("submit", callbacks.createAccount);
   container.querySelector("[data-config-logout]")?.addEventListener("click", callbacks.logout);
+  container.querySelector("[data-config-change-character]")?.addEventListener("click", callbacks.changeCharacter);
   bindResetControls(container, callbacks.resetGame);
 }
 
@@ -488,12 +490,13 @@ function panelBody(type, state, online, faction) {
       <div class="map-list">
         ${maps.map((map) => {
           const locked = map.index > highestUnlocked;
+          const difficulty = raidDifficultyInfo(state.player, map);
           return `
-          <article class="map-row">
+          <article class="map-row ${difficulty.className}">
             <canvas class="map-thumb" width="108" height="84" data-map-id="${map.id}"></canvas>
             <div>
               <h3>${map.code} ${map.name}</h3>
-              <p>HP ${formatNumber(map.enemyHp)} | Dano ${formatNumber(map.enemyDamage)} | Drop ${map.chanceDropEquipamento}% | Sta ${map.staminaCost}</p>
+              <p>HP ${formatNumber(map.enemyHp)} | Dano ${formatNumber(map.enemyDamage)} | Furto ${difficulty.stealChance}% | ${difficulty.label}</p>
             </div>
             <button class="panel-action" data-enter-map="${map.id}" ${locked ? "disabled" : ""}>${locked ? "Bloqueado" : "Entrar"}</button>
           </article>
@@ -536,16 +539,11 @@ function panelBody(type, state, online, faction) {
   if (type === "hideout") {
     return `
       ${hideoutProgressPanel(state)}
-      <div class="hideout-upgrade-list">
-        ${HIDEOUT_ITEM_TYPES.map((item) => hideoutUpgradeRow(item, state)).join("")}
-      </div>
       <div class="future-grid">
-        ${futureCard("Upgrades", "Melhorias permanentes da base.")}
         ${futureCard("Cofre", "Guarde dinheiro com seguranca.")}
         ${futureCard("Inventario Extra", "Mais espaco para loot.")}
         ${futureCard("Craft", "Receitas preparadas para expansao.")}
         ${futureCard("Recuperacao", "Cure vida entre assaltos.")}
-        ${futureCard("Melhorias", "Decoracao e bonus futuros.")}
       </div>
     `;
   }
@@ -602,6 +600,22 @@ function onlineCityPanel(online) {
       </ul>
     </section>
   `;
+}
+
+function raidDifficultyInfo(player, map) {
+  const stats = calculateStats(player || { level: 1, equipment: {} });
+  const playerHit = Math.max(1, Number(stats.attack || 1) * (1 + Number(stats.crit || 0) * 0.55));
+  const playerDps = Math.max(1, playerHit * Number(stats.speed || 1));
+  const enemyDps = Math.max(1, Number(map.enemyDamage || 1) * (1 - Number(stats.block || 0)) * (1 - Number(stats.dodge || 0) * 0.65));
+  const timeToClearEnemy = Number(map.enemyHp || 1) / playerDps;
+  const expectedDamage = enemyDps * timeToClearEnemy;
+  const hpPressure = expectedDamage / Math.max(1, Number(stats.maxHp || stats.hp || 1));
+  const stealChance = Math.round(calculateStealChancePercent(map, stats));
+  const stealPressure = stealChance < 45 ? 0.42 : stealChance < 60 ? 0.18 : 0;
+  const score = hpPressure + stealPressure;
+  if (score >= 1.2) return { className: "difficulty-danger", label: "Muito dificil", stealChance };
+  if (score >= 0.78) return { className: "difficulty-warning", label: "Perigoso", stealChance };
+  return { className: "difficulty-ok", label: "Viavel", stealChance };
 }
 
 function onlineStatusLabel(status) {
@@ -1026,26 +1040,6 @@ function escapeHtml(value) {
 
 function escapeAttribute(value) {
   return escapeHtml(value).replace(/`/g, "&#096;");
-}
-
-function hideoutUpgradeRow(item, state) {
-  const currentTier = state.player.hideoutItems?.[item.id] || 0;
-  const maxTier = hideoutItemMaxTier(item.id);
-  const nextTier = Math.min(maxTier, currentTier + 1);
-  const maxed = currentTier >= maxTier;
-  const price = hideoutItemCost(item.id, nextTier);
-  const canBuy = !maxed && state.player.money >= price;
-  return `
-    <article class="hideout-upgrade-row">
-      <div>
-        <h3>${item.name}</h3>
-        <p>Tier atual ${currentTier || 0} / ${maxTier}</p>
-      </div>
-      <button class="panel-action" data-buy-hideout-item="${item.id}" ${canBuy ? "" : "disabled"}>
-        ${maxed ? "Max" : `T${nextTier} ${price}`}
-      </button>
-    </article>
-  `;
 }
 
 function hideoutProgressPanel(state) {

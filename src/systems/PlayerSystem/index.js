@@ -75,6 +75,7 @@ export function createNewGame(playerId = DEFAULT_PLAYER_ID) {
       },
       equipment: createStarterEquipment(),
       inventory: createStarterInventory(),
+      petDiscoveryIds: [],
       businessTutorialCompleted: false,
       businessTutorialSkipped: false,
       businessTutorialActive: false,

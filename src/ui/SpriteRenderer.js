@@ -1,11 +1,11 @@
 import { ASSETS, SPRITES } from "../data/assets.js?v=petshop-portal-1";
-import { CITY, HIDEOUTS, IDLE_MAPS, MAPS } from "../data/maps/index.js?v=petshop-portal-1";
+import { CITY, HIDEOUTS, IDLE_MAPS, MAPS } from "../data/maps/index.js?v=shop-sync-2";
 import { DEFAULT_PLAYER_ID, PLAYERS, PLAYER_POSES, getPlayerById } from "../data/players/index.js?v=players-16";
 import { CITY_NPCS } from "../data/cityNpcs/index.js?v=zeca-actions-1";
 import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "../data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-8";
-import { PETS, PET_FRAME_BOUNDS, getEquippedPet, getPetById } from "../data/pets/index.js?v=pets-manual-1";
+import { PETS, PET_FRAME_BOUNDS, getEquippedPet, getPetById } from "../data/pets/index.js?v=shop-sync-2";
 
 const RARE_WEAPON_EFFECT_POSITION = { x: -0.125, y: 0.315, size: 1 };
 const RARE_WEAPON_PLUS_ALPHA = 0.5;
@@ -91,6 +91,7 @@ export class SpriteRenderer {
     this.drawDecorativeNpcs(state, cameraWorld, visual);
 
     for (const npc of npcs) {
+      if (npc.hidden) continue;
       if (npc.done && !npc.robbed) continue;
       const screenX = this.worldToScreen(npc.x, cameraWorld);
       if (screenX < -110 || screenX > width + 110) continue;
@@ -405,10 +406,38 @@ export class SpriteRenderer {
       if (!pet) return;
       const x = this.worldToScreen(Number(dog.x || 0), cameraWorld);
       if (x < -130 || x > this.canvas.width + 130) return;
-      const action = dog.state === "attacking" ? "attack" : dog.state === "idle" ? "idle" : "walk";
+      const action = dog.state === "attacking" ? "attack" : dog.state === "idle" || dog.state === "hearts" ? "idle" : "walk";
       const height = visual.playerHeight * Number(pet.heightRatio || 0.55) * (dog.state === "attacking" ? 1.05 : 0.98);
       this.drawPetSprite(pet, action, `raid-dog-${dog.id || index}`, x, feetY, height, dog.direction || "right");
+      if (dog.state === "hearts") this.drawPetHearts(x, feetY - height * 0.95, Number(dog.heartsTimer || 0));
     });
+  }
+
+  drawPetHearts(x, y, timer) {
+    const pulse = 1 + Math.sin(performance.now() / 120) * 0.12;
+    const lift = (1.25 - Math.max(0, Math.min(1.25, timer))) * 18;
+    this.ctx.save();
+    this.ctx.globalAlpha = Math.max(0.15, Math.min(1, timer / 0.35));
+    [
+      [-12, 0, 3.5],
+      [0, -8, 4.5],
+      [13, -2, 3.8]
+    ].forEach(([offsetX, offsetY, radius]) => {
+      this.ctx.fillStyle = "#ff6f93";
+      this.ctx.beginPath();
+      this.ctx.arc(x + offsetX, y + offsetY - lift, radius * pulse, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.beginPath();
+      this.ctx.arc(x + offsetX + radius * 1.1, y + offsetY - lift, radius * pulse, 0, Math.PI * 2);
+      this.ctx.fill();
+      this.ctx.beginPath();
+      this.ctx.moveTo(x + offsetX - radius * 0.9, y + offsetY - lift + radius * 0.7);
+      this.ctx.lineTo(x + offsetX + radius * 2, y + offsetY - lift + radius * 0.7);
+      this.ctx.lineTo(x + offsetX + radius * 0.55, y + offsetY - lift + radius * 2.5);
+      this.ctx.closePath();
+      this.ctx.fill();
+    });
+    this.ctx.restore();
   }
 
   drawPetSprite(pet, action, animationKey, x, feetY, height, direction) {
@@ -1943,11 +1972,15 @@ function currentSceneMap(state) {
 }
 
 function hideoutItemOwnedTier(state, typeId) {
+  if (typeId === "house") {
+    const house = Number(state.player?.casaAtual || 0);
+    return house > 0 ? Math.max(1, Math.min(9, Math.floor(house))) : 0;
+  }
   if (typeId === "vehicle") {
     const equipped = Number(state.player?.equippedMotorcycleLevel || state.player?.motoAtual || 0);
     if (equipped > 0) return Math.max(1, Math.min(5, Math.floor(equipped)));
   }
-  return Number(state.player?.hideoutItems?.[typeId] || 0);
+  return 0;
 }
 
 function backgroundSheet(sheetKey) {
@@ -2109,6 +2142,9 @@ function clamp(value, min, max) {
 
 function cameraWorldForState(state, visual, viewportWidth) {
   const playerX = state.run?.playerX || 0;
+  if (state.run?.afkRaid) {
+    return Math.round(Math.max(0, playerX - viewportWidth * 0.5));
+  }
   if (state.scene === "city" || state.scene === "idle") {
     return Math.round(clamp(playerX - viewportWidth * 0.5, 0, SPRITES.background.width - viewportWidth));
   }

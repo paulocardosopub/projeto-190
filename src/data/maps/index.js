@@ -1,4 +1,4 @@
-import { mapsConfig } from "../balance/index.js?v=afk-unlock-1";
+import { mapsConfig } from "../balance/index.js?v=shop-sync-2";
 
 export const CITY = {
   id: "cidade",
