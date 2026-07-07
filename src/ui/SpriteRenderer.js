@@ -7,6 +7,7 @@ import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "../data/cityPortals
 import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-8";
 import { PETS, PET_FRAME_BOUNDS, getEquippedPet, getPetById } from "../data/pets/index.js?v=shop-sync-2";
 
+const CANONICAL_CANVAS_HEIGHT = 300;
 const RARE_WEAPON_EFFECT_POSITION = { x: -0.125, y: 0.315, size: 1 };
 const RARE_WEAPON_PLUS_ALPHA = 0.5;
 const RARE_WEAPON_PULSE_SPEED = 5.6;
@@ -72,7 +73,7 @@ export class SpriteRenderer {
     ctx.imageSmoothingEnabled = false;
 
     const map = currentSceneMap(state);
-    const visual = getVisualSettings(state);
+    const visual = scaleVisualForCanvas(getVisualSettings(state), height);
     const cameraWorld = this.cameraWorld(state, visual);
 
     this.drawBackground(map?.backgroundSheet || "backgrounds", map?.backgroundRow || 0, cameraWorld);
@@ -162,9 +163,10 @@ export class SpriteRenderer {
   drawBackground(sheetKey, row, cameraWorld = 0) {
     const source = backgroundSheet(sheetKey);
     const image = this.images[sheetKey] || this.images.backgrounds;
-    const sourceHeight = Math.min(source.height, this.canvas.height);
-    const sourceY = row * source.height + Math.max(0, source.height - sourceHeight);
+    const sourceHeight = source.height;
+    const sourceY = row * source.height;
     const viewportWidth = this.canvas.width;
+    const viewportHeight = this.canvas.height;
     const startX = positiveModulo(Math.round(cameraWorld), source.width);
     const firstWidth = Math.min(viewportWidth, source.width - startX);
 
@@ -177,7 +179,7 @@ export class SpriteRenderer {
       0,
       0,
       firstWidth,
-      sourceHeight
+      viewportHeight
     );
 
     if (firstWidth < viewportWidth) {
@@ -191,7 +193,7 @@ export class SpriteRenderer {
         firstWidth,
         0,
         remaining,
-        sourceHeight
+        viewportHeight
       );
     }
   }
@@ -2168,6 +2170,25 @@ function getVisualSettings(state) {
     npcYOffset: Number(visual.npcYOffset ?? 0),
     cameraLead: Number(visual.cameraLead || 280)
   };
+}
+
+function scaleVisualForCanvas(visual, canvasHeight) {
+  const scale = canvasVerticalScale(canvasHeight);
+  if (Math.abs(scale - 1) < 0.01) return visual;
+  return {
+    ...visual,
+    playerHeight: visual.playerHeight * scale,
+    npcHeight: visual.npcHeight * scale,
+    groundY: visual.groundY * scale,
+    playerYOffset: visual.playerYOffset * scale,
+    npcYOffset: visual.npcYOffset * scale
+  };
+}
+
+function canvasVerticalScale(canvasHeight) {
+  const height = Number(canvasHeight || CANONICAL_CANVAS_HEIGHT);
+  const scale = height / CANONICAL_CANVAS_HEIGHT;
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
 
 function hideoutItemPlacement(state, typeId, tier) {

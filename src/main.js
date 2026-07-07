@@ -167,7 +167,7 @@ import {
 } from "./systems/StaminaSystem/index.js?v=shop-sync-2";
 import { MOTORCYCLE_UNLOCK_LEVEL, getHouseConfig, getItemConfigById, getLandConfig, getMotorcycleConfig } from "./data/balance/index.js?v=shop-sync-2";
 import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=shop-sync-2";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=shop-sync-2";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=shop-sync-9";
 import {
   renderCharacterSelect,
   renderConfigWindow,
@@ -263,6 +263,7 @@ const elements = {
 };
 
 const renderer = new SpriteRenderer(elements.canvas);
+const CANONICAL_STAGE_HEIGHT = 300;
 let state = null;
 let combat = null;
 let online = null;
@@ -4897,13 +4898,13 @@ function findClickedCityPortal(screenX, screenY) {
 function hideoutGroundY() {
   const visual = state.settings.visual || {};
   const mapKey = `esconderijo-${state.player.hideoutTier || 1}`;
-  return Number(visual.maps?.[mapKey]?.groundY ?? visual.groundY ?? 274) + Number(visual.npcYOffset ?? 0);
+  return scaleStageY(Number(visual.maps?.[mapKey]?.groundY ?? visual.groundY ?? 274) + Number(visual.npcYOffset ?? 0));
 }
 
 function idleGroundY() {
   const visual = state.settings.visual || {};
   const mapKey = state.currentMapId || "idle";
-  return Number(visual.maps?.[mapKey]?.groundY ?? visual.groundY ?? 274) + Number(visual.npcYOffset ?? 0);
+  return scaleStageY(Number(visual.maps?.[mapKey]?.groundY ?? visual.groundY ?? 274) + Number(visual.npcYOffset ?? 0));
 }
 
 function findClickedHideoutPortal(screenX, screenY) {
@@ -6811,11 +6812,22 @@ function playerHasOwnedLand() {
 
 function cityGroundY() {
   const visual = state.settings.visual || {};
-  return Number(visual.maps?.cidade?.groundY ?? visual.groundY ?? 274) + Number(visual.npcYOffset ?? 0);
+  return scaleStageY(Number(visual.maps?.cidade?.groundY ?? visual.groundY ?? 274) + Number(visual.npcYOffset ?? 0));
 }
 
 function cityNpcHeight() {
-  return Number(state.settings.visual?.npcHeight || 82);
+  return scaleStageY(Number(state.settings.visual?.npcHeight || 82));
+}
+
+function scaleStageY(value) {
+  return Number(value || 0) * stageVerticalScale();
+}
+
+function stageVerticalScale() {
+  const rect = elements.canvas?.getBoundingClientRect?.();
+  const height = Number(elements.canvas?.height || rect?.height || CANONICAL_STAGE_HEIGHT);
+  const scale = height / CANONICAL_STAGE_HEIGHT;
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
 
 function showChoice(target) {
