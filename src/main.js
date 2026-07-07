@@ -5,7 +5,7 @@ import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=zeca-actions-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemMaxTier, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-8";
-import { CombatSystem, applyOfflineAfkRaidProgress, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=shop-sync-3";
+import { CombatSystem, applyOfflineAfkRaidProgress, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=afk-return-1";
 import { calculateStats, calculateStealChancePercent, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -302,6 +302,7 @@ let tutorialOverlay = null;
 let characterTutorialVisible = false;
 let lastTutorialSideEffectStep = null;
 let cloudSavePending = false;
+let offlineReturnNoticeShown = false;
 let sessionCheckTimer = 0;
 let sessionCheckInFlight = false;
 let inventoryPointerX = 0;
@@ -594,6 +595,7 @@ function startLoadedGame(options = {}) {
   if (previewMode) applyHideoutPreviewParams(params);
   if (previewMode && previewTool !== "hideout" && previewTool !== "motorcycle") ensureAnimationTestBar();
   setupCombat();
+  offlineReturnNoticeShown = false;
 
   if (previewMode) {
     if (previewTool === "motorcycle") {
@@ -625,6 +627,7 @@ function startLoadedGame(options = {}) {
   hideNameModal();
   document.body.classList.remove("auth-pending");
   renderAll();
+  showOfflineReturnNotice();
   if (!previewMode) {
     persistGame();
     online?.connect();
@@ -7024,15 +7027,19 @@ function syncRaidSummary() {
 
   const guidedFirstRaid = isGuidedFirstRaidSummary();
   const afkSummary = Boolean(summary.afkRaid);
-  elements.raidSummaryTitle.textContent = afkSummary ? "Resumo do AFK" : summary.mapName || "Resumo do roubo";
+  const offlineAfkSummary = Boolean(afkSummary && summary.offlineReturn);
+  elements.raidSummaryTitle.textContent = offlineAfkSummary
+    ? "Enquanto voce estava fora..."
+    : afkSummary ? "Resumo do AFK" : summary.mapName || "Resumo do roubo";
   elements.raidSummaryMoney.textContent = formatMoney(summary.money || 0);
   elements.raidSummaryXp.textContent = String(summary.xp || 0);
   elements.raidSummaryTargets.textContent = `${summary.targetsRobbed || 0} / ${summary.targetsTotal || 0}`;
-  if (elements.raidSummaryCountdownLabel) elements.raidSummaryCountdownLabel.textContent = afkSummary ? "Tempo" : "Retorno";
+  if (elements.raidSummaryCountdownLabel) elements.raidSummaryCountdownLabel.textContent = offlineAfkSummary ? "Tempo fora" : afkSummary ? "Tempo" : "Retorno";
   elements.raidSummaryCountdown.textContent = afkSummary
-    ? formatTime(summary.durationSeconds || 0)
+    ? formatTime(offlineAfkSummary ? summary.offlineSeconds || summary.durationSeconds || 0 : summary.durationSeconds || 0)
     : `${Math.ceil(state.run.summaryTimer || 0)}s`;
   const items = [
+    ...(offlineAfkSummary ? [`Enquanto voce estava fora, o AFK coletou ${formatMoney(summary.money || 0)}.`] : []),
     ...(afkSummary ? [`Base: ${summary.rewardMapCode || ""} ${summary.rewardMapName || ""}`.trim()] : []),
     ...(summary.items || []).map((item) => `+ ${item}`),
     ...(summary.lostItems || []).map((item) => `${item} perdido: mochila cheia`)
@@ -7048,6 +7055,14 @@ function syncRaidSummary() {
     elements.raidNextButton.disabled = guidedFirstRaid || afkSummary || !nextRaidMapFromSummary();
   }
   if (elements.raidRepeatButton) elements.raidRepeatButton.disabled = guidedFirstRaid || afkSummary;
+}
+
+function showOfflineReturnNotice() {
+  if (offlineReturnNoticeShown) return;
+  const summary = state?.run?.summary;
+  if (state?.run?.mode !== "summary" || !summary?.afkRaid || !summary.offlineReturn) return;
+  offlineReturnNoticeShown = true;
+  showToast(`Enquanto voce estava fora, o AFK coletou ${formatMoney(summary.money || 0)}.`);
 }
 
 function isGuidedFirstRaidSummary() {
@@ -7391,13 +7406,14 @@ function applyOfflineClosedProgress(offlineSeconds) {
   if (seconds <= 1) return;
 
   const staminaRecovered = applyOfflineStaminaRecovery(seconds);
-  const afkResult = applyOfflineAfkRaidProgress(state, seconds);
+  const afkResult = applyOfflineAfkRaidProgress(state, seconds, { concludeOnReturn: true });
 
   if (staminaRecovered >= 1) {
     addLog(state, `Stamina recuperada offline: +${Math.floor(staminaRecovered)}.`);
   }
   if (afkResult.seconds >= 60) {
-    addLog(state, `Roubo AFK processado offline por ${formatTime(Math.round(afkResult.seconds))}.`);
+    const prefix = afkResult.summary?.offlineReturn ? "Enquanto voce estava fora, " : "";
+    addLog(state, `${prefix}Roubo AFK processado offline por ${formatTime(Math.round(afkResult.seconds))}.`);
   }
 }
 

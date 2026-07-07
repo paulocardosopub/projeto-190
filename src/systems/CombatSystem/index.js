@@ -869,6 +869,8 @@ export class CombatSystem {
     summary.remaining = 0;
     summary.durationSeconds = Math.round(Number(run.afkElapsed || 0));
     summary.limitReached = reason === "limit";
+    summary.offlineReturn = reason === "offline-return" || Number(run.offlineAfkAppliedSeconds || 0) > 0;
+    summary.offlineSeconds = Math.round(Number(run.offlineAfkAppliedSeconds || 0));
     summary.finished = true;
     summary.finishedAt = Date.now();
 
@@ -879,7 +881,9 @@ export class CombatSystem {
     this.state.run.afkSummary = true;
     const message = reason === "limit"
       ? "Limite de 8 horas do roubo AFK atingido."
-      : "Roubo AFK concluido.";
+      : reason === "offline-return"
+        ? "Enquanto voce estava fora, o roubo AFK juntou recompensas."
+        : "Roubo AFK concluido.";
     addLog(this.state, message);
     this.hooks.onToast?.(message);
     this.emit();
@@ -1647,7 +1651,7 @@ export class CombatSystem {
   }
 }
 
-export function applyOfflineAfkRaidProgress(state, elapsedSeconds) {
+export function applyOfflineAfkRaidProgress(state, elapsedSeconds, options = {}) {
   const run = state?.run;
   if (!run?.afkRaid || run.mode === "summary") {
     return { seconds: 0, limitReached: false, summary: run?.summary || null };
@@ -1659,6 +1663,7 @@ export function applyOfflineAfkRaidProgress(state, elapsedSeconds) {
   const offlineCombat = new CombatSystem(state, {});
 
   if (remainingLimit <= 0) {
+    state.run.offlineAfkAppliedSeconds = Math.max(0, Number(elapsedSeconds || 0));
     offlineCombat.finishAfkRaid("limit");
     return { seconds: 0, limitReached: true, summary: state.run?.summary || null };
   }
@@ -1673,6 +1678,10 @@ export function applyOfflineAfkRaidProgress(state, elapsedSeconds) {
   }
 
   const appliedSeconds = secondsToApply - Math.max(0, remaining);
+  if (appliedSeconds > 0 && state.run?.afkRaid) state.run.offlineAfkAppliedSeconds = appliedSeconds;
+  if (appliedSeconds > 0 && options.concludeOnReturn && state.run?.afkRaid && state.run.mode !== "summary") {
+    offlineCombat.finishAfkRaid("offline-return");
+  }
   return {
     seconds: appliedSeconds,
     limitReached: Boolean(state.run?.mode === "summary" && state.run.summary?.limitReached),
