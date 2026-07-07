@@ -1,4 +1,4 @@
-import { getCarConfig, getHouseConfig } from "../balance/index.js?v=phase1-1";
+import { getHouseConfig, getMotorcycleConfig } from "../balance/index.js?v=phase1-1";
 
 export const PET_UNLOCK_LEVEL = 5;
 export const STARTER_PET_ID = "pinscher";
@@ -122,15 +122,15 @@ export function petsUnlocked(player) {
 
 export function petPrice(pet) {
   if (!pet || pet.priceFallback <= 0) return 0;
-  const car = getCarConfig(pet.economyTier);
+  const motorcycle = getMotorcycleConfig(pet.economyTier);
   const house = getHouseConfig(pet.economyTier);
-  if (!car || !house || (!car.price && !house.price)) return pet.priceFallback;
+  if (!motorcycle || !house || (!motorcycle.price && !house.price)) return pet.priceFallback;
 
-  const base = Number(car.price || 0) * 0.32 + Number(house.price || 0) * 0.08;
-  const incomePerHour = (Number(car.passiveIncomePerMinute || 0) + Number(house.passiveIncomePerMinute || 0)) * 60;
+  const base = Number(motorcycle.price || 0) * 0.32 + Number(house.price || 0) * 0.08;
+  const incomePerHour = (Number(motorcycle.passiveIncomePerMinute || 0) + Number(house.passiveIncomePerMinute || 0)) * 60;
   const min = incomePerHour * Number(FARM_HOURS_BY_TIER[pet.economyTier] || 1);
   const maxOptions = [
-    Number(car.price || 0) * 0.65,
+    Number(motorcycle.price || 0) * 0.65,
     Number(house.price || 0) * 0.22
   ].filter((value) => value > 0);
   if (!maxOptions.length) return pet.priceFallback;

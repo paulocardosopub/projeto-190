@@ -1,4 +1,6 @@
 import { DEFAULT_PLAYER_ID } from "../../data/players/index.js?v=players-16";
+import { EQUIPMENT_SLOTS } from "../../data/equipment/index.js?v=gloves-1";
+import { itemPower } from "../EquipmentSystem/index.js?v=equipment-2";
 
 const DEFAULT_URL = "ws://localhost:4191";
 const SUPABASE_JS_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.0/+esm";
@@ -107,6 +109,8 @@ export class OnlineSystem {
         .on("broadcast", { event: "city:player_left" }, ({ payload }) => this.handleCityPlayerLeft(payload?.player || payload))
         .on("broadcast", { event: "city:chat" }, ({ payload }) => this.receiveChat(payload))
         .on("broadcast", { event: "city:shop:activity" }, ({ payload }) => this.receiveShopActivity(payload))
+        .on("broadcast", { event: "friend:request" }, ({ payload }) => this.receiveFriendRequest(payload))
+        .on("broadcast", { event: "friend:accepted" }, ({ payload }) => this.receiveFriendAccepted(payload))
         .subscribe((status) => this.handleSupabaseStatus(status, channel));
     } catch (error) {
       this.status = "offline";
@@ -346,6 +350,14 @@ export class OnlineSystem {
       this.receiveShopActivity(message);
     }
 
+    if (message.type === "friend:request") {
+      this.receiveFriendRequest(message);
+    }
+
+    if (message.type === "friend:accepted") {
+      this.receiveFriendAccepted(message);
+    }
+
     this.syncStatePlayers();
     this.emit();
   }
@@ -413,8 +425,10 @@ export class OnlineSystem {
       payload.isMoving,
       payload.areaId,
       payload.characterId,
+      payload.level,
       payload.equippedPetId || "",
       payload.weaponRarity || "",
+      equipmentSignature(payload.equipment),
       activeShopSignature(payload.activeShop)
     ].join(":");
     if (!force && signature === this.lastMoveSignature) {
@@ -497,8 +511,10 @@ export class OnlineSystem {
       scene: this.state.scene || "city",
       mapId: this.state.scene === "idle" ? this.state.currentMapId || "" : "",
       characterId: this.state.selectedPlayerId || this.state.player.characterId || DEFAULT_PLAYER_ID,
+      level: Math.max(1, Math.floor(Number(this.state.player.level || 1))),
       equippedPetId: this.state.player.equippedPetId || null,
       weaponRarity: this.state.player.equipment?.weapon?.rarity || null,
+      equipment: this.localEquipmentPayload(),
       activeShop: this.localActiveShopPayload(),
       x: Math.round(Number(this.state.run?.playerX || 120)),
       y: 0,
@@ -532,8 +548,10 @@ export class OnlineSystem {
       scene: String(raw.scene || "city"),
       mapId: raw.mapId ? String(raw.mapId) : "",
       characterId: String(raw.characterId || DEFAULT_PLAYER_ID),
+      level: Math.max(1, Math.min(999, Math.floor(Number(raw.level || 1)))),
       equippedPetId: raw.equippedPetId ? String(raw.equippedPetId) : null,
       weaponRarity: raw.weaponRarity ? String(raw.weaponRarity) : null,
+      equipment: normalizeEquipmentSummary(raw.equipment),
       activeShop: normalizeActiveShop(raw.activeShop),
       x: existing && sameArea ? existing.x : targetX,
       y: existing && sameArea ? existing.y : targetY,
@@ -654,6 +672,74 @@ export class OnlineSystem {
     this.emit();
   }
 
+  sendFriendRequest(targetPlayer) {
+    if (this.status !== "online") return { ok: false, reason: "Conecte a cidade online para adicionar amigos." };
+    const target = normalizeFriendTarget(targetPlayer);
+    if (!target.playerId && !target.clientId) return { ok: false, reason: "Jogador nao encontrado." };
+    const payload = {
+      type: "friend:request",
+      requestId: createRequestId(),
+      fromPlayerId: this.localPlayerId(),
+      fromClientId: this.clientId,
+      fromName: this.playerName(),
+      fromCharacterId: this.state.selectedPlayerId || this.state.player.characterId || DEFAULT_PLAYER_ID,
+      fromLevel: Math.max(1, Math.floor(Number(this.state.player.level || 1))),
+      toPlayerId: target.playerId,
+      toClientId: target.clientId,
+      toName: target.playerName,
+      at: Date.now()
+    };
+
+    if (this.provider === "supabase") {
+      this.channel?.send({ type: "broadcast", event: "friend:request", payload });
+    } else {
+      this.sendLocal(payload);
+    }
+    return { ok: true, message: `Convite enviado para ${target.playerName || "jogador"}.`, request: payload };
+  }
+
+  sendFriendAccepted(request) {
+    if (this.status !== "online" || !request) return false;
+    const payload = {
+      type: "friend:accepted",
+      requestId: request.requestId || createRequestId(),
+      fromPlayerId: this.localPlayerId(),
+      fromClientId: this.clientId,
+      fromName: this.playerName(),
+      fromCharacterId: this.state.selectedPlayerId || this.state.player.characterId || DEFAULT_PLAYER_ID,
+      fromLevel: Math.max(1, Math.floor(Number(this.state.player.level || 1))),
+      toPlayerId: request.fromPlayerId,
+      toClientId: request.fromClientId,
+      toName: request.fromName,
+      at: Date.now()
+    };
+    if (this.provider === "supabase") {
+      this.channel?.send({ type: "broadcast", event: "friend:accepted", payload });
+      return true;
+    }
+    return this.sendLocal(payload);
+  }
+
+  receiveFriendRequest(payload) {
+    const request = normalizeFriendRequest(payload);
+    if (!request || !this.isFriendMessageForLocal(request) || request.fromPlayerId === this.localPlayerId()) return;
+    this.hooks.onFriendRequest?.(request);
+  }
+
+  receiveFriendAccepted(payload) {
+    const accepted = normalizeFriendRequest(payload);
+    if (!accepted || !this.isFriendMessageForLocal(accepted) || accepted.fromPlayerId === this.localPlayerId()) return;
+    this.hooks.onFriendAccepted?.(accepted);
+  }
+
+  isFriendMessageForLocal(message) {
+    const localPlayerId = this.localPlayerId();
+    return Boolean(
+      (message.toPlayerId && message.toPlayerId === localPlayerId) ||
+      (message.toClientId && message.toClientId === this.clientId)
+    );
+  }
+
   interpolatePlayers(dt) {
     const now = Date.now();
     const amount = 1 - Math.exp(-REMOTE_LERP_SPEED * Math.max(0, dt));
@@ -752,6 +838,16 @@ export class OnlineSystem {
     });
   }
 
+  localEquipmentPayload() {
+    const equipment = {};
+    for (const slot of EQUIPMENT_SLOTS) {
+      const item = this.state.player.equipment?.[slot];
+      if (!item) continue;
+      equipment[slot] = normalizeEquipmentSummaryItem(item, slot);
+    }
+    return equipment;
+  }
+
   playerKey(player) {
     return String(player?.clientId || player?.socketId || player?.playerId || "");
   }
@@ -847,6 +943,67 @@ function normalizeActiveShop(shop) {
 
 function activeShopSignature(shop) {
   return shop ? JSON.stringify(shop) : "";
+}
+
+function equipmentSignature(equipment) {
+  return equipment ? JSON.stringify(equipment) : "";
+}
+
+function normalizeEquipmentSummary(equipment) {
+  if (!equipment || typeof equipment !== "object") return {};
+  return Object.fromEntries(
+    EQUIPMENT_SLOTS
+      .map((slot) => [slot, normalizeEquipmentSummaryItem(equipment[slot], slot)])
+      .filter(([, item]) => item)
+  );
+}
+
+function normalizeEquipmentSummaryItem(item, fallbackSlot = "") {
+  if (!item || typeof item !== "object") return null;
+  const slot = cleanId(item.slot || fallbackSlot);
+  if (!EQUIPMENT_SLOTS.includes(slot)) return null;
+  return {
+    id: cleanId(item.id),
+    slot,
+    name: cleanText(item.name, 42) || "Item",
+    rarity: cleanId(item.rarity) || "comum",
+    tier: Math.max(1, Math.min(9, Math.floor(Number(item.tier || 1)))),
+    power: Math.max(0, Math.min(999999, Math.floor(Number(item.power || itemPower(item) || 0))))
+  };
+}
+
+function normalizeFriendTarget(target) {
+  return {
+    playerId: cleanId(target?.playerId),
+    clientId: cleanId(target?.clientId || target?.socketId),
+    playerName: cleanText(target?.playerName, 24) || "Jogador"
+  };
+}
+
+function normalizeFriendRequest(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const fromPlayerId = cleanId(payload.fromPlayerId);
+  const fromClientId = cleanId(payload.fromClientId);
+  const toPlayerId = cleanId(payload.toPlayerId);
+  const toClientId = cleanId(payload.toClientId);
+  if ((!fromPlayerId && !fromClientId) || (!toPlayerId && !toClientId)) return null;
+  return {
+    requestId: cleanId(payload.requestId) || createRequestId(),
+    fromPlayerId,
+    fromClientId,
+    fromName: cleanText(payload.fromName, 24) || "Jogador",
+    fromCharacterId: cleanId(payload.fromCharacterId) || DEFAULT_PLAYER_ID,
+    fromLevel: Math.max(1, Math.min(999, Math.floor(Number(payload.fromLevel || 1)))),
+    toPlayerId,
+    toClientId,
+    toName: cleanText(payload.toName, 24) || "Jogador",
+    at: safeTimestamp(payload.at)
+  };
+}
+
+function createRequestId() {
+  if (crypto?.randomUUID) return `friend-${crypto.randomUUID()}`;
+  return `friend-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 function cleanId(value) {

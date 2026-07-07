@@ -315,6 +315,32 @@ body.temporary-stay-mode .stage-hud .status-card {
   transform: translateY(1px) rotate(180deg);
 }
 
+.afk-raid-toggle {
+  position: absolute;
+  left: calc(50% - 52px);
+  bottom: 8px;
+  z-index: 4;
+  min-width: 56px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  transform: translateX(-50%);
+  padding: 0 8px;
+  color: #f5f0c7;
+  background: rgba(20, 34, 24, 0.9);
+  border: 1px solid #78a85e;
+  box-shadow: 0 5px 12px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(0, 0, 0, 0.38);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.afk-raid-toggle.active {
+  color: #fff4c4;
+  background: rgba(79, 37, 18, 0.94);
+  border-color: #e1a144;
+}
+
 .auto-raid-toggle {
   position: absolute;
   left: calc(50% + 34px);
@@ -906,6 +932,83 @@ html.preview-mode #animation-test-bar.hidden {
   background: linear-gradient(180deg, #f0ca63, #ac711d);
 }
 
+.motorcycle-test-panel {
+  position: fixed;
+  left: 10px;
+  top: 10px;
+  z-index: 82;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: min(1080px, calc(100vw - 20px));
+  padding: 7px 9px;
+  border: 1px solid #6e5730;
+  background: rgba(18, 16, 13, 0.96);
+  color: #d9c59c;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55);
+}
+
+.motorcycle-test-panel strong {
+  color: #ffd45f;
+  text-transform: uppercase;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.motorcycle-test-panel label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #d9c59c;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.motorcycle-test-panel select,
+.motorcycle-test-panel button {
+  min-height: 28px;
+  color: #ffe9b7;
+  background: #140f0a;
+  border: 1px solid #7f5627;
+  font-weight: 900;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.motorcycle-test-panel select {
+  max-width: 210px;
+}
+
+.motorcycle-test-panel input[type="range"] {
+  width: 112px;
+  accent-color: #e4ad38;
+}
+
+.motorcycle-test-panel output {
+  min-width: 32px;
+  color: #ffd45f;
+  text-align: right;
+}
+
+.motorcycle-test-panel button {
+  padding: 5px 8px;
+  color: #ffe29a;
+  background: linear-gradient(180deg, #4c2615, #1b0d08);
+}
+
+.motorcycle-test-panel button.active {
+  color: #140906;
+  border-color: #ffe19d;
+  background: linear-gradient(180deg, #f0ca63, #ac711d);
+}
+
+html:not(.preview-mode) .motorcycle-test-panel,
+html.preview-mode #motorcycle-test-panel.hidden {
+  display: none !important;
+}
+
 .map-npc-test-panel {
   position: fixed;
   left: 10px;
@@ -1037,7 +1140,18 @@ html.hideout-focus #layout-editor-bar {
   display: none !important;
 }
 
+html.motorcycle-focus #animation-test-bar,
+html.motorcycle-focus #map-npc-test-panel,
+html.motorcycle-focus .hideout-item-editor-panel,
+html.motorcycle-focus #layout-editor-bar {
+  display: none !important;
+}
+
 html.preview-mode.hideout-focus #animation-test-bar.hidden {
+  display: none !important;
+}
+
+html.preview-mode.motorcycle-focus #animation-test-bar.hidden {
   display: none !important;
 }
 
@@ -2419,6 +2533,64 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
   color: #b9c4d4;
 }
 
+.inspect-player-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.055);
+  color: #d8c8a3;
+  font-size: calc(10px * var(--window-ui-scale));
+}
+
+.inspect-player-summary strong {
+  color: #ffd45f;
+  white-space: nowrap;
+}
+
+.inspect-equipment-list {
+  display: grid;
+  gap: calc(5px * var(--window-ui-scale));
+  margin-top: calc(7px * var(--window-ui-scale));
+}
+
+.inspect-equipment-row {
+  display: grid;
+  grid-template-columns: minmax(58px, 0.58fr) minmax(96px, 1fr);
+  gap: 2px 8px;
+  align-items: center;
+  padding: calc(6px * var(--window-ui-scale));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.inspect-equipment-row strong {
+  color: #f1d58a;
+  font-size: calc(9px * var(--window-ui-scale));
+  text-transform: uppercase;
+}
+
+.inspect-equipment-row span {
+  min-width: 0;
+  color: #f5e5bd;
+  font-size: calc(10px * var(--window-ui-scale));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspect-equipment-row small {
+  grid-column: 2;
+  color: #aeb9c8;
+  font-size: calc(8px * var(--window-ui-scale));
+}
+
+.inspect-equipment-row.empty {
+  opacity: 0.72;
+}
+
 .danger-action {
   border-color: rgba(240, 94, 94, 0.42);
   background: rgba(127, 35, 35, 0.7);
@@ -2430,6 +2602,60 @@ html.preview-mode.hideout-focus #animation-test-bar.hidden {
   gap: calc(6px * var(--window-ui-scale));
   align-items: center;
   min-height: calc(43px * var(--window-ui-scale));
+}
+
+.owned-motorcycle-list {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(calc(132px * var(--window-ui-scale)), calc(156px * var(--window-ui-scale)));
+  gap: calc(6px * var(--window-ui-scale));
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: calc(4px * var(--window-ui-scale));
+  scroll-snap-type: x proximity;
+}
+
+.owned-motorcycle-card {
+  display: grid;
+  align-content: start;
+  gap: calc(4px * var(--window-ui-scale));
+  min-height: calc(124px * var(--window-ui-scale));
+  padding: calc(6px * var(--window-ui-scale));
+  border: 1px solid rgba(174, 132, 61, 0.35);
+  background: rgba(0, 0, 0, 0.26);
+  scroll-snap-align: start;
+}
+
+.owned-motorcycle-card.active {
+  border-color: rgba(255, 212, 95, 0.75);
+  box-shadow: inset 0 0 0 1px rgba(255, 212, 95, 0.18);
+}
+
+.owned-motorcycle-card h3,
+.owned-motorcycle-card p,
+.owned-motorcycle-card small {
+  margin: 0;
+}
+
+.owned-motorcycle-card h3 {
+  color: #fff0bd;
+  font-size: calc(11px * var(--window-ui-scale));
+  line-height: 1.1;
+}
+
+.owned-motorcycle-card p,
+.owned-motorcycle-card small {
+  color: #c7b99b;
+  font-size: calc(9px * var(--window-ui-scale));
+  line-height: 1.15;
+}
+
+.owned-motorcycle-card .panel-action {
+  align-self: end;
+  min-width: 0;
+  min-height: calc(25px * var(--window-ui-scale));
+  padding: calc(4px * var(--window-ui-scale)) calc(6px * var(--window-ui-scale));
+  font-size: calc(9px * var(--window-ui-scale));
 }
 
 .pet-shop-row,
@@ -3088,6 +3314,7 @@ body.auth-pending .topbar {
 
 body.auth-pending .stage-hud,
 body.auth-pending .master-toggle,
+body.auth-pending .afk-raid-toggle,
 body.auth-pending .auto-raid-toggle,
 body.auth-pending .auto-raid-panel,
 body.auth-pending .window-layer {
@@ -3157,6 +3384,46 @@ body.auth-pending .window-layer {
   color: #d8c8a3;
   font-size: 12px;
   line-height: 1.35;
+}
+
+.game-confirm-backdrop {
+  z-index: 42;
+  background: rgba(0, 0, 0, 0.52);
+}
+
+.game-confirm-modal {
+  width: min(390px, calc(100vw - 24px));
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 2px solid #0e0d0c;
+  outline: 1px solid var(--line-bright);
+  background:
+    linear-gradient(180deg, rgba(228, 173, 56, 0.14), transparent 38%),
+    rgba(18, 16, 13, 0.98);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.72);
+}
+
+.game-confirm-modal h2 {
+  margin: 0;
+  color: #ffd45f;
+  font-size: 18px;
+  line-height: 1.05;
+  text-transform: uppercase;
+  text-shadow: 2px 2px 0 #230908;
+}
+
+.game-confirm-modal p {
+  margin: 0;
+  color: #d8c8a3;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.game-confirm-detail {
+  padding: 7px;
+  border: 1px solid rgba(228, 173, 56, 0.28);
+  background: rgba(0, 0, 0, 0.22);
 }
 
 .hospital-modal {
@@ -4447,6 +4714,15 @@ body.auth-pending .window-layer {
     height: 26px;
   }
 
+  .afk-raid-toggle {
+    position: fixed;
+    left: calc(50% - 52px);
+    bottom: 6px;
+    z-index: 58;
+    min-width: 54px;
+    height: 26px;
+  }
+
   .auto-raid-toggle {
     position: fixed;
     left: calc(50% + 36px);
@@ -4468,6 +4744,9 @@ body.auth-pending .window-layer {
   body:has(.window-layer.has-center-window) .master-toggle,
   body:has(.window-layer.has-left-window) .master-toggle,
   body:has(.window-layer.has-right-window) .master-toggle,
+  body:has(.window-layer.has-center-window) .afk-raid-toggle,
+  body:has(.window-layer.has-left-window) .afk-raid-toggle,
+  body:has(.window-layer.has-right-window) .afk-raid-toggle,
   body:has(.window-layer.has-center-window) .auto-raid-toggle,
   body:has(.window-layer.has-left-window) .auto-raid-toggle,
   body:has(.window-layer.has-right-window) .auto-raid-toggle {
@@ -4980,6 +5259,13 @@ body.auth-pending .window-layer {
 
   .stage-hud {
     inset: 24px 5px auto 5px;
+  }
+
+  .afk-raid-toggle {
+    left: calc(50% - 50px);
+    bottom: 4px;
+    min-width: 52px;
+    height: 24px;
   }
 
   .auto-raid-toggle {

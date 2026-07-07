@@ -456,7 +456,7 @@ export const theftConfig = {
   minChance: 20,
   maxChance: 95,
   caughtChanceMultiplier: 1,
-  formula: "chanceSucessoFurto = clamp(88 - riscoFurtoMapa + bonusLuvas + bonusCarro, 20, 95)"
+  formula: "chanceSucessoFurto = clamp(88 - riscoFurtoMapa + bonusLuvas, 20, 95)"
 };
 
 export const npcShopConfig = {
@@ -558,37 +558,45 @@ export const housesConfig = [
   ...unlockRequirements[index]
 }));
 
-export const carsConfig = [
-  ["Carroca de Madeira", 0, 3, 0.3],
-  ["Charrete Simples", 65000, 12, 0.6],
-  ["Fusca Velho", 150000, 45, 1],
-  ["Hatch Popular", 750000, 150, 1.5],
-  ["Sedan Arrumado", 5200000, 500, 2.1],
-  ["Caminhonete Reforcada", 11500000, 1800, 2.8],
-  ["SUV Blindada", 42000000, 5000, 3.5],
-  ["Esportivo Importado", 175000000, 14000, 4.3],
-  ["Lamborghini 190", 360000000, 35000, 5]
-].map(([name, price, passiveIncomePerMinute, furtoBonus], index) => ({
-  id: `car-t${index + 1}`,
+export const MOTORCYCLE_UNLOCK_LEVEL = 15;
+
+const motorcycleRequirements = [
+  { requiredMap: 1, requiredLevel: MOTORCYCLE_UNLOCK_LEVEL, requiredLandTier: 1, requiredHouseTier: 1 },
+  { requiredMap: 6, requiredLevel: 20, requiredLandTier: 2, requiredHouseTier: 2 },
+  { requiredMap: 12, requiredLevel: 35, requiredLandTier: 3, requiredHouseTier: 4 },
+  { requiredMap: 18, requiredLevel: 75, requiredLandTier: 4, requiredHouseTier: 6 },
+  { requiredMap: 24, requiredLevel: 150, requiredLandTier: 6, requiredHouseTier: 9 }
+];
+
+export const motorcyclesConfig = [
+  ["Scooter Antiga", 65000],
+  ["Moto de Entrega com Bau", 750000],
+  ["Moto Intermediaria Vermelha", 5200000],
+  ["Moto Esportiva Preta com Bau", 42000000],
+  ["Moto Esportiva 190", 360000000]
+].map(([name, price], index) => ({
+  id: `motorcycle-t${index + 1}`,
   tier: index + 1,
   name,
   price,
-  requiredLandTier: requiredLandByAssetTier[index],
-  passiveIncomePerMinute,
-  furtoBonus,
-  ...unlockRequirements[index]
+  passiveIncomePerMinute: 0,
+  speedMultiplier: Number((1.2 + index * 0.2).toFixed(2)),
+  policeEscapeChance: Number((0.10 + index * 0.0375).toFixed(4)),
+  ...motorcycleRequirements[index]
 }));
+
+export const carsConfig = motorcyclesConfig;
 
 export const passiveIncomeConfig = {
   vaultName: "Cofre do Esconderijo",
-  offlineLimitFormula: "limiteHorasOffline = min(4 + casaTier * 0.75 + carroTier * 0.25 + bonusHorasTerreno, 18)",
+  offlineLimitFormula: "limiteHorasOffline = min(4 + casaTier * 0.75 + motoTier * 0.25 + bonusHorasTerreno, 18)",
   maxOfflineHours: 18
 };
 
 export const cityOldManNpcConfig = {
   id: "seu-zeca",
   name: "Seu Zeca, o Velho da Cidade",
-  tabs: ["Comprar Esconderijo", "Comprar Casa", "Comprar Carro", "Vender Itens"],
+  tabs: ["Comprar Esconderijo", "Comprar Casa", "Comprar Moto", "Vender Itens"],
   canSellHousesAndCarsBack: false
 };
 
@@ -614,7 +622,7 @@ export const hideoutLandConfig = [
 
 export const hideoutConfig = {
   showsCurrentHouse: true,
-  showsCurrentCar: true,
+  showsCurrentMotorcycle: true,
   showsPassiveVault: true,
   showsStaminaBar: true,
   usesActiveLandAsVisualTier: true,
@@ -688,7 +696,11 @@ export function getHouseConfig(tier) {
 }
 
 export function getCarConfig(tier) {
-  return carsConfig.find((car) => car.tier === Number(tier)) || null;
+  return getMotorcycleConfig(tier);
+}
+
+export function getMotorcycleConfig(tier) {
+  return motorcyclesConfig.find((motorcycle) => motorcycle.tier === Number(tier)) || null;
 }
 
 export function getLandConfig(tier) {

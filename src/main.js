@@ -1,10 +1,11 @@
 import { DEFAULT_PLAYER_ID, PLAYERS } from "./data/players/index.js?v=players-16";
+import { EQUIPMENT_SLOTS, SLOT_LABELS } from "./data/equipment/index.js?v=gloves-1";
 import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=spawn-height-1";
 import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=zeca-actions-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
-import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-7";
-import { CombatSystem, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=tutorial-raid-1";
+import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemMaxTier, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-8";
+import { CombatSystem, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=afk-raid-1";
 import { calculateStats, calculateStealChancePercent, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -40,7 +41,7 @@ import {
   sellNonFavoriteInventoryItems,
   unequipToInventory
 } from "./systems/InventorySystem/index.js?v=stack-1";
-import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=players-16";
+import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=social-friends-1";
 import {
   applyProfileToState,
   createAccount,
@@ -77,7 +78,7 @@ import {
   saveVisualCalibration,
   saveWindowLayout
 } from "./systems/SaveSystem/index.js?v=city-stable-1";
-import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=social-maps-1";
+import { OnlineSystem } from "./systems/OnlineSystem/index.js?v=social-friends-1";
 import {
   buyReceptadorOffer,
   ensureReceptadorStock,
@@ -135,19 +136,18 @@ import {
   skipTutorial,
   tutorialNudgeLine,
   tutorialStep
-} from "./systems/TutorialSystem/index.js?v=tutorial-shortcut-1";
+} from "./systems/TutorialSystem/index.js?v=confirm-ui-1";
 import {
-  activateCar,
   activateHouse,
   activateLand,
+  activateMotorcycle,
   applyOfflinePassiveIncome,
   assetRequirementText,
-  buyCar,
   buyHouse,
   buyLand,
+  buyMotorcycle,
   canStartRaid,
   canUnlockAsset,
-  carOptions,
   collectPassiveVault,
   getOfflineLimitHours,
   getPassiveIncomePerMinute,
@@ -155,23 +155,25 @@ import {
   hideoutRestCooldown,
   houseOptions,
   landOptions,
+  motorcycleOptions,
+  motorcyclesUnlocked,
   normalizeProgressionSystems,
   restNow,
   staminaRaidBlockedMessage,
   staminaPercent,
   staminaState,
   updatePassiveIncome
-} from "./systems/StaminaSystem/index.js?v=asset-lock-1";
-import { getCarConfig, getHouseConfig, getItemConfigById, getLandConfig } from "./data/balance/index.js?v=asset-lock-1";
+} from "./systems/StaminaSystem/index.js?v=moto-garage-1";
+import { MOTORCYCLE_UNLOCK_LEVEL, getHouseConfig, getItemConfigById, getLandConfig, getMotorcycleConfig } from "./data/balance/index.js?v=asset-lock-1";
 import { PETS, PET_UNLOCK_LEVEL, STARTER_PET_ID, buyPet, equipPet, normalizePets, petPrice, petStatus, petsUnlocked, unequipPet } from "./data/pets/index.js?v=pets-manual-1";
-import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=social-maps-1";
+import { SpriteRenderer } from "./ui/SpriteRenderer.js?v=social-friends-1";
 import {
   renderCharacterSelect,
   renderConfigWindow,
   renderInventoryWindow,
   renderVaultWindow,
   renderPanel
-} from "./ui/WindowSystem.js?v=players-16";
+} from "./ui/WindowSystem.js?v=moto-garage-1";
 
 const elements = {
   canvas: document.querySelector("#game-canvas"),
@@ -193,6 +195,7 @@ const elements = {
   raidSummaryMoney: document.querySelector("#raid-summary-money"),
   raidSummaryXp: document.querySelector("#raid-summary-xp"),
   raidSummaryTargets: document.querySelector("#raid-summary-targets"),
+  raidSummaryCountdownLabel: document.querySelector("#raid-summary-countdown-label"),
   raidSummaryCountdown: document.querySelector("#raid-summary-countdown"),
   raidSummaryItems: document.querySelector("#raid-summary-items"),
   raidRepeatButton: document.querySelector("#raid-repeat-button"),
@@ -213,6 +216,13 @@ const elements = {
   choiceText: document.querySelector("#choice-text"),
   choiceWarning: document.querySelector("#choice-warning"),
   choicePrisonRisk: document.querySelector("#choice-prison-risk"),
+  gameConfirmModal: document.querySelector("#game-confirm-modal"),
+  gameConfirmEyebrow: document.querySelector("#game-confirm-eyebrow"),
+  gameConfirmTitle: document.querySelector("#game-confirm-title"),
+  gameConfirmText: document.querySelector("#game-confirm-text"),
+  gameConfirmDetail: document.querySelector("#game-confirm-detail"),
+  gameConfirmCancel: document.querySelector("#game-confirm-cancel"),
+  gameConfirmAccept: document.querySelector("#game-confirm-accept"),
   fleeButton: document.querySelector("#flee-button"),
   fightButton: document.querySelector("#fight-button"),
   fightAutoTimer: document.querySelector("#fight-auto-timer"),
@@ -224,6 +234,7 @@ const elements = {
   deathFlash: document.querySelector("#death-flash"),
   saveButton: document.querySelector("#save-button"),
   masterToggle: document.querySelector("#master-toggle"),
+  afkRaidToggle: document.querySelector("#afk-raid-toggle"),
   autoRaidToggle: document.querySelector("#auto-raid-toggle"),
   autoRaidPanel: document.querySelector("#auto-raid-panel"),
   autoRaidTitle: document.querySelector("#auto-raid-title"),
@@ -257,9 +268,12 @@ let editorMode = false;
 let previewTool = "all";
 let windowLayout = null;
 let animationTestLoop = null;
+let motorcycleTestLoop = null;
 let editorBarClosed = false;
 let activeCityNpc = null;
 let activeCityPortalId = null;
+let pendingGameConfirm = null;
+let activeOnlinePlayerInspectKey = null;
 let shopMode = "talk";
 let activeCityNpcGreeting = "";
 let pendingSellIndexes = new Set();
@@ -306,7 +320,9 @@ const HIDEOUT_REST_FAST_STAMINA_PER_SECOND = HIDEOUT_STAMINA_RECOVERY_CONFIG.nea
 const HIDEOUT_REST_SLOW_STAMINA_PER_SECOND = HIDEOUT_STAMINA_RECOVERY_CONFIG.awayPerMinute / 60;
 const BACKGROUND_TICK_MS = 1000;
 const DETAILED_GAME_STEP_SECONDS = 0.05;
+const AFK_GAME_STEP_SECONDS = 1;
 const SIMPLE_GAME_STEP_SECONDS = 1;
+const FRIEND_REQUEST_TTL_MS = 30 * 60 * 1000;
 const PET_TUTORIAL_FIRST_STEP = "pet_city";
 const PET_TUTORIAL_STEPS = [
   {
@@ -423,6 +439,15 @@ const BUSINESS_TUTORIAL_STEPS = [
   }
 ];
 const BUSINESS_TUTORIAL_STEP_BY_ID = Object.fromEntries(BUSINESS_TUTORIAL_STEPS.map((step) => [step.id, step]));
+const MOTORCYCLE_TUTORIAL_STEP = {
+  id: "motorcycle_unlock",
+  message: "Voce desbloqueou as motos! Agora voce pode comprar sua primeira moto para usar nos assaltos. Motos aumentam sua velocidade durante os assaltos e tambem melhoram sua chance de escapar da policia quando a perseguicao comecar. Quanto melhor a moto, maior o bonus.",
+  buttonLabel: "Ver motos",
+  target: "npc_zeca",
+  actionRequired: "open_motorcycle_shop",
+  passiveButton: true,
+  allowSkip: true
+};
 
 await renderer.load();
 await boot();
@@ -442,6 +467,7 @@ async function boot() {
   windowLayout = normalizeWindowLayout(loadWindowLayout());
   document.body.classList.toggle("layout-editor-mode", editorMode);
   document.documentElement.classList.toggle("hideout-focus", previewMode && previewTool === "hideout");
+  document.documentElement.classList.toggle("motorcycle-focus", previewMode && previewTool === "motorcycle");
 
   bootOptions = {
     params,
@@ -545,11 +571,25 @@ function startLoadedGame(options = {}) {
   state.settings.visualPreview = previewMode;
   if (previewMode) completeTutorial(state);
   if (previewMode) applyHideoutPreviewParams(params);
-  if (previewMode && previewTool !== "hideout") ensureAnimationTestBar();
+  if (previewMode && previewTool !== "hideout" && previewTool !== "motorcycle") ensureAnimationTestBar();
   setupCombat();
 
   if (previewMode) {
-    if (params.get("scene") === "hideout") {
+    if (previewTool === "motorcycle") {
+      startMotorcycleAnimationTest({
+        playerId: params.get("player") || params.get("character"),
+        mapId: params.get("map") || params.get("mapId"),
+        motorcycleLevel: Number(params.get("moto") || params.get("motorcycle") || params.get("motorcycleLevel")),
+        direction: params.get("direction"),
+        render: false,
+        silent: true
+      });
+      if (params.get("loop") === "1") {
+        startMotorcycleTestLoop({ render: false });
+      } else if (params.get("action") === "attack") {
+        triggerMotorcycleTestAction("attack", { render: false });
+      }
+    } else if (params.get("scene") === "hideout") {
       combat.enterHideout(Number(params.get("hideoutTier") || params.get("tier") || state.player.hideoutTier || 1));
     } else {
       combat.enterCity();
@@ -744,6 +784,47 @@ function escapeHtml(value) {
   }[char]));
 }
 
+function showGameConfirm(options = {}) {
+  if (!elements.gameConfirmModal || !elements.gameConfirmAccept || !elements.gameConfirmCancel) {
+    showToast("Confirmacao indisponivel. Atualize a tela do jogo.");
+    return;
+  }
+
+  pendingGameConfirm = {
+    onConfirm: typeof options.onConfirm === "function" ? options.onConfirm : null,
+    onCancel: typeof options.onCancel === "function" ? options.onCancel : null
+  };
+  elements.gameConfirmEyebrow.textContent = options.eyebrow || "Confirmacao";
+  elements.gameConfirmTitle.textContent = options.title || "Confirmar acao";
+  elements.gameConfirmText.textContent = options.message || "Tem certeza?";
+  elements.gameConfirmCancel.textContent = options.cancelLabel || "Cancelar";
+  elements.gameConfirmAccept.textContent = options.confirmLabel || "Confirmar";
+  elements.gameConfirmAccept.classList.toggle("danger-action", Boolean(options.danger));
+
+  const detail = String(options.detail || "").trim();
+  elements.gameConfirmDetail.textContent = detail;
+  elements.gameConfirmDetail.classList.toggle("hidden", !detail);
+  elements.gameConfirmModal.classList.remove("hidden");
+  window.setTimeout(() => elements.gameConfirmAccept?.focus(), 0);
+}
+
+function closeGameConfirm(options = {}) {
+  const pending = pendingGameConfirm;
+  pendingGameConfirm = null;
+  elements.gameConfirmModal?.classList.add("hidden");
+  elements.gameConfirmAccept?.classList.remove("danger-action");
+  elements.gameConfirmDetail?.classList.add("hidden");
+  if (options.confirm) {
+    pending?.onConfirm?.();
+  } else if (options.cancel !== false) {
+    pending?.onCancel?.();
+  }
+}
+
+function isGameConfirmOpen() {
+  return Boolean(elements.gameConfirmModal && !elements.gameConfirmModal.classList.contains("hidden"));
+}
+
 function showNameModal() {
   hideAuthScreen();
   elements.nameError.classList.add("hidden");
@@ -790,7 +871,9 @@ function setupCombat() {
   });
   online = new OnlineSystem(state, {
     onToast: (message) => showToast(message),
-    onChange: () => renderAll()
+    onChange: () => renderAll(),
+    onFriendRequest: (request) => handleIncomingFriendRequest(request),
+    onFriendAccepted: (accepted) => handleFriendAccepted(accepted)
   });
 }
 
@@ -878,6 +961,7 @@ function advanceGameTime(seconds) {
 
 function gameStepSeconds() {
   const mode = state?.run?.mode;
+  if (state?.run?.afkRaid) return AFK_GAME_STEP_SECONDS;
   if (state?.scene === "map") return DETAILED_GAME_STEP_SECONDS;
   if (["combat", "choice", "approaching", "stealing", "collectingLoot", "summary"].includes(mode)) {
     return DETAILED_GAME_STEP_SECONDS;
@@ -887,6 +971,7 @@ function gameStepSeconds() {
 
 function advanceGameStep(dt) {
   combat.update(dt);
+  updateMotorcycleAnimationTest(dt);
   online?.update(dt);
   updatePassiveIncome(state, dt);
   calculateProduction(state.player);
@@ -982,15 +1067,23 @@ function renderAll() {
   if (state.settings.visualPreview) {
     if (previewTool === "hideout") {
       hideGeneralPreviewPanels();
+      hideMotorcycleTestPanel();
+      ensureHideoutItemEditorPanel();
+    } else if (previewTool === "motorcycle") {
+      hideGeneralPreviewPanels();
+      hideHideoutItemEditorPanel();
+      ensureMotorcycleTestPanel();
+      updateMotorcycleTestPanel();
     } else {
+      hideMotorcycleTestPanel();
       ensureAnimationTestBar();
       ensureMapNpcTestPanel();
       updateAnimationTestBar();
       updateMapNpcTestPanel();
+      ensureHideoutItemEditorPanel();
     }
-    ensureHideoutItemEditorPanel();
   }
-  updateHideoutItemEditorPanel();
+  if (previewTool !== "motorcycle") updateHideoutItemEditorPanel();
   syncRaidSummary();
   renderCityShopPanel();
   renderTutorial();
@@ -1030,6 +1123,10 @@ function ensureTutorialOverlay() {
         advanceBusinessTutorial();
         return;
       }
+      if (isMotorcycleTutorialStep(step)) {
+        completeMotorcycleTutorial();
+        return;
+      }
       advanceActiveTutorial();
     },
     onBack: (step) => {
@@ -1052,8 +1149,13 @@ function ensureTutorialOverlay() {
         skipBusinessTutorial();
         return;
       }
+      if (isMotorcycleTutorialStep(step)) {
+        skipMotorcycleTutorial();
+        return;
+      }
       skipActiveTutorial();
     },
+    onConfirmRequest: (options) => showGameConfirm(options),
     onPassive: (step) => {
       if (isPetTutorialStep(step)) {
         performPetTutorialAction(step);
@@ -1061,6 +1163,10 @@ function ensureTutorialOverlay() {
       }
       if (isBusinessTutorialStep(step)) {
         performBusinessTutorialAction(step);
+        return;
+      }
+      if (isMotorcycleTutorialStep(step)) {
+        performMotorcycleTutorialAction(step);
         return;
       }
       performTutorialPrimaryAction(step);
@@ -1103,7 +1209,14 @@ function renderTutorial() {
 
   maybeStartBusinessTutorial();
   const businessStep = activeBusinessTutorialStep();
-  ensureTutorialOverlay().render(businessStep, { canGoBack: canRewindBusinessTutorial() });
+  if (businessStep) {
+    ensureTutorialOverlay().render(businessStep, { canGoBack: canRewindBusinessTutorial() });
+    return;
+  }
+
+  maybeStartMotorcycleTutorial();
+  const motorcycleStep = activeMotorcycleTutorialStep();
+  ensureTutorialOverlay().render(motorcycleStep, { canGoBack: false });
 }
 
 function advanceActiveTutorial() {
@@ -1141,10 +1254,6 @@ function performTutorialPrimaryAction(step) {
   }
   if (action === "buy_house_1") {
     buyTutorialAsset("house", 1);
-    return;
-  }
-  if (action === "buy_car_1") {
-    buyTutorialAsset("car", 1);
     return;
   }
   if (action === "click_city_hideout_portal") {
@@ -1486,6 +1595,55 @@ function dispatchBusinessTutorialEvent(type, payload = {}, options = {}) {
   return false;
 }
 
+function isMotorcycleTutorialStep(step) {
+  return step?.id === MOTORCYCLE_TUTORIAL_STEP.id;
+}
+
+function maybeStartMotorcycleTutorial() {
+  if (!state?.player || tutorialStep(state) || characterTutorialVisible) return;
+  if (!motorcyclesUnlocked(state.player)) return;
+  if (state.player.motorcycleTutorialCompleted || state.player.motorcycleTutorialSkipped) return;
+  state.player.motorcycleTutorialActive = true;
+}
+
+function activeMotorcycleTutorialStep() {
+  if (!state?.player?.motorcycleTutorialActive) return null;
+  if (!motorcyclesUnlocked(state.player)) return null;
+  return MOTORCYCLE_TUTORIAL_STEP;
+}
+
+function skipMotorcycleTutorial(options = {}) {
+  if (!state?.player) return false;
+  state.player.motorcycleTutorialActive = false;
+  state.player.motorcycleTutorialSkipped = true;
+  return commitMotorcycleTutorialChange(options);
+}
+
+function completeMotorcycleTutorial(options = {}) {
+  if (!state?.player) return false;
+  state.player.motorcycleTutorialActive = false;
+  state.player.motorcycleTutorialCompleted = true;
+  return commitMotorcycleTutorialChange(options);
+}
+
+function commitMotorcycleTutorialChange(options = {}) {
+  if (!state?.settings?.visualPreview && options.persist !== false) persistGame();
+  if (options.render !== false) renderAll();
+  return true;
+}
+
+function performMotorcycleTutorialAction() {
+  if (!state || !combat) return;
+  if (state.scene !== "city" || state.run.mode !== "city") {
+    showToast("Volte para a cidade para ver as motos.");
+    return;
+  }
+  openTutorialZecaShop("motorcycle");
+  completeMotorcycleTutorial({ render: false });
+  showToast("Motos liberadas com o Seu Zeca.");
+  renderAll();
+}
+
 function applyTutorialSideEffects() {
   const step = tutorialStep(state);
   if (!step || state.settings?.visualPreview || lastTutorialSideEffectStep === step.id) return;
@@ -1528,11 +1686,6 @@ function applyTutorialSideEffects() {
     return;
   }
 
-  if (step.id === "zeca_buy_car") {
-    openTutorialZecaShop("car");
-    ensureTutorialAssetFunds("car", 1);
-    return;
-  }
 
   if (step.id === "hideout_portal_intro" || step.id === "hideout_portal_click") {
     closeCityShopPanel({ render: false, force: true });
@@ -1570,14 +1723,14 @@ function applyTutorialSideEffects() {
 function ensureTutorialAssetFunds(type, tier) {
   const asset = type === "house"
     ? getHouseConfig(tier)
-    : type === "car"
-      ? getCarConfig(tier)
+    : type === "motorcycle"
+      ? getMotorcycleConfig(tier)
       : getLandConfig(tier);
   if (!asset || asset.price <= 0) return;
   const ownsAsset = type === "house"
     ? state.player.ownedHouses.includes(tier)
-    : type === "car"
-      ? state.player.ownedCars.includes(tier)
+    : type === "motorcycle"
+      ? state.player.ownedMotorcycles.includes(tier)
       : state.player.terrenosComprados.includes(tier);
   if (ownsAsset || state.player.money >= asset.price) return;
 
@@ -1663,8 +1816,8 @@ function buyTutorialAsset(type, tier) {
   ensureTutorialAssetFunds(type, tier);
   const result = type === "house"
     ? buyHouse(state.player, tier)
-    : type === "car"
-      ? buyCar(state.player, tier)
+    : type === "motorcycle"
+      ? buyMotorcycle(state.player, tier)
       : buyLand(state.player, tier);
   handleAssetBuy(result, type, tier);
 }
@@ -1697,8 +1850,7 @@ function tutorialNeedsCityShopOpen() {
   const action = tutorialStep(state)?.actionRequired;
   return action === "open_land_shop" ||
     action === "buy_land_1" ||
-    action === "buy_house_1" ||
-    action === "buy_car_1";
+    action === "buy_house_1";
 }
 
 function tutorialNeedsAssaultPanelOpen() {
@@ -1719,7 +1871,7 @@ function resolveTutorialTargetRect(target) {
     shop_land_mode: '#city-shop-panel [data-shop-mode="land"]',
     land_t1: '#city-shop-panel [data-buy-land="1"]',
     house_t1: '#city-shop-panel [data-buy-house="1"]',
-    car_t1: '#city-shop-panel [data-buy-car="1"]',
+    motorcycle_t1: '#city-shop-panel [data-buy-motorcycle="1"]',
     hideout_chest: "#right-window .vault-grid, #right-window .vault-cell",
     hideout_vault: "#right-window .vault-money-panel, #vault-money-input",
     first_assault: "#left-window .map-row, #left-window [data-enter-map]",
@@ -1930,15 +2082,22 @@ function syncHud() {
   elements.enemy.textContent = state.run.enemy
     ? `${state.run.enemy.name} NV ${state.run.enemy.level} | ${state.run.enemyHp}/${state.run.enemyMaxHp}`
     : "Sem alvo em combate";
+  const isAfkRaid = Boolean(state.run?.afkRaid);
   const isRaid = state.scene === "map" && state.run.raidTimeLeft > 0 && state.run.mode !== "returning" && !state.run.animationTest;
   const isTemporary = state.run.mode === "temporary" && temporaryStay;
   document.body.classList.toggle("temporary-stay-mode", Boolean(isTemporary));
   elements.raidTimer.classList.toggle("hidden", !isRaid);
-  elements.raidCaughtRiskLabel?.classList.toggle("hidden", !isRaid);
+  elements.raidCaughtRiskLabel?.classList.toggle("hidden", !isRaid || isAfkRaid);
   if (isRaid) {
-    if (elements.raidMapLabel) elements.raidMapLabel.textContent = map ? `${map.code || map.index || ""} ${map.name}`.trim() : "Assalto";
+    if (elements.raidMapLabel) {
+      elements.raidMapLabel.textContent = isAfkRaid
+        ? `AFK ${state.run.summary?.rewardMapCode || ""}`.trim()
+        : map ? `${map.code || map.index || ""} ${map.name}`.trim() : "Assalto";
+    }
     elements.raidTimerLabel.textContent = formatTime(state.run.raidTimeLeft);
-    elements.raidCountLabel.textContent = `${remainingTargets(state)} / ${totalTargets(state)} alvos`;
+    elements.raidCountLabel.textContent = isAfkRaid
+      ? `${state.run.summary?.targetsRobbed || 0} roubados`
+      : `${remainingTargets(state)} / ${totalTargets(state)} alvos`;
     const caughtRisk = Math.max(0, Math.min(100, 100 - calculateStealChancePercent(map, stats)));
     if (elements.raidCaughtRiskLabel) {
       elements.raidCaughtRiskLabel.textContent = `Ser pego: ${formatPercent(caughtRisk)}`;
@@ -1946,6 +2105,7 @@ function syncHud() {
   }
   elements.playerHpFill.style.width = `${Math.round(hpPercent * 100)}%`;
   elements.playerHp.textContent = `HP ${state.player.hp} / ${stats.maxHp}`;
+  syncAfkRaidButton();
   syncAutoRaidButton();
   syncHideoutRestButton();
   syncRaidSummary();
@@ -1969,6 +2129,75 @@ function hideoutRestButtonLabel(player, house, rechargeCost, cooldown) {
   if (!cooldown.ready) return `Aguardar ${compactDuration(cooldown.remainingMs)}`;
   if (player.money < rechargeCost) return `Precisa ${formatMoney(rechargeCost)}`;
   return `Descansar ${formatMoney(rechargeCost)}`;
+}
+
+function syncAfkRaidButton() {
+  if (!elements.afkRaidToggle) return;
+  const active = isAfkRaidActive();
+  const visible = active || canShowAfkRaidButton();
+  elements.afkRaidToggle.classList.toggle("hidden", !visible);
+  elements.afkRaidToggle.classList.toggle("active", active);
+  elements.afkRaidToggle.textContent = active ? "Concluir" : "AFK";
+  elements.afkRaidToggle.setAttribute("aria-label", active ? "Concluir roubo AFK" : "Roubar AFK");
+  elements.afkRaidToggle.setAttribute("title", active ? "Concluir roubo AFK" : "Roubar AFK");
+}
+
+function isAfkRaidActive() {
+  return Boolean(state?.run?.afkRaid && state.scene === "map" && state.run.mode !== "summary");
+}
+
+function canShowAfkRaidButton() {
+  if (!state?.player || state.settings?.visualPreview) return false;
+  if (guidedTutorialActive()) return false;
+  if (state.run?.mode === "temporary") return false;
+  if (state.run?.mode === "summary" || state.run?.summary) return false;
+  if (activeCenter && activeLeft === "assaults") return false;
+  if (state.scene === "map") return false;
+  return Boolean(afkRewardMapForUi());
+}
+
+function afkRewardMapForUi() {
+  if (!state?.player) return null;
+  const highestUnlocked = Math.max(1, Math.floor(Number(state.player.highestMapUnlocked || 1)));
+  const completedIndex = Math.max(1, Math.min(MAPS.length, highestUnlocked > 1 ? highestUnlocked - 1 : 1));
+  return MAPS.find((map) => Number(map.index || 0) === completedIndex) || MAPS[0] || null;
+}
+
+function handleAfkRaidToggleClick() {
+  if (!state || !combat) return;
+  if (isAfkRaidActive()) {
+    combat.finishAfkRaid("manual");
+    persistGame();
+    renderAll();
+    return;
+  }
+  if (!canShowAfkRaidButton()) return;
+  showGameConfirm({
+    eyebrow: "Roubo AFK",
+    title: "Roubar AFK?",
+    message: "Entrar no modo idle de assalto agora?",
+    detail: "Nao consome stamina, nao da XP e as recompensas sao reduzidas.",
+    confirmLabel: "Iniciar",
+    cancelLabel: "Cancelar",
+    onConfirm: startAfkRaid
+  });
+}
+
+function startAfkRaid() {
+  const rewardMap = afkRewardMapForUi();
+  if (!rewardMap) {
+    showToast("Conclua um mapa primeiro para liberar o AFK.");
+    return;
+  }
+  hideAutoRaidConfirm();
+  closeCityShopPanel({ render: false, force: true });
+  closeMaster({ render: false, force: true });
+  tutorialOverlay?.hide();
+  state.settings.autoRepeatRaid = false;
+  fadeThen("Roubo AFK iniciado.", () => {
+    combat.enterAfkRaid();
+    persistGame();
+  });
 }
 
 function compactDuration(ms) {
@@ -2074,6 +2303,7 @@ function handleStagePointer(event) {
   if (state.scene === "hideout" && state.run.mode === "hideout") {
     const point = canvasPoint(event);
     if (handleHideoutHouseClick(point)) return;
+    if (handleHideoutMotorcycleClick(point)) return;
     if (handleHideoutItemPointerDown(event)) return;
     const portal = findClickedHideoutPortal(point.x, point.y);
     if (portal) {
@@ -2123,6 +2353,7 @@ function beginCityStageGesture(event, point) {
     startClientX: event.clientX,
     startClientY: event.clientY,
     latestPoint: point,
+    pendingOnlinePlayer: renderer.hitTestOnlinePlayer(point.x, point.y),
     pendingPortal: findClickedCityPortal(point.x, point.y),
     pendingNpc: findClickedCityNpc(point.x, point.y),
     isHoldWalking: false,
@@ -2159,6 +2390,11 @@ function finishCityStageGesture(event) {
   if (gesture.isHoldWalking) {
     event.preventDefault();
     stopCityHoldWalk();
+    return;
+  }
+
+  if (gesture.pendingOnlinePlayer && cityStageGestureDistance(event, gesture) <= STAGE_HOLD_MOVE_THRESHOLD) {
+    openOnlinePlayerInspect(gesture.pendingOnlinePlayer);
     return;
   }
 
@@ -2250,6 +2486,11 @@ function handleGameKeyDown(event) {
   const key = event.key.toLowerCase();
 
   if (key === "escape") {
+    if (isGameConfirmOpen()) {
+      closeGameConfirm();
+      event.preventDefault();
+      return;
+    }
     if (closeCityInteractions()) {
       event.preventDefault();
     }
@@ -2429,25 +2670,29 @@ function renderInventory() {
       renderAll();
     },
     sellSelected: () => {
-      if (!confirmSellItems([state.player.inventory[state.selectedInventoryIndex]])) return;
-      const result = sellInventoryItem(state.player, state.selectedInventoryIndex);
-      handleResult(result);
-      if (result.ok) state.selectedInventoryIndex = null;
-      renderAll();
+      const index = state.selectedInventoryIndex;
+      requestSellItemsConfirmation([state.player.inventory[index]], () => {
+        const result = sellInventoryItem(state.player, index);
+        handleResult(result);
+        if (result.ok) state.selectedInventoryIndex = null;
+        renderAll();
+      });
     },
     sellRarity: (rarity) => {
       const items = state.player.inventory.filter((item) => item?.rarity === rarity);
-      if (!confirmSellItems(items)) return;
-      const result = sellInventoryItemsByRarity(state.player, rarity);
-      handleResult(result);
-      renderAll();
+      requestSellItemsConfirmation(items, () => {
+        const result = sellInventoryItemsByRarity(state.player, rarity);
+        handleResult(result);
+        renderAll();
+      });
     },
     sellNonFavorite: () => {
       const items = state.player.inventory.filter((item) => item && !item.favorite);
-      if (!confirmSellItems(items)) return;
-      const result = sellNonFavoriteInventoryItems(state.player);
-      handleResult(result);
-      renderAll();
+      requestSellItemsConfirmation(items, () => {
+        const result = sellNonFavoriteInventoryItems(state.player);
+        handleResult(result);
+        renderAll();
+      });
     },
     craftSelected: () => {
       const result = craftInventoryItem(state.player, state.selectedInventoryIndex);
@@ -2511,6 +2756,10 @@ function renderRightPanel(type) {
     renderConfigPanel(elements.rightWindow);
     return;
   }
+  if (type === "motorcycles") {
+    renderOwnedMotorcyclesPanel(elements.rightWindow);
+    return;
+  }
   if (type === "vault") {
     renderVault();
     return;
@@ -2552,6 +2801,58 @@ function renderVault() {
       renderAll();
     }
   });
+}
+
+function renderOwnedMotorcyclesPanel(container) {
+  const owned = new Set((state.player.ownedMotorcycles || []).map((tier) => Number(tier)));
+  const options = motorcycleOptions().filter((motorcycle) => owned.has(Number(motorcycle.tier)));
+  const equippedTier = Number(state.player.equippedMotorcycleLevel || 0);
+  container.innerHTML = `
+    <header class="window-header">
+      <div>
+        <span class="eyebrow">Garagem</span>
+        <h2>Motos</h2>
+      </div>
+      <button class="close-button" data-window-close="motorcycles" aria-label="Fechar">X</button>
+    </header>
+    <div class="window-body">
+      ${options.length ? `
+        <div class="owned-motorcycle-list">
+          ${options.map((motorcycle) => ownedMotorcycleCard(motorcycle, equippedTier)).join("")}
+        </div>
+      ` : `
+        <article class="pet-empty-panel">
+          <h3>Sem motos</h3>
+          <p>Compre uma moto com Seu Zeca para usar nos assaltos.</p>
+        </article>
+      `}
+    </div>
+  `;
+  bindClose(container, closeRight);
+  container.querySelectorAll("[data-equip-owned-motorcycle]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const tier = Number(button.dataset.equipOwnedMotorcycle);
+      handleResult(activateMotorcycle(state.player, tier));
+      normalizeProgressionSystems(state.player);
+      persistGame();
+      renderAll();
+    });
+  });
+}
+
+function ownedMotorcycleCard(motorcycle, equippedTier) {
+  const active = Number(motorcycle.tier) === Number(equippedTier);
+  return `
+    <article class="owned-motorcycle-card ${active ? "active" : ""}">
+      <span class="eyebrow">Moto ${motorcycle.tier}</span>
+      <h3>${escapeHtml(motorcycle.name)}</h3>
+      <p>Assalto ${motorcycle.speedMultiplier.toFixed(1)}x</p>
+      <small>Fuga ${formatPercent(motorcycle.policeEscapeChance * 100)} | Renda ${formatMoney(motorcycle.passiveIncomePerMinute)}/min</small>
+      <button type="button" class="panel-action" data-equip-owned-motorcycle="${motorcycle.tier}" ${active ? "disabled" : ""}>
+        ${active ? "Equipada" : "Equipar"}
+      </button>
+    </article>
+  `;
 }
 
 function ensurePersonalVault() {
@@ -3215,6 +3516,7 @@ function handleAnimationTestClick(event) {
 
   if (button.dataset.testAction === "city") {
     stopAnimationTestLoop();
+    stopMotorcycleTestLoop({ render: false });
     combat.enterCity();
     renderAll();
   }
@@ -3222,6 +3524,7 @@ function handleAnimationTestClick(event) {
 
 function startAnimationCombatTest(playerId = state.selectedPlayerId) {
   stopAnimationTestLoop();
+  stopMotorcycleTestLoop({ render: false });
   closeMaster({ render: false });
   state.selectedPlayerId = playerId;
   const map = MAPS[0];
@@ -3312,6 +3615,389 @@ function updateAnimationTestBar() {
   bar.querySelector('[data-test-action="loop"]')?.classList.toggle("active", Boolean(animationTestLoop));
 }
 
+function ensureMotorcycleTestPanel() {
+  let panel = document.querySelector("#motorcycle-test-panel");
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "motorcycle-test-panel";
+    panel.className = "motorcycle-test-panel";
+    document.body.append(panel);
+  }
+
+  panel.classList.remove("hidden");
+  if (panel.dataset.testReady) return;
+  panel.innerHTML = `
+    <strong>Teste moto</strong>
+    <label>
+      Mapa
+      <select id="motorcycle-test-map" aria-label="Mapa de assalto"></select>
+    </label>
+    <label>
+      Personagem
+      <select id="motorcycle-test-player" aria-label="Personagem"></select>
+    </label>
+    <label>
+      Moto
+      <select id="motorcycle-test-level" aria-label="Moto"></select>
+    </label>
+    <label class="motorcycle-test-range">
+      Altura
+      <input type="range" id="motorcycle-test-y" min="-80" max="80" step="1" value="0" aria-label="Altura da moto">
+      <output id="motorcycle-test-y-value">0</output>
+    </label>
+    <label class="motorcycle-test-range">
+      Tamanho
+      <input type="range" id="motorcycle-test-scale" min="70" max="135" step="1" value="100" aria-label="Tamanho da moto">
+      <output id="motorcycle-test-scale-value">100%</output>
+    </label>
+    <button type="button" data-motorcycle-test-action="move">Movimento</button>
+    <button type="button" data-motorcycle-test-action="attack">Ataque</button>
+    <button type="button" data-motorcycle-test-action="loop">Loop</button>
+    <button type="button" data-motorcycle-test-action="direction">Virar</button>
+    <button type="button" data-motorcycle-test-action="reset">Reset</button>
+    <button type="button" data-motorcycle-test-action="save">Salvar</button>
+    <button type="button" data-motorcycle-test-action="city">Cidade</button>
+  `;
+  panel.dataset.testReady = "true";
+  panel.addEventListener("change", handleMotorcycleTestChange);
+  panel.addEventListener("input", handleMotorcycleTestInput);
+  panel.addEventListener("click", handleMotorcycleTestClick);
+}
+
+function hideMotorcycleTestPanel() {
+  document.querySelector("#motorcycle-test-panel")?.classList.add("hidden");
+}
+
+function handleMotorcycleTestChange(event) {
+  if (!state?.settings?.visualPreview) return;
+  const settings = ensureMotorcycleTestSettings();
+  const keepLoop = Boolean(state.run?.motorcycleTestLoop || motorcycleTestLoop);
+  if (event.target.id === "motorcycle-test-map") {
+    startMotorcycleAnimationTest({ ...settings, mapId: event.target.value, keepLoop });
+  }
+  if (event.target.id === "motorcycle-test-player") {
+    startMotorcycleAnimationTest({ ...settings, playerId: event.target.value, keepLoop });
+  }
+  if (event.target.id === "motorcycle-test-level") {
+    startMotorcycleAnimationTest({ ...settings, motorcycleLevel: Number(event.target.value), keepLoop });
+  }
+}
+
+function handleMotorcycleTestInput(event) {
+  if (!state?.settings?.visualPreview) return;
+  if (event.target.id !== "motorcycle-test-y" && event.target.id !== "motorcycle-test-scale") return;
+  const calibration = currentMotorcycleVisualCalibration();
+  const y = event.target.id === "motorcycle-test-y" ? Number(event.target.value) : calibration.y;
+  const scale = event.target.id === "motorcycle-test-scale" ? Number(event.target.value) / 100 : calibration.scale;
+  setMotorcycleVisualCalibration({ y, scale });
+  renderer.draw(state, playerRow());
+  updateMotorcycleTestPanelValues();
+}
+
+function handleMotorcycleTestClick(event) {
+  const button = event.target.closest("button");
+  if (!button || !state?.settings?.visualPreview) return;
+  const action = button.dataset.motorcycleTestAction;
+  if (action === "move" || action === "attack") {
+    triggerMotorcycleTestAction(action);
+    return;
+  }
+  if (action === "loop") {
+    toggleMotorcycleTestLoop();
+    return;
+  }
+  if (action === "direction") {
+    flipMotorcycleTestDirection();
+    return;
+  }
+  if (action === "reset") {
+    setMotorcycleVisualCalibration({ y: 0, scale: 1 });
+    renderAll();
+    showToast("Ancora da moto resetada.");
+    return;
+  }
+  if (action === "save") {
+    saveVisualCalibration(state.settings.visual);
+    showToast("Ancoras das motos salvas.");
+    updateMotorcycleTestPanelValues();
+    return;
+  }
+  if (action === "city") {
+    stopMotorcycleTestLoop({ render: false });
+    combat.enterCity();
+    renderAll();
+  }
+}
+
+function startMotorcycleAnimationTest(options = {}) {
+  stopAnimationTestLoop();
+  const settings = ensureMotorcycleTestSettings();
+  const keepLoop = Boolean(options.keepLoop || state.run?.motorcycleTestLoop || motorcycleTestLoop);
+  const playerId = normalizePlayerId(options.playerId || settings.playerId || state.selectedPlayerId);
+  const motorcycleLevel = normalizeMotorcycleTestLevel(options.motorcycleLevel || settings.motorcycleLevel);
+  const map = motorcycleTestMap(options.mapId || settings.mapId);
+  const direction = options.direction === "left" || options.direction === "right" ? options.direction : settings.direction || "right";
+
+  settings.playerId = playerId;
+  settings.motorcycleLevel = motorcycleLevel;
+  settings.mapId = map.id;
+  settings.direction = direction;
+
+  closeMaster({ render: false });
+  state.selectedPlayerId = playerId;
+  state.player.characterId = playerId;
+  state.player.level = Math.max(Number(state.player.level || 1), MOTORCYCLE_UNLOCK_LEVEL, Number(getMotorcycleConfig(motorcycleLevel)?.requiredLevel || 1));
+  state.player.hideoutTier = Math.max(Number(state.player.hideoutTier || 1), motorcycleLevel);
+  state.player.hideoutItems ||= {};
+  state.player.hideoutItems.vehicle = Math.max(Number(state.player.hideoutItems.vehicle || 0), motorcycleLevel);
+  state.player.ownedMotorcycles = Array.from(new Set([...(state.player.ownedMotorcycles || []), motorcycleLevel])).sort((a, b) => a - b);
+  state.player.ownedCars = Array.from(new Set([...(state.player.ownedCars || []), motorcycleLevel])).sort((a, b) => a - b);
+  state.player.equippedMotorcycleLevel = motorcycleLevel;
+  state.player.motoAtual = motorcycleLevel;
+  state.player.carroAtual = motorcycleLevel;
+  state.player.hasMotorcycleEquipped = true;
+  state.player.motorcycleSystemUnlocked = true;
+
+  const stats = calculateStats(state.player);
+  state.player.hp = stats.maxHp;
+  state.scene = "map";
+  state.currentMapId = map.id;
+  state.run = createMotorcycleAnimationTestRun(map, direction, keepLoop);
+
+  if (!options.silent) {
+    const player = PLAYERS.find((candidate) => candidate.id === playerId);
+    showToast(`Teste de moto: ${player?.name || "Personagem"} / Moto ${motorcycleLevel}`);
+  }
+  if (options.render !== false) renderAll();
+}
+
+function createMotorcycleAnimationTestRun(map, direction = "right", loopActive = false) {
+  const playerX = direction === "left" ? 620 : 260;
+  const targetX = direction === "left" ? 385 : 540;
+  return {
+    mode: "combat",
+    playerX,
+    playerDirection: direction,
+    npcs: [
+      {
+        id: "motorcycle-test-target",
+        name: "Alvo de teste",
+        row: Math.max(0, Math.min(8, Number(map.tier || 1) - 1)),
+        x: targetX,
+        direction: direction === "left" ? "right" : "left",
+        alerted: true,
+        done: false,
+        walkPhase: 0
+      }
+    ],
+    targetId: "motorcycle-test-target",
+    timer: 0,
+    raidDuration: 999,
+    raidTimeLeft: 999,
+    enemy: {
+      name: "Alvo de teste",
+      level: 1,
+      hp: 999,
+      attack: 0,
+      speed: 0,
+      block: 0
+    },
+    enemyHp: 999,
+    enemyMaxHp: 999,
+    playerAttackTimer: 9999,
+    enemyAttackTimer: 9999,
+    playerAction: null,
+    playerActionTimer: 0,
+    playerActionDuration: 0,
+    cityTargetX: null,
+    attempts: 0,
+    animationTest: true,
+    motorcycleAnimationTest: true,
+    motorcycleTestLoop: loopActive,
+    motorcycleTestDirection: direction,
+    motorcycleTestMinX: 220,
+    motorcycleTestMaxX: 660
+  };
+}
+
+function triggerMotorcycleTestAction(action, options = {}) {
+  if (!state.run?.motorcycleAnimationTest) startMotorcycleAnimationTest({ render: false, silent: true });
+  if (action === "attack") {
+    state.run.mode = "combat";
+    combat.triggerPlayerAction("attack", 0.72);
+  } else {
+    state.run.playerAction = null;
+    state.run.playerActionTimer = 0;
+    state.run.playerActionDuration = 0;
+    nudgeMotorcycleTestPlayer();
+  }
+  if (options.render !== false) {
+    renderer.draw(state, playerRow());
+    syncHud();
+    updateMotorcycleTestPanel();
+  }
+}
+
+function toggleMotorcycleTestLoop() {
+  if (motorcycleTestLoop || state.run?.motorcycleTestLoop) {
+    stopMotorcycleTestLoop();
+    return;
+  }
+  startMotorcycleTestLoop();
+}
+
+function startMotorcycleTestLoop(options = {}) {
+  if (!state.run?.motorcycleAnimationTest) startMotorcycleAnimationTest({ render: false, silent: true });
+  if (motorcycleTestLoop) clearInterval(motorcycleTestLoop);
+  state.run.motorcycleTestLoop = true;
+  motorcycleTestLoop = setInterval(() => {
+    triggerMotorcycleTestAction("attack", { render: false });
+    updateMotorcycleTestPanel();
+  }, 1260);
+  triggerMotorcycleTestAction("move", { render: false });
+  if (options.render !== false) renderAll();
+}
+
+function stopMotorcycleTestLoop(options = {}) {
+  if (motorcycleTestLoop) {
+    clearInterval(motorcycleTestLoop);
+    motorcycleTestLoop = null;
+  }
+  if (state?.run?.motorcycleAnimationTest) state.run.motorcycleTestLoop = false;
+  if (options.render !== false && state) {
+    renderAll();
+  }
+}
+
+function updateMotorcycleAnimationTest(dt) {
+  const run = state?.run;
+  if (!run?.motorcycleAnimationTest || !run.motorcycleTestLoop) return;
+  const minX = Number(run.motorcycleTestMinX || 220);
+  const maxX = Number(run.motorcycleTestMaxX || 660);
+  const speed = 118;
+  let direction = run.motorcycleTestDirection === "left" ? -1 : 1;
+  run.playerX += direction * speed * dt;
+  if (run.playerX >= maxX) {
+    run.playerX = maxX;
+    direction = -1;
+  } else if (run.playerX <= minX) {
+    run.playerX = minX;
+    direction = 1;
+  }
+  run.motorcycleTestDirection = direction >= 0 ? "right" : "left";
+  run.playerDirection = run.motorcycleTestDirection;
+  const target = run.npcs?.find((npc) => npc.id === run.targetId);
+  if (target) target.direction = run.playerDirection === "left" ? "right" : "left";
+}
+
+function nudgeMotorcycleTestPlayer() {
+  const run = state.run;
+  const minX = Number(run.motorcycleTestMinX || 220);
+  const maxX = Number(run.motorcycleTestMaxX || 660);
+  let direction = run.motorcycleTestDirection === "left" ? -1 : 1;
+  run.playerX += direction * 32;
+  if (run.playerX >= maxX || run.playerX <= minX) {
+    direction *= -1;
+    run.playerX = Math.max(minX, Math.min(maxX, run.playerX));
+  }
+  run.motorcycleTestDirection = direction >= 0 ? "right" : "left";
+  run.playerDirection = run.motorcycleTestDirection;
+}
+
+function flipMotorcycleTestDirection() {
+  if (!state.run?.motorcycleAnimationTest) startMotorcycleAnimationTest({ render: false, silent: true });
+  state.run.motorcycleTestDirection = state.run.motorcycleTestDirection === "left" ? "right" : "left";
+  state.run.playerDirection = state.run.motorcycleTestDirection;
+  ensureMotorcycleTestSettings().direction = state.run.motorcycleTestDirection;
+  renderAll();
+}
+
+function updateMotorcycleTestPanel() {
+  const panel = document.querySelector("#motorcycle-test-panel");
+  if (!panel || !state?.settings?.visualPreview) return;
+  const settings = ensureMotorcycleTestSettings();
+  panel.querySelector("#motorcycle-test-map").innerHTML = MAPS.map((map) => `
+    <option value="${escapeHtml(map.id)}" ${map.id === settings.mapId ? "selected" : ""}>${escapeHtml(map.code)} - ${escapeHtml(map.name)}</option>
+  `).join("");
+  panel.querySelector("#motorcycle-test-player").innerHTML = PLAYERS.map((player) => `
+    <option value="${escapeHtml(player.id)}" ${player.id === settings.playerId ? "selected" : ""}>${escapeHtml(player.name)}</option>
+  `).join("");
+  panel.querySelector("#motorcycle-test-level").innerHTML = [1, 2, 3, 4, 5].map((level) => {
+    const motorcycle = getMotorcycleConfig(level);
+    return `<option value="${level}" ${level === settings.motorcycleLevel ? "selected" : ""}>${escapeHtml(motorcycle?.name || `Moto ${level}`)}</option>`;
+  }).join("");
+  panel.querySelector('[data-motorcycle-test-action="loop"]')?.classList.toggle("active", Boolean(state.run?.motorcycleTestLoop || motorcycleTestLoop));
+  panel.querySelector('[data-motorcycle-test-action="direction"]')?.classList.toggle("active", state.run?.playerDirection === "left");
+  updateMotorcycleTestPanelValues();
+}
+
+function ensureMotorcycleTestSettings() {
+  state.settings.motorcycleTest ||= {};
+  const settings = state.settings.motorcycleTest;
+  settings.playerId = normalizePlayerId(settings.playerId || state.selectedPlayerId || DEFAULT_PLAYER_ID);
+  settings.motorcycleLevel = normalizeMotorcycleTestLevel(settings.motorcycleLevel || state.player?.equippedMotorcycleLevel || 1);
+  settings.mapId = motorcycleTestMap(settings.mapId).id;
+  settings.direction = settings.direction === "left" ? "left" : "right";
+  return settings;
+}
+
+function currentMotorcycleVisualCalibration() {
+  const visual = ensureMotorcycleVisualSettings();
+  const y = Number(visual.y || 0);
+  const scale = Number(visual.scale || 1);
+  return {
+    y: Math.max(-80, Math.min(80, Number.isFinite(y) ? Math.round(y) : 0)),
+    scale: Math.max(0.7, Math.min(1.35, Number.isFinite(scale) && scale > 0 ? scale : 1))
+  };
+}
+
+function setMotorcycleVisualCalibration(values = {}) {
+  const visual = ensureMotorcycleVisualSettings();
+  if (Number.isFinite(Number(values.y))) {
+    visual.y = Math.max(-80, Math.min(80, Math.round(Number(values.y))));
+  }
+  if (Number.isFinite(Number(values.scale))) {
+    visual.scale = Math.max(0.7, Math.min(1.35, Math.round(Number(values.scale) * 100) / 100));
+  }
+  return visual;
+}
+
+function ensureMotorcycleVisualSettings() {
+  state.settings.visual ||= {};
+  if (!state.settings.visual.motorcycleMount) {
+    const settings = ensureMotorcycleTestSettings();
+    const playerKey = normalizePlayerId(settings.playerId || state.selectedPlayerId || DEFAULT_PLAYER_ID);
+    const levelKey = String(normalizeMotorcycleTestLevel(settings.motorcycleLevel || state.player?.equippedMotorcycleLevel || 1));
+    const legacy = state.settings.visual.motorcycles?.[playerKey]?.[levelKey] || {};
+    state.settings.visual.motorcycleMount = {
+      y: Number.isFinite(Number(legacy.y)) ? Number(legacy.y) : 0,
+      scale: Number.isFinite(Number(legacy.scale)) && Number(legacy.scale) > 0 ? Number(legacy.scale) : 1
+    };
+  }
+  return state.settings.visual.motorcycleMount;
+}
+
+function updateMotorcycleTestPanelValues() {
+  const panel = document.querySelector("#motorcycle-test-panel");
+  if (!panel || !state?.settings?.visualPreview) return;
+  const calibration = currentMotorcycleVisualCalibration();
+  const yInput = panel.querySelector("#motorcycle-test-y");
+  const scaleInput = panel.querySelector("#motorcycle-test-scale");
+  if (yInput) yInput.value = String(calibration.y);
+  if (scaleInput) scaleInput.value = String(Math.round(calibration.scale * 100));
+  panel.querySelector("#motorcycle-test-y-value")?.replaceChildren(String(calibration.y));
+  panel.querySelector("#motorcycle-test-scale-value")?.replaceChildren(`${Math.round(calibration.scale * 100)}%`);
+}
+
+function normalizeMotorcycleTestLevel(level) {
+  const numeric = Number(level);
+  return Math.max(1, Math.min(5, Number.isFinite(numeric) ? Math.floor(numeric) : 1));
+}
+
+function motorcycleTestMap(mapId) {
+  return MAPS.find((map) => map.id === mapId || String(map.index) === String(mapId) || map.code === mapId) || MAPS[0];
+}
+
 function ensureMapNpcTestPanel() {
   let panel = document.querySelector("#map-npc-test-panel");
   if (!panel) {
@@ -3369,6 +4055,7 @@ function updateMapNpcTestPanel() {
 
 function showMapNpcTestScene(targetValue, options = {}) {
   stopAnimationTestLoop();
+  stopMotorcycleTestLoop({ render: false });
   hideChoice();
   closeMaster({ render: false });
   const target = targetValue || "city";
@@ -3481,7 +4168,12 @@ function ensureHideoutItemEditorPanel() {
     panel.addEventListener("click", handleHideoutEditorClick);
   }
 
+  panel.classList.remove("hidden");
   updateHideoutItemEditorPanel();
+}
+
+function hideHideoutItemEditorPanel() {
+  document.querySelector("#hideout-item-editor-panel")?.classList.add("hidden");
 }
 
 function updateHideoutItemEditorPanel() {
@@ -3492,6 +4184,7 @@ function updateHideoutItemEditorPanel() {
   const selectedTier = selectedHideoutItemTier(selectedType.id);
   const placement = getHideoutItemPlacement(selectedType.id, state.player.hideoutTier || 1, selectedTier);
   const hideoutTier = state.scene === "hideout" ? state.player.hideoutTier || 1 : 1;
+  const heightLocked = selectedType.id === "vehicle";
 
   panel.innerHTML = `
     <strong>Editor esconderijo</strong>
@@ -3506,13 +4199,13 @@ function updateHideoutItemEditorPanel() {
       `).join("")}
     </select>
     <select id="hideout-editor-tier" aria-label="Tier do item">
-      ${HIDEOUT_ITEM_TIERS.map((tier) => `
+      ${HIDEOUT_ITEM_TIERS.filter((tier) => tier <= hideoutItemMaxTier(selectedType.id)).map((tier) => `
         <option value="${tier}" ${tier === selectedTier ? "selected" : ""}>Tier ${tier}</option>
       `).join("")}
     </select>
     <label>
       Tam.
-      <input id="hideout-editor-height" type="range" min="34" max="220" value="${Math.round(placement.height)}">
+      <input id="hideout-editor-height" type="range" min="34" max="220" value="${Math.round(placement.height)}" ${heightLocked ? "disabled" : ""}>
       <span>${Math.round(placement.height)}</span>
     </label>
     <button type="button" data-hideout-item-step="-1">Anterior</button>
@@ -3609,6 +4302,29 @@ function handleHideoutHouseClick(point) {
   return true;
 }
 
+function handleHideoutMotorcycleClick(point) {
+  if (state?.settings?.visualPreview || state.scene !== "hideout") return false;
+  const hit = renderer.hitTestHideoutItem(point.x, point.y);
+  if (hit?.typeId !== "vehicle") return false;
+  normalizeProgressionSystems(state.player);
+  if (!state.player?.ownedMotorcycles?.length) {
+    showToast("Compre uma moto para abrir a garagem.");
+    return true;
+  }
+
+  state.run.pendingHideoutPortalId = null;
+  state.run.pendingHideoutItemId = null;
+  state.run.cityTargetX = null;
+  closeCityShopPanel({ render: false, force: true });
+  closeCityPortalPanel({ render: false, force: true });
+  activeCenter = true;
+  activeLeft = "assaults";
+  activeRight = "motorcycles";
+  showToast("Motos e assaltos abertos.");
+  renderAll();
+  return true;
+}
+
 function handleHideoutItemPointerDown(event) {
   if (!state?.settings?.visualPreview || state.scene !== "hideout") return false;
   const point = canvasPoint(event);
@@ -3665,7 +4381,8 @@ function ensureHideoutEditorState() {
   state.settings.hideoutEditor.selectedType ||= "house";
   state.settings.hideoutEditor.previewTiers ||= {};
   HIDEOUT_ITEM_TYPES.forEach((item) => {
-    state.settings.hideoutEditor.previewTiers[item.id] ||= state.player.hideoutItems?.[item.id] || 1;
+    const value = state.settings.hideoutEditor.previewTiers[item.id] || state.player.hideoutItems?.[item.id] || 1;
+    state.settings.hideoutEditor.previewTiers[item.id] = Math.max(1, Math.min(hideoutItemMaxTier(item.id), Number(value) || 1));
   });
   return state.settings.hideoutEditor;
 }
@@ -3676,7 +4393,7 @@ function applyHideoutPreviewParams(params) {
   const houseTier = Number(params.get("houseTier"));
   const vehicleTier = Number(params.get("vehicleTier"));
   if (Number.isFinite(houseTier) && houseTier >= 1) editor.previewTiers.house = Math.min(9, houseTier);
-  if (Number.isFinite(vehicleTier) && vehicleTier >= 1) editor.previewTiers.vehicle = Math.min(9, vehicleTier);
+  if (Number.isFinite(vehicleTier) && vehicleTier >= 1) editor.previewTiers.vehicle = Math.min(hideoutItemMaxTier("vehicle"), vehicleTier);
   const selectedType = params.get("item");
   if (HIDEOUT_ITEM_TYPES.some((item) => item.id === selectedType)) editor.selectedType = selectedType;
 }
@@ -3696,7 +4413,7 @@ function getHideoutItemPlacement(typeId, tier = state.player.hideoutTier || 1, i
   placement.heights ||= {};
   return {
     ...placement,
-    height: placement.heights[itemTier] || hideoutItemHeight(type.id, itemTier)
+    height: type.id === "vehicle" ? hideoutItemHeight(type.id, itemTier) : placement.heights[itemTier] || hideoutItemHeight(type.id, itemTier)
   };
 }
 
@@ -3710,7 +4427,11 @@ function setHideoutItemPlacement(typeId, patch, tier = state.player.hideoutTier 
   placement.heights ||= {};
   const next = { ...patch };
   if (Number.isFinite(next.height)) {
-    placement.heights[itemTier] = next.height;
+    if (type.id === "vehicle") {
+      delete placement.heights[itemTier];
+    } else {
+      placement.heights[itemTier] = next.height;
+    }
     delete next.height;
   }
   Object.assign(placement, next);
@@ -3718,13 +4439,14 @@ function setHideoutItemPlacement(typeId, patch, tier = state.player.hideoutTier 
 
 function selectedHideoutItemTier(typeId) {
   const editor = ensureHideoutEditorState();
-  return Math.max(1, Math.min(9, Number(editor.previewTiers?.[typeId] || state.player.hideoutItems?.[typeId] || 1)));
+  return Math.max(1, Math.min(hideoutItemMaxTier(typeId), Number(editor.previewTiers?.[typeId] || state.player.hideoutItems?.[typeId] || 1)));
 }
 
 function buyHideoutItem(typeId) {
   const type = hideoutItemType(typeId);
   const currentTier = state.player.hideoutItems?.[type.id] || 0;
-  if (currentTier >= 9) {
+  const maxTier = hideoutItemMaxTier(type.id);
+  if (currentTier >= maxTier) {
     showToast(`${type.name} ja esta no tier maximo.`);
     return;
   }
@@ -3989,6 +4711,40 @@ function nextRaidMapFromSummary() {
 function playerNeedsHideoutRest() {
   const stats = calculateStats(state.player);
   return Boolean(state.player.needsHideoutRest && Number(state.player.hp || 0) < stats.maxHp * 0.6);
+}
+
+function openOnlinePlayerInspect(player) {
+  const key = onlinePlayerKey(player);
+  if (!key) return;
+  if (activeOnlinePlayerInspectKey === key) {
+    closeCityShopPanel();
+    return;
+  }
+  closeCityInteractions({ render: false, force: true });
+  closeMaster({ render: false, force: true });
+  activeOnlinePlayerInspectKey = key;
+  activeCityNpc = null;
+  activeCityNpcGreeting = "";
+  shopMode = "talk";
+  if (state?.run) {
+    state.run.pendingCityNpcId = null;
+    state.run.pendingCityPortalId = null;
+  }
+  renderAll();
+}
+
+function activeOnlinePlayerInspect() {
+  if (!activeOnlinePlayerInspectKey) return null;
+  const player = (state.onlineCityPlayers || []).find((candidate) => onlinePlayerKey(candidate) === activeOnlinePlayerInspectKey);
+  if (!player) {
+    activeOnlinePlayerInspectKey = null;
+    return null;
+  }
+  return player;
+}
+
+function onlinePlayerKey(player) {
+  return String(player?.clientId || player?.socketId || player?.playerId || "");
 }
 
 function findClickedCityNpc(screenX, screenY) {
@@ -4374,6 +5130,13 @@ function openCityNpcPanel(npc) {
 
 function renderCityShopPanel() {
   const panel = ensureCityShopPanel();
+  const inspectedPlayer = activeOnlinePlayerInspect();
+  if (inspectedPlayer) {
+    panel.classList.remove("hidden", "drug-shop-panel");
+    renderOnlinePlayerInspectPanel(panel, inspectedPlayer);
+    return;
+  }
+
   if (!activeCityNpc) {
     panel.classList.remove("drug-shop-panel");
     panel.classList.add("hidden");
@@ -4406,8 +5169,8 @@ function renderCityShopPanel() {
     renderAssetPanel(panel, activeCityNpc, "house");
     return;
   }
-  if (shopMode === "car") {
-    renderAssetPanel(panel, activeCityNpc, "car");
+  if (shopMode === "motorcycle" || shopMode === "car") {
+    renderAssetPanel(panel, activeCityNpc, "motorcycle");
     return;
   }
   if (shopMode === "land") {
@@ -4438,7 +5201,7 @@ function renderCityShopPanel() {
       ${activeCityNpc.role === "oldman" ? `
         <button type="button" class="secondary-action" data-shop-mode="land">Comprar Terreno</button>
         <button type="button" class="secondary-action" data-shop-mode="house">Comprar Casa</button>
-        <button type="button" class="secondary-action" data-shop-mode="car">Comprar Carro</button>
+        <button type="button" class="secondary-action" data-shop-mode="motorcycle">Comprar Moto</button>
       ` : ""}
       ${activeCityNpc.role === "vendor" ? `
         <button type="button" class="primary-action" data-shop-mode="buy">Itens Aleatorios</button>
@@ -4460,6 +5223,304 @@ function renderCityShopPanel() {
     </div>
   `;
   bindShopPanel(panel);
+}
+
+function renderOnlinePlayerInspectPanel(panel, player) {
+  const status = onlineFriendStatus(player);
+  const equipment = onlinePlayerEquipmentRows(player);
+  panel.innerHTML = `
+    <header>
+      <span class="eyebrow">Inspecionar</span>
+      <h2>${escapeHtml(player.playerName || "Jogador")}</h2>
+      <button type="button" class="close-button" data-shop-close aria-label="Fechar">X</button>
+    </header>
+    <div class="inspect-player-summary">
+      <span>${escapeHtml(player.characterId || "personagem")}</span>
+      <strong>Nivel ${Math.max(1, Math.floor(Number(player.level || 1)))}</strong>
+    </div>
+    <div class="inspect-equipment-list">
+      ${equipment.map(({ slot, item }) => inspectEquipmentRow(slot, item)).join("")}
+    </div>
+    <div class="city-shop-actions">
+      ${friendActionButton(status)}
+    </div>
+  `;
+  bindShopPanel(panel);
+  panel.querySelector("[data-online-add-friend]")?.addEventListener("click", () => sendFriendRequestToInspectedPlayer(player));
+  panel.querySelector("[data-online-accept-friend]")?.addEventListener("click", () => acceptFriendRequestForPlayer(player));
+}
+
+function inspectEquipmentRow(slot, item) {
+  const label = SLOT_LABELS[slot] || slot;
+  if (!item) {
+    return `
+      <article class="inspect-equipment-row empty">
+        <strong>${escapeHtml(label)}</strong>
+        <span>Vazio</span>
+      </article>
+    `;
+  }
+  return `
+    <article class="inspect-equipment-row rarity-${escapeHtml(item.rarity || "comum")}">
+      <strong>${escapeHtml(label)}</strong>
+      <span>${escapeHtml(item.name || "Item")}</span>
+      <small>T${Math.max(1, Math.floor(Number(item.tier || 1)))} | Poder ${Math.max(0, Math.floor(Number(item.power || 0)))}</small>
+    </article>
+  `;
+}
+
+function friendActionButton(status) {
+  if (status === "friend") return `<button type="button" class="secondary-action" disabled>Amigo</button>`;
+  if (status === "outgoing") return `<button type="button" class="secondary-action" disabled>Convite enviado</button>`;
+  if (status === "incoming") return `<button type="button" class="primary-action" data-online-accept-friend>Aceitar convite</button>`;
+  return `<button type="button" class="primary-action" data-online-add-friend>Adicionar amigo</button>`;
+}
+
+function onlinePlayerEquipmentRows(player) {
+  const equipment = player?.equipment && typeof player.equipment === "object" ? player.equipment : {};
+  return EQUIPMENT_SLOTS.map((slot) => ({ slot, item: normalizeInspectEquipmentItem(equipment[slot]) }));
+}
+
+function normalizeInspectEquipmentItem(item) {
+  if (!item || typeof item !== "object") return null;
+  return {
+    slot: String(item.slot || ""),
+    name: String(item.name || "Item").slice(0, 42),
+    rarity: String(item.rarity || "comum").replace(/[^\w-]/g, "").slice(0, 24),
+    tier: Math.max(1, Math.min(9, Math.floor(Number(item.tier || 1)))),
+    power: Math.max(0, Math.floor(Number(item.power || 0)))
+  };
+}
+
+function normalizePlayerSocialState() {
+  const now = Date.now();
+  state.player.friends = normalizeFriendList(state.player.friends);
+  state.player.friendRequests = normalizeFriendRequests(state.player.friendRequests)
+    .filter((request) => now - Number(request.at || now) <= FRIEND_REQUEST_TTL_MS);
+  state.player.outgoingFriendRequests = normalizeOutgoingFriendRequests(state.player.outgoingFriendRequests)
+    .filter((request) => now - Number(request.at || now) <= FRIEND_REQUEST_TTL_MS);
+}
+
+function normalizeFriendList(list) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : [])
+    .map(normalizeFriendEntry)
+    .filter((friend) => {
+      const key = friendKey(friend);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function normalizeFriendRequests(list) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : [])
+    .map(normalizeFriendRequestForState)
+    .filter((request) => {
+      const key = request.requestId || friendKey({ playerId: request.fromPlayerId, clientId: request.fromClientId });
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function normalizeOutgoingFriendRequests(list) {
+  const seen = new Set();
+  return (Array.isArray(list) ? list : [])
+    .map((request) => ({
+      requestId: String(request?.requestId || ""),
+      toPlayerId: String(request?.toPlayerId || ""),
+      toClientId: String(request?.toClientId || ""),
+      toName: String(request?.toName || "Jogador").slice(0, 24),
+      at: Number(request?.at || Date.now())
+    }))
+    .filter((request) => {
+      const key = request.requestId || friendKey({ playerId: request.toPlayerId, clientId: request.toClientId });
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function normalizeFriendEntry(friend) {
+  return {
+    playerId: String(friend?.playerId || friend?.fromPlayerId || ""),
+    clientId: String(friend?.clientId || friend?.fromClientId || ""),
+    name: String(friend?.name || friend?.fromName || "Jogador").slice(0, 24),
+    characterId: normalizePlayerId(friend?.characterId || friend?.fromCharacterId || DEFAULT_PLAYER_ID),
+    level: Math.max(1, Math.floor(Number(friend?.level || friend?.fromLevel || 1))),
+    since: Number(friend?.since || Date.now())
+  };
+}
+
+function normalizeFriendRequestForState(request) {
+  return {
+    requestId: String(request?.requestId || ""),
+    fromPlayerId: String(request?.fromPlayerId || ""),
+    fromClientId: String(request?.fromClientId || ""),
+    fromName: String(request?.fromName || "Jogador").slice(0, 24),
+    fromCharacterId: normalizePlayerId(request?.fromCharacterId || DEFAULT_PLAYER_ID),
+    fromLevel: Math.max(1, Math.floor(Number(request?.fromLevel || 1))),
+    toPlayerId: String(request?.toPlayerId || ""),
+    toClientId: String(request?.toClientId || ""),
+    toName: String(request?.toName || "").slice(0, 24),
+    at: Number(request?.at || Date.now())
+  };
+}
+
+function onlineFriendStatus(player) {
+  normalizePlayerSocialState();
+  if (isFriendPlayer(player)) return "friend";
+  if (incomingFriendRequestForPlayer(player)) return "incoming";
+  if (outgoingFriendRequestForPlayer(player)) return "outgoing";
+  return "none";
+}
+
+function isFriendPlayer(player) {
+  return state.player.friends.some((friend) => sameOnlineIdentity(friend, player));
+}
+
+function incomingFriendRequestForPlayer(player) {
+  return state.player.friendRequests.find((request) => (
+    sameOnlineIdentity({ playerId: request.fromPlayerId, clientId: request.fromClientId }, player)
+  )) || null;
+}
+
+function outgoingFriendRequestForPlayer(player) {
+  return state.player.outgoingFriendRequests.find((request) => (
+    sameOnlineIdentity({ playerId: request.toPlayerId, clientId: request.toClientId }, player)
+  )) || null;
+}
+
+function sameOnlineIdentity(a, b) {
+  const aPlayerId = String(a?.playerId || "");
+  const bPlayerId = String(b?.playerId || "");
+  const aClientId = String(a?.clientId || a?.socketId || "");
+  const bClientId = String(b?.clientId || b?.socketId || "");
+  return Boolean((aPlayerId && bPlayerId && aPlayerId === bPlayerId) || (aClientId && bClientId && aClientId === bClientId));
+}
+
+function friendKey(friend) {
+  return String(friend?.playerId || friend?.clientId || "");
+}
+
+function sendFriendRequestToInspectedPlayer(player) {
+  normalizePlayerSocialState();
+  if (isFriendPlayer(player)) {
+    showToast(`${player.playerName || "Jogador"} ja esta na sua lista.`);
+    return;
+  }
+  if (outgoingFriendRequestForPlayer(player)) {
+    showToast("Convite ja enviado.");
+    return;
+  }
+  const result = online?.sendFriendRequest(player);
+  if (!result?.ok) {
+    showToast(result?.reason || "Nao foi possivel enviar convite.");
+    return;
+  }
+  state.player.outgoingFriendRequests.push({
+    requestId: result.request?.requestId || "",
+    toPlayerId: String(player.playerId || ""),
+    toClientId: String(player.clientId || player.socketId || ""),
+    toName: String(player.playerName || "Jogador").slice(0, 24),
+    at: Date.now()
+  });
+  normalizePlayerSocialState();
+  persistGame();
+  showToast(result.message);
+  renderAll();
+}
+
+function acceptFriendRequestForPlayer(player) {
+  const request = incomingFriendRequestForPlayer(player);
+  if (!request) {
+    showToast("Convite nao encontrado.");
+    renderAll();
+    return;
+  }
+  acceptFriendRequest(request.requestId);
+}
+
+function handleIncomingFriendRequest(request) {
+  if (!state?.player) return;
+  normalizePlayerSocialState();
+  if (isFriendPlayer({ playerId: request.fromPlayerId, clientId: request.fromClientId })) {
+    online?.sendFriendAccepted(request);
+    return;
+  }
+  const duplicate = state.player.friendRequests.some((entry) => (
+    entry.requestId === request.requestId ||
+    sameOnlineIdentity({ playerId: entry.fromPlayerId, clientId: entry.fromClientId }, { playerId: request.fromPlayerId, clientId: request.fromClientId })
+  ));
+  if (!duplicate) {
+    state.player.friendRequests.push(normalizeFriendRequestForState(request));
+    normalizePlayerSocialState();
+    persistGame();
+  }
+  showGameConfirm({
+    eyebrow: "Amizade",
+    title: `${request.fromName} quer te adicionar`,
+    message: "Aceitar convite de amizade?",
+    detail: `Nivel ${request.fromLevel || 1}`,
+    confirmLabel: "Aceitar",
+    cancelLabel: "Recusar",
+    onConfirm: () => acceptFriendRequest(request.requestId),
+    onCancel: () => rejectFriendRequest(request.requestId)
+  });
+  renderAll();
+}
+
+function acceptFriendRequest(requestId) {
+  normalizePlayerSocialState();
+  const request = state.player.friendRequests.find((entry) => entry.requestId === requestId);
+  if (!request) return;
+  addFriend({
+    playerId: request.fromPlayerId,
+    clientId: request.fromClientId,
+    name: request.fromName,
+    characterId: request.fromCharacterId,
+    level: request.fromLevel
+  });
+  state.player.friendRequests = state.player.friendRequests.filter((entry) => entry.requestId !== requestId);
+  online?.sendFriendAccepted(request);
+  persistGame();
+  showToast(`${request.fromName} agora e seu amigo.`);
+  renderAll();
+}
+
+function rejectFriendRequest(requestId) {
+  if (!state?.player) return;
+  state.player.friendRequests = (state.player.friendRequests || []).filter((entry) => entry.requestId !== requestId);
+  persistGame();
+  renderAll();
+}
+
+function handleFriendAccepted(accepted) {
+  if (!state?.player) return;
+  addFriend({
+    playerId: accepted.fromPlayerId,
+    clientId: accepted.fromClientId,
+    name: accepted.fromName,
+    characterId: accepted.fromCharacterId,
+    level: accepted.fromLevel
+  });
+  state.player.outgoingFriendRequests = (state.player.outgoingFriendRequests || []).filter((request) => (
+    request.requestId !== accepted.requestId &&
+    !sameOnlineIdentity({ playerId: request.toPlayerId, clientId: request.toClientId }, { playerId: accepted.fromPlayerId, clientId: accepted.fromClientId })
+  ));
+  persistGame();
+  showToast(`${accepted.fromName} aceitou seu convite.`);
+  renderAll();
+}
+
+function addFriend(friend) {
+  normalizePlayerSocialState();
+  const entry = normalizeFriendEntry(friend);
+  if (!friendKey(entry) || isFriendPlayer(entry)) return;
+  state.player.friends.push(entry);
+  normalizePlayerSocialState();
 }
 
 function renderBusinessInvitePanel(panel, npc) {
@@ -4972,17 +6033,17 @@ function activeShopListingRow(listing) {
 function playerShopBuyRow(shop, listing, isOwnShop) {
   const product = businessProductConfig(listing.drugType);
   const locked = !businessUnlocked(state.player);
-  const remoteOnline = Boolean(shop.remoteOnline);
+  const remoteStatus = !isOwnShop ? ` | ${shop.remoteOnline ? "online" : "offline"}` : "";
   return `
     <article class="player-shop-buy-row">
       <div>
         <h3>${escapeHtml(product.label)}</h3>
         <p>${formatMoney(listing.pricePerUnit)} un.</p>
-        <small>Disponivel ${listing.quantity}</small>
+        <small>Disponivel ${listing.quantity}${remoteStatus}</small>
       </div>
-      <input type="number" min="1" max="${listing.quantity}" step="1" value="1" data-buy-player-shop-qty="${listing.drugType}" ${isOwnShop || locked || remoteOnline ? "disabled" : ""}>
-      <button type="button" class="panel-action" data-buy-player-shop="${listing.drugType}" ${isOwnShop || locked || remoteOnline ? "disabled" : ""}>
-        ${locked ? `Nivel ${BUSINESS_UNLOCK_LEVEL}` : isOwnShop ? "Propria" : remoteOnline ? "Online" : "Comprar"}
+      <input type="number" min="1" max="${listing.quantity}" step="1" value="1" data-buy-player-shop-qty="${listing.drugType}" ${isOwnShop || locked ? "disabled" : ""}>
+      <button type="button" class="panel-action" data-buy-player-shop="${listing.drugType}" ${isOwnShop || locked ? "disabled" : ""}>
+        ${locked ? `Nivel ${BUSINESS_UNLOCK_LEVEL}` : isOwnShop ? "Propria" : "Comprar"}
       </button>
     </article>
   `;
@@ -5116,8 +6177,8 @@ function renderBuyPanel(panel, npc) {
 }
 
 function renderAssetPanel(panel, npc, type) {
-  const options = type === "house" ? houseOptions() : type === "car" ? carOptions() : landOptions();
-  const title = type === "house" ? "Comprar Casa" : type === "car" ? "Comprar Carro" : "Comprar Terreno";
+  const options = type === "house" ? houseOptions() : type === "motorcycle" ? motorcycleOptions() : landOptions();
+  const title = type === "house" ? "Comprar Casa" : type === "motorcycle" ? "Comprar Moto" : "Comprar Terreno";
   panel.innerHTML = `
     <header>
       <span class="eyebrow">${npc.shopName}</span>
@@ -5139,11 +6200,10 @@ function renderAssetPanel(panel, npc, type) {
       handleAssetBuy(buyHouse(state.player, tier), "house", tier);
     });
   });
-  panel.querySelectorAll("[data-buy-car]").forEach((button) => {
+  panel.querySelectorAll("[data-buy-motorcycle]").forEach((button) => {
     button.addEventListener("click", () => {
-      const tier = Number(button.dataset.buyCar);
-      if (blockWrongTutorialTarget("asset", `car:${tier}`)) return;
-      handleAssetBuy(buyCar(state.player, tier), "car", tier);
+      const tier = Number(button.dataset.buyMotorcycle);
+      handleAssetBuy(buyMotorcycle(state.player, tier), "motorcycle", tier);
     });
   });
   panel.querySelectorAll("[data-buy-land]").forEach((button) => {
@@ -5200,10 +6260,11 @@ function renderCraftPanel(panel, npc) {
   panel.querySelector("[data-craft-selected]")?.addEventListener("click", () => {
     const currentPreview = getCraftPreview(state.player, pendingCraftIndex);
     if (!currentPreview?.canCraft) return;
-    if (!confirmCraftRisk(currentPreview)) return;
-    const result = craftInventoryItem(state.player, pendingCraftIndex);
-    handleResult(result);
-    renderAll();
+    requestCraftRiskConfirmation(currentPreview, () => {
+      const result = craftInventoryItem(state.player, pendingCraftIndex);
+      handleResult(result);
+      renderAll();
+    });
   });
   panel.querySelectorAll("[data-craft-one]").forEach((button) => {
     button.addEventListener("click", (event) => {
@@ -5211,18 +6272,20 @@ function renderCraftPanel(panel, npc) {
       const index = Number(button.dataset.craftOne);
       const currentPreview = getCraftPreview(state.player, index);
       if (!currentPreview?.canCraft) return;
-      if (!confirmCraftRisk(currentPreview)) return;
-      const result = craftInventoryItem(state.player, index);
-      handleResult(result);
-      renderAll();
+      requestCraftRiskConfirmation(currentPreview, () => {
+        const result = craftInventoryItem(state.player, index);
+        handleResult(result);
+        renderAll();
+      });
     });
   });
   panel.querySelector("[data-craft-all]")?.addEventListener("click", () => {
     const currentEntries = shopCraftEntries();
-    if (!confirmCraftAllRisk(currentEntries)) return;
-    const result = craftAllInventory(state.player);
-    handleResult(result);
-    renderAll();
+    requestCraftAllRiskConfirmation(currentEntries, () => {
+      const result = craftAllInventory(state.player);
+      handleResult(result);
+      renderAll();
+    });
   });
 }
 
@@ -5262,13 +6325,15 @@ function renderSellPanel(panel, npc) {
     });
   });
   panel.querySelector("[data-shop-confirm-sell]")?.addEventListener("click", () => {
-    const items = [...pendingSellIndexes].map((index) => state.player.inventory[index]).filter((item) => item && !item.favorite && item.slot !== "drug");
-    if (!confirmSellItems(items)) return;
-    const result = sellInventoryItems(state.player, [...pendingSellIndexes]);
-    pendingSellIndexes.clear();
-    handleResult(result);
-    shopMode = "talk";
-    renderAll();
+    const indexes = [...pendingSellIndexes];
+    const items = indexes.map((index) => state.player.inventory[index]).filter((item) => item && !item.favorite && item.slot !== "drug");
+    requestSellItemsConfirmation(items, () => {
+      const result = sellInventoryItems(state.player, indexes);
+      pendingSellIndexes.clear();
+      handleResult(result);
+      shopMode = "talk";
+      renderAll();
+    });
   });
 }
 
@@ -5289,11 +6354,12 @@ function renderSellAllConfirm(panel, npc) {
   `;
   bindShopPanel(panel);
   panel.querySelector("[data-shop-confirm-all]")?.addEventListener("click", () => {
-    if (!confirmSellItems(items)) return;
-    const result = sellAllInventory(state.player);
-    handleResult(result);
-    shopMode = "talk";
-    renderAll();
+    requestSellItemsConfirmation(items, () => {
+      const result = sellAllInventory(state.player);
+      handleResult(result);
+      shopMode = "talk";
+      renderAll();
+    });
   });
 }
 
@@ -5318,10 +6384,11 @@ function bindShopPanel(panel) {
       showToast("Junte 4 itens iguais para fundir.");
       return;
     }
-    if (!confirmCraftAllRisk(entries)) return;
-    const result = craftAllInventory(state.player);
-    handleResult(result);
-    renderAll();
+    requestCraftAllRiskConfirmation(entries, () => {
+      const result = craftAllInventory(state.player);
+      handleResult(result);
+      renderAll();
+    });
   });
   panel.querySelector("[data-enter-petshop]")?.addEventListener("click", () => {
     enterPetshopFromCityNpc();
@@ -5375,16 +6442,17 @@ function restoreTutorialNpcShopMode(npc) {
   const action = tutorialStep(state)?.actionRequired;
   if (action === "buy_land_1") shopMode = "land";
   if (action === "buy_house_1") shopMode = "house";
-  if (action === "buy_car_1") shopMode = "car";
+  if (shopMode === "car") shopMode = "motorcycle";
 }
 
 function closeCityShopPanel(options = {}) {
   const panel = document.querySelector("#city-shop-panel");
-  const hadShop = Boolean(activeCityNpc || (panel && !panel.classList.contains("hidden")));
+  const hadShop = Boolean(activeCityNpc || activeOnlinePlayerInspectKey || (panel && !panel.classList.contains("hidden")));
   if (hadShop && (tutorialStep(state)?.target === "city_shop_panel" || tutorialNeedsCityShopOpen())) {
     lastTutorialSideEffectStep = null;
   }
   activeCityNpc = null;
+  activeOnlinePlayerInspectKey = null;
   activeCityNpcGreeting = "";
   shopMode = "talk";
   pendingSellIndexes.clear();
@@ -5458,15 +6526,38 @@ function craftRiskText(preview) {
   return `${success}% de chance de sucesso e ${failure}% de chance de falha. Em caso de falha, voce recupera 1 dos itens gastos.`;
 }
 
-function confirmCraftRisk(preview) {
-  if (!preview?.failureChance) return true;
-  return window.confirm(`${craftRiskText(preview)} Continuar?`);
+function requestCraftRiskConfirmation(preview, onConfirm) {
+  if (!preview?.failureChance) {
+    onConfirm?.();
+    return;
+  }
+  showGameConfirm({
+    eyebrow: "Fusao arriscada",
+    title: "Continuar fusao?",
+    message: craftRiskText(preview),
+    confirmLabel: "Fundir",
+    cancelLabel: "Cancelar",
+    danger: true,
+    onConfirm
+  });
 }
 
-function confirmCraftAllRisk(entries) {
+function requestCraftAllRiskConfirmation(entries, onConfirm) {
   const risky = entries.some((entry) => entry.preview.canCraft && entry.preview.failureChance);
-  if (!risky) return true;
-  return window.confirm("Algumas fusoes tentam criar Raro ou superior. 50% de chance de sucesso e 50% de chance de falha. Em caso de falha, voce recupera 1 dos itens gastos. Continuar?");
+  if (!risky) {
+    onConfirm?.();
+    return;
+  }
+  showGameConfirm({
+    eyebrow: "Fusao arriscada",
+    title: "Fundir tudo?",
+    message: "Algumas fusoes tentam criar Raro ou superior.",
+    detail: "50% de chance de sucesso e 50% de chance de falha. Em caso de falha, voce recupera 1 dos itens gastos.",
+    confirmLabel: "Fundir tudo",
+    cancelLabel: "Cancelar",
+    danger: true,
+    onConfirm
+  });
 }
 
 function shopSellCell(item, index, selected) {
@@ -5517,16 +6608,16 @@ function isRecommendedShopOffer(item) {
 function assetShopRow(asset, type) {
   const owned = type === "house"
     ? state.player.ownedHouses.includes(asset.tier)
-    : type === "car"
-      ? state.player.ownedCars.includes(asset.tier)
+    : type === "motorcycle"
+      ? state.player.ownedMotorcycles.includes(asset.tier)
       : state.player.terrenosComprados.includes(asset.tier);
   const active = type === "house"
     ? state.player.casaAtual === asset.tier
-    : type === "car"
-      ? state.player.carroAtual === asset.tier
+    : type === "motorcycle"
+      ? state.player.equippedMotorcycleLevel === asset.tier
       : state.player.terrenoAtual === asset.tier;
   const unlocked = canUnlockAsset(state.player, asset);
-  const action = type === "house" ? "data-buy-house" : type === "car" ? "data-buy-car" : "data-buy-land";
+  const action = type === "house" ? "data-buy-house" : type === "motorcycle" ? "data-buy-motorcycle" : "data-buy-land";
   const expected = expectedTutorialAssetPurchase(state);
   const isTutorialTarget = expected?.type === type && expected?.tier === asset.tier;
   const blockedByTutorial = Boolean(expected && !isTutorialTarget);
@@ -5549,8 +6640,8 @@ function assetStatsText(asset, type) {
   if (type === "house") {
     return `Renda ${formatMoney(asset.passiveIncomePerMinute)}/min | Stamina +${asset.staminaMaxBonus} | Regen +${asset.staminaRegenBonus}/min`;
   }
-  if (type === "car") {
-    return `Renda ${formatMoney(asset.passiveIncomePerMinute)}/min | Furto +${asset.furtoBonus}%`;
+  if (type === "motorcycle") {
+    return `Vel. assalto ${asset.speedMultiplier.toFixed(1)}x | Fuga policia ${formatPercent(asset.policeEscapeChance * 100)}`;
   }
   return `Espaco ${asset.visualSpace} | Renda +${asset.passiveIncomeBonusPercent}% | Offline +${asset.offlineHoursBonus}h`;
 }
@@ -5621,16 +6712,25 @@ function handlePetResult(result, options = {}) {
   renderAll();
 }
 
-function confirmSellItems(items) {
+function requestSellItemsConfirmation(items, onConfirm) {
   const valuable = items.filter((item) => ["epico", "lendario", "mestre"].includes(item?.rarity));
-  if (!valuable.length) return true;
-  const hasLegendaryOrMaster = valuable.some((item) => item.rarity === "lendario" || item.rarity === "mestre");
-  const firstMessage = "Voce esta prestes a vender um item valioso. Essa acao nao pode ser desfeita.";
-  if (!window.confirm(firstMessage)) return false;
-  if (hasLegendaryOrMaster) {
-    return window.confirm("Atencao: este item e extremamente raro e so pode ser obtido por craft avancado. Tem certeza que deseja vender?");
+  if (!valuable.length) {
+    onConfirm?.();
+    return;
   }
-  return true;
+  const hasLegendaryOrMaster = valuable.some((item) => item.rarity === "lendario" || item.rarity === "mestre");
+  showGameConfirm({
+    eyebrow: "Venda de item",
+    title: hasLegendaryOrMaster ? "Vender item raro?" : "Vender item valioso?",
+    message: "Voce esta prestes a vender um item valioso. Essa acao nao pode ser desfeita.",
+    detail: hasLegendaryOrMaster
+      ? "Atencao: este item e extremamente raro e so pode ser obtido por craft avancado."
+      : "",
+    confirmLabel: "Vender",
+    cancelLabel: "Cancelar",
+    danger: true,
+    onConfirm
+  });
 }
 
 function showToast(message) {
@@ -5717,12 +6817,17 @@ function syncRaidSummary() {
   if (!visible) return;
 
   const guidedFirstRaid = isGuidedFirstRaidSummary();
-  elements.raidSummaryTitle.textContent = summary.mapName || "Resumo do roubo";
+  const afkSummary = Boolean(summary.afkRaid);
+  elements.raidSummaryTitle.textContent = afkSummary ? "Resumo do AFK" : summary.mapName || "Resumo do roubo";
   elements.raidSummaryMoney.textContent = formatMoney(summary.money || 0);
   elements.raidSummaryXp.textContent = String(summary.xp || 0);
   elements.raidSummaryTargets.textContent = `${summary.targetsRobbed || 0} / ${summary.targetsTotal || 0}`;
-  elements.raidSummaryCountdown.textContent = `${Math.ceil(state.run.summaryTimer || 0)}s`;
+  if (elements.raidSummaryCountdownLabel) elements.raidSummaryCountdownLabel.textContent = afkSummary ? "Tempo" : "Retorno";
+  elements.raidSummaryCountdown.textContent = afkSummary
+    ? formatTime(summary.durationSeconds || 0)
+    : `${Math.ceil(state.run.summaryTimer || 0)}s`;
   const items = [
+    ...(afkSummary ? [`Base: ${summary.rewardMapCode || ""} ${summary.rewardMapName || ""}`.trim()] : []),
     ...(summary.items || []).map((item) => `+ ${item}`),
     ...(summary.lostItems || []).map((item) => `${item} perdido: mochila cheia`)
   ];
@@ -5730,13 +6835,13 @@ function syncRaidSummary() {
   if (guidedFirstRaid) state.settings.autoRepeatRaid = false;
   elements.autoRepeatToggle.checked = guidedFirstRaid ? false : Boolean(state.settings.autoRepeatRaid);
   elements.autoRepeatToggle.disabled = guidedFirstRaid;
-  elements.autoRepeatToggle.closest("label")?.classList.toggle("hidden", guidedFirstRaid);
-  elements.raidRepeatButton?.classList.toggle("hidden", guidedFirstRaid);
-  elements.raidNextButton?.classList.toggle("hidden", guidedFirstRaid);
+  elements.autoRepeatToggle.closest("label")?.classList.toggle("hidden", guidedFirstRaid || afkSummary);
+  elements.raidRepeatButton?.classList.toggle("hidden", guidedFirstRaid || afkSummary);
+  elements.raidNextButton?.classList.toggle("hidden", guidedFirstRaid || afkSummary);
   if (elements.raidNextButton) {
-    elements.raidNextButton.disabled = guidedFirstRaid || !nextRaidMapFromSummary();
+    elements.raidNextButton.disabled = guidedFirstRaid || afkSummary || !nextRaidMapFromSummary();
   }
-  if (elements.raidRepeatButton) elements.raidRepeatButton.disabled = guidedFirstRaid;
+  if (elements.raidRepeatButton) elements.raidRepeatButton.disabled = guidedFirstRaid || afkSummary;
 }
 
 function isGuidedFirstRaidSummary() {
@@ -5887,6 +6992,7 @@ function normalizeState() {
   state.player.characterId = normalizePlayerId(state.player.characterId || activeProfile?.characterId || state.selectedPlayerId);
   state.selectedPlayerId = state.player.characterId;
   state.player.factionId ||= activeProfile?.factionId || null;
+  normalizePlayerSocialState();
   state.player.hideoutTier = Number(state.player.hideoutTier || state.player.terrenoAtual || 0);
   state.player.hideoutItems ||= {};
   state.player.needsHideoutRest = Boolean(state.player.needsHideoutRest);
@@ -5945,6 +7051,14 @@ function normalizeState() {
   if (!BUSINESS_TUTORIAL_STEP_BY_ID[state.player.businessTutorialStep]) {
     state.player.businessTutorialStep = state.player.businessTutorialActive ? BUSINESS_TUTORIAL_FIRST_STEP : null;
   }
+  state.player.motorcycleTutorialCompleted = Boolean(state.player.motorcycleTutorialCompleted);
+  state.player.motorcycleTutorialSkipped = Boolean(state.player.motorcycleTutorialSkipped);
+  state.player.motorcycleTutorialActive = Boolean(
+    state.player.motorcycleTutorialActive &&
+    !state.player.motorcycleTutorialCompleted &&
+    !state.player.motorcycleTutorialSkipped &&
+    motorcyclesUnlocked(state.player)
+  );
   applyOfflinePassiveIncome(state);
   state.run ||= createNewGame(state.selectedPlayerId || DEFAULT_PLAYER_ID).run;
   state.run.playerDirection ||= "right";
@@ -5969,6 +7083,14 @@ function normalizeState() {
   state.run.raidDogs ||= [];
   state.run.groundLoots ||= [];
   state.run.decorativeNpcs ||= [];
+  state.run.afkRaid = Boolean(state.run.afkRaid);
+  state.run.afkElapsed = Math.max(0, Number(state.run.afkElapsed || 0));
+  state.run.afkWave = Math.max(0, Number(state.run.afkWave || 0));
+  state.run.afkNextSpawnX = Number(state.run.afkNextSpawnX || 0);
+  state.run.afkRewardMapId ||= null;
+  state.run.afkBackgroundMapId ||= null;
+  state.run.afkBackgroundSheet ||= null;
+  state.run.afkBackgroundRow = Number.isFinite(Number(state.run.afkBackgroundRow)) ? Number(state.run.afkBackgroundRow) : null;
   state.run.policeTimer ||= 0;
   state.run.policeMessage ??= null;
   state.run.policeScene ??= null;
@@ -6071,8 +7193,10 @@ function formatPercent(value) {
 
 function formatTime(seconds) {
   const safe = Math.max(0, Math.ceil(seconds));
-  const minutes = Math.floor(safe / 60);
+  const hours = Math.floor(safe / 3600);
+  const minutes = Math.floor((safe % 3600) / 60);
   const rest = safe % 60;
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
   return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
 }
 
@@ -6099,7 +7223,8 @@ function guidedTutorialActive() {
     characterTutorialVisible ||
     tutorialStep(state) ||
     state?.player?.petTutorialActive ||
-    state?.player?.businessTutorialActive
+    state?.player?.businessTutorialActive ||
+    state?.player?.motorcycleTutorialActive
   );
 }
 
@@ -6116,6 +7241,9 @@ function modeLabel(mode) {
     seeking: "Procurando alvo",
     approaching: "Aproximando por tras",
     stealing: "Tentativa de roubo",
+    "afk-seeking": "AFK procurando alvo",
+    "afk-approaching": "AFK aproximando",
+    "afk-stealing": "AFK roubando",
     choice: "Alvo percebeu",
     combat: "Briga em andamento",
     fleeing: "Fugindo",
@@ -6133,6 +7261,9 @@ function actionLabel(mode, map) {
   if (mode === "seeking") return "Caminhando pelo cenario em busca de NPCs";
   if (mode === "approaching") return "Seguindo o alvo sem chamar atencao";
   if (mode === "stealing") return "Chance base de roubo com bonus de equipamentos";
+  if (mode === "afk-seeking") return "Farm AFK ativo sem gastar stamina";
+  if (mode === "afk-approaching") return "Indo ate o proximo alvo em modo AFK";
+  if (mode === "afk-stealing") return "Roubo AFK: recompensa reduzida e sem XP";
   if (mode === "choice") return "Escolha fugir ou brigar";
   if (mode === "combat") return `Combate idle no mapa ${map?.code || ""}`;
   if (mode === "fleeing") return "Correndo para fora do mapa";
@@ -6143,6 +7274,7 @@ function actionLabel(mode, map) {
 }
 
 elements.masterToggle?.addEventListener("click", toggleMaster);
+elements.afkRaidToggle?.addEventListener("click", handleAfkRaidToggleClick);
 elements.autoRaidToggle?.addEventListener("click", () => {
   if (elements.autoRaidPanel?.classList.contains("hidden")) {
     showAutoRaidConfirm();
@@ -6152,6 +7284,11 @@ elements.autoRaidToggle?.addEventListener("click", () => {
 });
 elements.autoRaidCancel?.addEventListener("click", hideAutoRaidConfirm);
 elements.autoRaidConfirm?.addEventListener("click", startAutoRaidFromConfirm);
+elements.gameConfirmCancel?.addEventListener("click", () => closeGameConfirm());
+elements.gameConfirmAccept?.addEventListener("click", () => closeGameConfirm({ confirm: true }));
+elements.gameConfirmModal?.addEventListener("click", (event) => {
+  if (event.target === elements.gameConfirmModal) closeGameConfirm();
+});
 elements.canvas.addEventListener("pointerdown", handleStagePointer);
 document.addEventListener("keydown", handleGameKeyDown);
 document.addEventListener("keyup", handleGameKeyUp);

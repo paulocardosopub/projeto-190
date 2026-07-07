@@ -86,7 +86,13 @@ export function sanitizeStateForSave(state) {
   delete persisted.onlineCityPlayers;
   delete persisted.onlinePlayerShops;
   if (persisted.playerShops?.shops) {
-    persisted.playerShops.shops = persisted.playerShops.shops.filter((shop) => !shop.remoteOnline);
+    const localOwnerId = String(persisted.player?.playerId || "local-player");
+    persisted.playerShops.shops = persisted.playerShops.shops
+      .filter((shop) => shop.ownerPlayerId === localOwnerId || shop.active)
+      .map((shop) => shop.ownerPlayerId === localOwnerId ? shop : {
+        ...shop,
+        remoteOnline: false
+      });
   }
   return persisted;
 }

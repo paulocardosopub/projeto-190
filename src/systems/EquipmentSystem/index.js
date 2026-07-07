@@ -1,5 +1,5 @@
 import { EQUIPMENT_SLOTS } from "../../data/equipment/index.js";
-import { getCarConfig, theftConfig } from "../../data/balance/index.js?v=balance-2";
+import { theftConfig } from "../../data/balance/index.js?v=balance-2";
 
 const BASE_STATS = {
   hp: 105,
@@ -10,7 +10,6 @@ const BASE_STATS = {
   dodge: 0,
   steal: theftConfig.baseChance / 100,
   stealBonus: 0,
-  carStealBonus: 0,
   loot: 0,
   money: 0
 };
@@ -39,7 +38,6 @@ export function calculateStats(player) {
   stats.crit = clamp(stats.crit, 0, 0.65);
   stats.dodge = clamp(stats.dodge, 0, 0.45);
   stats.stealBonus = clamp(Number(stealBonus.toFixed(2)), 0, 10);
-  stats.carStealBonus = Number((getCarConfig(player.carroAtual)?.furtoBonus || 0).toFixed(2));
   stats.steal = calculateStealChancePercent(null, stats) / 100;
   stats.loot = clamp(stats.loot, 0, 0.8);
   stats.money = clamp(stats.money, 0, 1.5);
@@ -49,7 +47,7 @@ export function calculateStats(player) {
     stats.speed * 38 +
     stats.crit * 120 +
     stats.block * 110 +
-    (stats.stealBonus + stats.carStealBonus) * 18
+    stats.stealBonus * 18
   );
 
   return stats;
@@ -58,8 +56,7 @@ export function calculateStats(player) {
 export function calculateStealChancePercent(map, stats) {
   const risk = Number(map?.riscoFurtoMapa ?? map?.stealRisk ?? 0);
   const bonus = Number(stats?.stealBonus || 0);
-  const carBonus = Number(stats?.carStealBonus || 0);
-  const baseSuccess = clamp(theftConfig.baseChance - risk + bonus + carBonus, theftConfig.minChance, theftConfig.maxChance);
+  const baseSuccess = clamp(theftConfig.baseChance - risk + bonus, theftConfig.minChance, theftConfig.maxChance);
   const caughtChance = 100 - baseSuccess;
   const adjustedSuccess = 100 - caughtChance * Number(theftConfig.caughtChanceMultiplier || 1);
   return clamp(adjustedSuccess, theftConfig.minChance, theftConfig.maxChance);
@@ -102,14 +99,13 @@ export function statLabel(key) {
     dodge: "Esquiva",
     steal: "Chance de furto",
     stealBonus: "Bonus de furto",
-    carStealBonus: "Bonus do carro",
     loot: "Chance de loot",
     money: "Dinheiro extra"
   }[key] || key;
 }
 
 export function formatStat(key, value) {
-  if (key === "stealBonus" || key === "carStealBonus") return `+${formatPercentPoints(value)}`;
+  if (key === "stealBonus") return `+${formatPercentPoints(value)}`;
   if (["block", "crit", "dodge", "steal", "loot", "money"].includes(key)) {
     return `${Math.round(value * 100)}%`;
   }

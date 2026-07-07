@@ -4,10 +4,17 @@ import { NPC_ALERT_LINES } from "../../data/enemies/index.js?v=npc-crops-1";
 import { decorativeNpcsForIdleMap } from "../../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { calculateStats } from "../EquipmentSystem/index.js";
 import { createNpcWave, createEnemyStats } from "../EnemySystem/index.js?v=npc-crops-1";
-import { rollLoot, applyLoot } from "../LootSystem/index.js?v=stack-1";
+import { rollLoot, applyLoot } from "../LootSystem/index.js?v=afk-raid-1";
 import { gainXp, addLog } from "../PlayerSystem/index.js";
 import { applyHospitalFee, applyPrisonFee } from "../PenaltySystem/index.js?v=hospital-fee-1";
-import { canStartRaid, consumeStaminaForMap, staminaRaidBlockedMessage } from "../StaminaSystem/index.js?v=phase1-1";
+import {
+  canStartRaid,
+  consumeStaminaForMap,
+  hasEquippedMotorcycle,
+  raidMotorcycleMoveSpeedMultiplier,
+  raidMotorcyclePoliceEscapeChance,
+  staminaRaidBlockedMessage
+} from "../StaminaSystem/index.js?v=moto-garage-1";
 import { confiscateDrugItems } from "../DrugSystem/index.js?v=stack-1";
 import { theftConfig } from "../../data/balance/index.js?v=phase1-1";
 import { getEquippedPet, normalizePets, petDamageForAttack } from "../../data/pets/index.js?v=pets-manual-1";
@@ -19,6 +26,14 @@ const GROUND_LOOT_PICKUP_DISTANCE = 22;
 const GROUND_LOOT_PICKUP_DELAY = 0.4;
 const FLEE_SPEED = 520;
 const FLEE_MAX_SECONDS = 2.2;
+const RAID_TARGET_APPROACH_DISTANCE = 42;
+const MOUNTED_RAID_TARGET_APPROACH_DISTANCE = 68;
+const AFK_RAID_MAX_SECONDS = 8 * 60 * 60;
+const AFK_RAID_REWARD_MULTIPLIER = 0.1;
+const AFK_RAID_ITEM_CHANCE_MULTIPLIER = 0.1;
+const AFK_RAID_STEAL_SECONDS = 0.85;
+const AFK_RAID_WAVE_GAP = 260;
+const AFK_RAID_CLEANUP_DISTANCE = 540;
 const POLICE_SIREN_SECONDS = 3.2;
 const CITY_SPAWN_X = 190;
 const HIDEOUT_SPAWN_X = 260;
@@ -382,6 +397,76 @@ export class CombatSystem {
     this.emit();
   }
 
+  enterAfkRaid(options = {}) {
+    const rewardMap = afkRewardMapForPlayer(this.state.player);
+    const backgroundMap = options.backgroundMap || randomAfkBackgroundMap();
+    const npcs = createAfkNpcWave(rewardMap, 0, 380);
+    const summary = createRaidSummary({ ...rewardMap, name: "Roubo AFK" }, 0);
+    summary.afkRaid = true;
+    summary.mapId = rewardMap.id;
+    summary.mapName = "Roubo AFK";
+    summary.rewardMapId = rewardMap.id;
+    summary.rewardMapName = rewardMap.name;
+    summary.rewardMapCode = rewardMap.code || rewardMap.index;
+    summary.targetsTotal = 0;
+    summary.remaining = 0;
+
+    this.state.scene = "map";
+    this.state.currentMapId = rewardMap.id;
+    this.state.run = {
+      mode: "afk-seeking",
+      playerX: 82,
+      playerDirection: "right",
+      npcs,
+      targetId: null,
+      timer: 0,
+      raidDuration: AFK_RAID_MAX_SECONDS,
+      raidTimeLeft: AFK_RAID_MAX_SECONDS,
+      enemyHp: 0,
+      enemyMaxHp: 0,
+      playerAttackTimer: 0,
+      enemyAttackTimer: 0,
+      playerAction: null,
+      playerActionTimer: 0,
+      playerActionDuration: 0,
+      cityTargetX: null,
+      attempts: 0,
+      caughtInFlagrante: 0,
+      battlesStarted: 0,
+      choiceTimer: 0,
+      pendingCityNpcId: null,
+      pendingHideoutPortalId: null,
+      pendingIdlePortalId: null,
+      pendingIdleNpcId: null,
+      pendingHideoutItemId: null,
+      returnToCity: null,
+      damageNumbers: [],
+      itemTheftChats: [],
+      raidDogs: [],
+      groundLoots: [],
+      decorativeNpcs: [],
+      targetDropId: null,
+      policeTimer: 0,
+      policeMessage: null,
+      policeScene: null,
+      tutorialFirstRaid: false,
+      afkRaid: true,
+      afkElapsed: 0,
+      afkWave: 1,
+      afkNextSpawnX: afkNextSpawnX(npcs),
+      afkRewardMapId: rewardMap.id,
+      afkBackgroundMapId: backgroundMap.id,
+      afkBackgroundSheet: backgroundMap.backgroundSheet,
+      afkBackgroundRow: backgroundMap.backgroundRow,
+      summary,
+      summaryTimer: 0
+    };
+    this.syncHpToStats();
+    addLog(this.state, `Roubo AFK iniciado com base em ${rewardMap.code || rewardMap.index} ${rewardMap.name}.`);
+    this.hooks.onRaidStart?.("Roubo AFK iniciado.");
+    this.emit();
+  }
+
   update(dt) {
     const run = this.state.run;
     this.updatePlayerAction(dt);
@@ -421,6 +506,10 @@ export class CombatSystem {
     }
     if (run.mode === "returning") return;
     if (this.state.scene !== "map") return;
+    if (run.afkRaid) {
+      this.updateAfkRaid(dt);
+      return;
+    }
 
     const map = this.currentMap();
     if (!map) return;
@@ -463,10 +552,10 @@ export class CombatSystem {
         run.mode = "seeking";
         return;
       }
-      const destination = target.x - 42;
+      const destination = target.x - this.raidTargetApproachDistance();
       const direction = Math.sign(destination - run.playerX) || 1;
       run.playerDirection = target.x >= run.playerX ? "right" : "left";
-      run.playerX += direction * dt * 105;
+      run.playerX += direction * dt * this.raidMoveSpeed(105);
       if (Math.abs(destination - run.playerX) < 5) {
         run.playerX = destination;
         run.playerDirection = target.x >= run.playerX ? "right" : "left";
@@ -525,6 +614,10 @@ export class CombatSystem {
     const map = this.currentMap();
     if (!target || !map) return;
     if (this.shouldTriggerPoliceBeforeFight()) {
+      if (this.tryMotorcyclePoliceEscape()) {
+        this.emit();
+        return;
+      }
       this.triggerPoliceConfiscation();
       this.emit();
       return;
@@ -551,6 +644,10 @@ export class CombatSystem {
       return IDLE_MAPS.find((map) => map.id === this.state.currentMapId);
     }
     return MAPS.find((map) => map.id === this.state.currentMapId);
+  }
+
+  afkRewardMap() {
+    return MAPS.find((map) => map.id === this.state.run?.afkRewardMapId) || this.currentMap() || afkRewardMapForPlayer(this.state.player);
   }
 
   moveCityTo(worldX) {
@@ -634,6 +731,154 @@ export class CombatSystem {
     this.emit();
   }
 
+  updateAfkRaid(dt) {
+    const run = this.state.run;
+    const map = this.afkRewardMap();
+    if (!map) {
+      this.finishAfkRaid("manual");
+      return;
+    }
+
+    run.raidTimeLeft = Math.max(0, Number(run.raidTimeLeft ?? AFK_RAID_MAX_SECONDS) - dt);
+    run.afkElapsed = Math.min(AFK_RAID_MAX_SECONDS, Number(run.afkElapsed || 0) + dt);
+    if (run.raidTimeLeft <= 0 || run.afkElapsed >= AFK_RAID_MAX_SECONDS) {
+      this.finishAfkRaid("limit");
+      return;
+    }
+
+    this.pruneAfkNpcs();
+    if (!this.nextTarget()) this.appendAfkNpcWave(map);
+
+    for (const npc of run.npcs) {
+      if (npc.done || npc.alerted) continue;
+      npc.walkPhase += dt;
+      npc.x += Math.sin(npc.walkPhase * 0.75) * dt * 4;
+      setNpcDirection(npc, Math.sin(npc.walkPhase * 0.75) > 0.35 ? "right" : "back");
+    }
+
+    if (run.mode === "afk-seeking") {
+      const target = this.nextTarget();
+      if (!target) return;
+      run.targetId = target.id;
+      run.mode = "afk-approaching";
+      run.timer = 0;
+    }
+
+    if (run.mode === "afk-approaching") {
+      const target = this.targetNpc();
+      if (!target || target.done) {
+        run.mode = "afk-seeking";
+        return;
+      }
+      const destination = target.x - RAID_TARGET_APPROACH_DISTANCE;
+      const distance = destination - run.playerX;
+      const direction = Math.sign(distance) || 1;
+      run.playerDirection = target.x >= run.playerX ? "right" : "left";
+      run.playerX += direction * Math.min(Math.abs(distance), dt * 105);
+      if (Math.abs(destination - run.playerX) < 5) {
+        run.playerX = destination;
+        run.playerDirection = target.x >= run.playerX ? "right" : "left";
+        run.mode = "afk-stealing";
+        run.timer = AFK_RAID_STEAL_SECONDS;
+        setNpcDirection(target, "back");
+      }
+    }
+
+    if (run.mode === "afk-stealing") {
+      this.faceTarget();
+      run.timer -= dt;
+      if (run.timer <= 0) this.resolveAfkSteal();
+    }
+  }
+
+  resolveAfkSteal() {
+    const target = this.targetNpc();
+    const map = this.afkRewardMap();
+    if (!target || !map) {
+      this.state.run.mode = "afk-seeking";
+      return;
+    }
+
+    target.done = true;
+    target.robbed = true;
+    target.alerted = false;
+    target.alertLine = null;
+    const stats = calculateStats(this.state.player);
+    const reward = rollLoot(
+      map,
+      { ...stats, loot: 0, money: 0 },
+      false,
+      {
+        moneyMultiplier: AFK_RAID_REWARD_MULTIPLIER,
+        itemChanceMultiplier: AFK_RAID_ITEM_CHANCE_MULTIPLIER,
+        lootBonusMultiplier: 0,
+        includeXp: false
+      }
+    );
+    const itemAdded = applyLoot(this.state, reward);
+    this.addRewardToSummary(reward, itemAdded, 0, false);
+    const summary = this.state.run.summary;
+    if (summary?.afkRaid) {
+      summary.targetsTotal = summary.targetsRobbed;
+      summary.remaining = 0;
+    }
+
+    this.state.run.targetId = null;
+    this.state.run.mode = "afk-seeking";
+    this.state.run.attempts = Number(this.state.run.attempts || 0) + 1;
+
+    if (reward.item || summary?.targetsRobbed % 10 === 0) {
+      const pieces = [`AFK: +R$ ${reward.money}`];
+      if (reward.item) pieces.push(itemAdded ? `+ ${reward.item.name}` : `${reward.item.name} perdido: mochila cheia`);
+      addLog(this.state, pieces.join(" | "));
+      this.hooks.onToast?.(pieces.join(" | "));
+    }
+  }
+
+  appendAfkNpcWave(map) {
+    const run = this.state.run;
+    const wave = Number(run.afkWave || 0);
+    const npcs = createAfkNpcWave(map, wave, Number(run.afkNextSpawnX || run.playerX + 360));
+    run.afkWave = wave + 1;
+    run.afkNextSpawnX = afkNextSpawnX(npcs);
+    run.npcs.push(...npcs);
+  }
+
+  pruneAfkNpcs() {
+    const run = this.state.run;
+    const minX = Number(run.playerX || 0) - AFK_RAID_CLEANUP_DISTANCE;
+    run.npcs = (run.npcs || []).filter((npc) => !npc.done || Number(npc.x || 0) > minX);
+  }
+
+  finishAfkRaid(reason = "manual") {
+    const run = this.state.run;
+    if (!run?.afkRaid || run.mode === "summary") return;
+    const rewardMap = this.afkRewardMap();
+    const summary = run.summary || createRaidSummary({ ...rewardMap, name: "Roubo AFK" }, 0);
+    summary.afkRaid = true;
+    summary.mapName = "Roubo AFK";
+    summary.rewardMapName ||= rewardMap?.name || "Mapa concluido";
+    summary.rewardMapCode ||= rewardMap?.code || rewardMap?.index || "";
+    summary.targetsTotal = summary.targetsRobbed || 0;
+    summary.remaining = 0;
+    summary.durationSeconds = Math.round(Number(run.afkElapsed || 0));
+    summary.limitReached = reason === "limit";
+    summary.finished = true;
+    summary.finishedAt = Date.now();
+
+    this.enterCity({ logMessage: false });
+    this.state.run.mode = "summary";
+    this.state.run.summary = summary;
+    this.state.run.summaryTimer = 0;
+    this.state.run.afkSummary = true;
+    const message = reason === "limit"
+      ? "Limite de 8 horas do roubo AFK atingido."
+      : "Roubo AFK concluido.";
+    addLog(this.state, message);
+    this.hooks.onToast?.(message);
+    this.emit();
+  }
+
   rewardTarget(wonFight) {
     const map = this.currentMap();
     const stats = calculateStats(this.state.player);
@@ -694,7 +939,7 @@ export class CombatSystem {
     const destination = drop.x;
     const direction = Math.sign(destination - run.playerX) || 1;
     run.playerDirection = destination >= run.playerX ? "right" : "left";
-    run.playerX += direction * dt * 118;
+    run.playerX += direction * dt * this.raidMoveSpeed(118);
 
     if (Math.abs(destination - run.playerX) <= GROUND_LOOT_PICKUP_DISTANCE) {
       run.playerX = destination;
@@ -838,7 +1083,7 @@ export class CombatSystem {
         const damage = Math.max(1, Math.round(enemy.attack * (blocked ? 0.45 : 1) * (1 - reduction)));
         player.hp = Math.max(0, player.hp - damage);
         this.pushDamageNumber(damage, run.playerX, blocked ? "blocked" : "player");
-        this.triggerPlayerAction("hurt", 0.42);
+        if (!this.raidMotorcycleActive()) this.triggerPlayerAction("hurt", 0.42);
         addLog(this.state, `${enemy.name} causou ${damage} de dano.`);
       } else {
         addLog(this.state, "Voce desviou do golpe.");
@@ -917,7 +1162,7 @@ export class CombatSystem {
     const damage = Math.max(1, Math.round(Number(dog.damage || averageEnemyDamage(map, run.npcs || [])) || 1));
     player.hp = Math.max(0, Number(player.hp || 0) - damage);
     this.pushDamageNumber(damage, run.playerX, "player");
-    this.triggerPlayerAction("hurt", 0.38);
+    if (!this.raidMotorcycleActive()) this.triggerPlayerAction("hurt", 0.38);
     addLog(this.state, `Cachorro de guarda causou ${damage} de dano.`);
     this.hooks.onToast?.(`Cachorro de guarda: -${damage} HP.`);
 
@@ -1069,6 +1314,7 @@ export class CombatSystem {
 
   updateRaidSummary(dt) {
     const run = this.state.run;
+    if (run.summary?.afkRaid) return;
     run.summaryTimer = Math.max(0, (run.summaryTimer || 0) - dt);
     if (run.summaryTimer > 0) return;
 
@@ -1111,6 +1357,33 @@ export class CombatSystem {
   shouldTriggerPoliceBeforeFight() {
     if (this.state.run?.tutorialFirstRaid) return false;
     return Math.random() < policePrisonChanceForFight(this.state.run.battlesStarted || 0);
+  }
+
+  tryMotorcyclePoliceEscape() {
+    if (!this.raidMotorcycleActive()) return false;
+    const chance = raidMotorcyclePoliceEscapeChance(this.state.player);
+    if (chance <= 0 || Math.random() > chance) return false;
+    const percent = Math.round(chance * 10000) / 100;
+    const run = this.state.run;
+    const target = this.targetNpc();
+    if (target) {
+      target.alerted = false;
+      setNpcDirection(target, "right");
+    }
+    run.choiceTimer = 0;
+    run.targetId = null;
+    run.enemy = null;
+    run.enemyHp = 0;
+    run.enemyMaxHp = 0;
+    run.mode = "fleeing";
+    run.fleeTimer = 0;
+    run.playerDirection = "left";
+    run.playerAction = null;
+    run.playerActionTimer = 0;
+    run.playerActionDuration = 0;
+    addLog(this.state, `A moto abriu passagem: fuga da policia (${percent}%).`);
+    this.hooks.onToast?.("A moto ajudou voce a escapar da policia.");
+    return true;
   }
 
   triggerPoliceConfiscation() {
@@ -1304,7 +1577,7 @@ export class CombatSystem {
     const run = this.state.run;
     run.playerDirection = "left";
     run.fleeTimer = Number(run.fleeTimer || 0) + dt;
-    run.playerX -= dt * FLEE_SPEED;
+    run.playerX -= dt * this.raidMoveSpeed(FLEE_SPEED);
     if (run.playerX > -90 && run.fleeTimer < FLEE_MAX_SECONDS) return;
 
     addLog(this.state, "Voce fugiu do mapa e voltou para a cidade.");
@@ -1314,6 +1587,20 @@ export class CombatSystem {
 
   emit() {
     this.hooks.onChange?.(this.state);
+  }
+
+  raidMotorcycleActive() {
+    if (this.state.run?.afkRaid) return false;
+    return this.state.scene === "map" && hasEquippedMotorcycle(this.state.player);
+  }
+
+  raidMoveSpeed(baseSpeed) {
+    if (!this.raidMotorcycleActive()) return baseSpeed;
+    return baseSpeed * raidMotorcycleMoveSpeedMultiplier(this.state.player);
+  }
+
+  raidTargetApproachDistance() {
+    return this.raidMotorcycleActive() ? MOUNTED_RAID_TARGET_APPROACH_DISTANCE : RAID_TARGET_APPROACH_DISTANCE;
   }
 }
 
@@ -1338,6 +1625,36 @@ function createRaidSummary(map, totalTargets = 0) {
     finished: false,
     finishedAt: null
   };
+}
+
+function afkRewardMapForPlayer(player) {
+  const highestUnlocked = Math.max(1, Math.floor(Number(player?.highestMapUnlocked || 1)));
+  const completedIndex = Math.max(1, Math.min(MAPS.length, highestUnlocked > 1 ? highestUnlocked - 1 : 1));
+  return MAPS.find((map) => Number(map.index || 0) === completedIndex) || MAPS[0];
+}
+
+function randomAfkBackgroundMap() {
+  return MAPS[Math.floor(Math.random() * MAPS.length)] || MAPS[0];
+}
+
+function createAfkNpcWave(map, wave, startX) {
+  const source = createNpcWave(map || MAPS[0]);
+  const firstX = Math.min(...source.map((npc) => Number(npc.x)).filter(Number.isFinite));
+  const offset = Math.round(Number(startX || 380) - (Number.isFinite(firstX) ? firstX : 380));
+  return source.map((npc, index) => ({
+    ...npc,
+    id: `afk-${wave}-${index}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    x: Math.round(Number(npc.x || 380) + offset),
+    done: false,
+    robbed: false,
+    alerted: false,
+    alertLine: null
+  }));
+}
+
+function afkNextSpawnX(npcs = []) {
+  const maxX = Math.max(...npcs.map((npc) => Number(npc.x)).filter(Number.isFinite));
+  return (Number.isFinite(maxX) ? maxX : 380) + AFK_RAID_WAVE_GAP;
 }
 
 export function policePrisonChanceForFight(battlesStarted = 0) {
@@ -1441,10 +1758,9 @@ function createRaidStartSnapshot(player) {
 function calculateStealChanceForMap(map, stats) {
   const risk = Number(map?.riscoFurtoMapa ?? map?.stealRisk ?? 0);
   const gloveBonus = Number(stats?.stealBonus || 0);
-  const carBonus = Number(stats?.carStealBonus || 0);
   const baseSuccess = Math.min(
     theftConfig.maxChance,
-    Math.max(theftConfig.minChance, theftConfig.baseChance - risk + gloveBonus + carBonus)
+    Math.max(theftConfig.minChance, theftConfig.baseChance - risk + gloveBonus)
   );
   const caughtChance = 100 - baseSuccess;
   const percent = Math.min(

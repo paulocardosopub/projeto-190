@@ -1,7 +1,7 @@
 import { IDLE_MAPS, MAPS, MAP_TIERS } from "../data/maps/index.js?v=petshop-portal-1";
 import { DEFAULT_PLAYER_ID, PLAYERS } from "../data/players/index.js?v=players-16";
 import { EQUIPMENT_SLOTS, SLOT_LABELS } from "../data/equipment/index.js?v=gloves-1";
-import { HIDEOUT_ITEM_TYPES, hideoutItemCost } from "../data/hideoutItems/index.js";
+import { HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemMaxTier } from "../data/hideoutItems/index.js";
 import { calculateStats, formatStat, statLabel } from "../systems/EquipmentSystem/index.js?v=equipment-2";
 import { ITEM_STACK_LIMIT, itemQuantity } from "../systems/InventorySystem/index.js?v=stack-1";
 import { PETS, PET_UNLOCK_LEVEL, petsUnlocked } from "../data/pets/index.js?v=pets-1";
@@ -14,8 +14,8 @@ import {
   hideoutRestCooldown,
   staminaPercent,
   staminaState
-} from "../systems/StaminaSystem/index.js?v=asset-lock-1";
-import { getCarConfig, getHouseConfig, getLandConfig } from "../data/balance/index.js?v=asset-lock-1";
+} from "../systems/StaminaSystem/index.js?v=moto-garage-1";
+import { getHouseConfig, getLandConfig, getMotorcycleConfig } from "../data/balance/index.js?v=asset-lock-1";
 
 const BACKPACK_PAGE_SIZE = 36;
 const BACKPACK_PAGE_COUNT = 4;
@@ -519,7 +519,7 @@ function panelBody(type, state, online, faction) {
       </div>
       <div class="future-grid">
         ${futureCard("Comercio", "Compra e venda geral em breve.")}
-        ${futureCard("Veiculos", "Transporte e rotas futuras.")}
+        ${futureCard("Motos", "Transporte para assaltos.")}
         ${futureCard("Imoveis", "Casas e alugueis futuros.")}
         ${futureCard("Mercado Negro", "Itens raros e troca futura.")}
         ${futureCard("NPCs", "Missoes urbanas futuras.")}
@@ -1030,15 +1030,16 @@ function escapeAttribute(value) {
 
 function hideoutUpgradeRow(item, state) {
   const currentTier = state.player.hideoutItems?.[item.id] || 0;
-  const nextTier = Math.min(9, currentTier + 1);
-  const maxed = currentTier >= 9;
+  const maxTier = hideoutItemMaxTier(item.id);
+  const nextTier = Math.min(maxTier, currentTier + 1);
+  const maxed = currentTier >= maxTier;
   const price = hideoutItemCost(item.id, nextTier);
   const canBuy = !maxed && state.player.money >= price;
   return `
     <article class="hideout-upgrade-row">
       <div>
         <h3>${item.name}</h3>
-        <p>Tier atual ${currentTier || 0} / 9</p>
+        <p>Tier atual ${currentTier || 0} / ${maxTier}</p>
       </div>
       <button class="panel-action" data-buy-hideout-item="${item.id}" ${canBuy ? "" : "disabled"}>
         ${maxed ? "Max" : `T${nextTier} ${price}`}
@@ -1050,7 +1051,7 @@ function hideoutUpgradeRow(item, state) {
 function hideoutProgressPanel(state) {
   const player = state.player;
   const house = getHouseConfig(player.casaAtual);
-  const car = getCarConfig(player.carroAtual);
+  const motorcycle = getMotorcycleConfig(player.equippedMotorcycleLevel);
   const land = getLandConfig(player.terrenoAtual);
   const rechargeCost = getStaminaRechargeCost(player);
   const restCooldown = hideoutRestCooldown(player);
@@ -1074,9 +1075,9 @@ function hideoutProgressPanel(state) {
         <p>${house ? `+${house.staminaMaxBonus} stamina | +${formatPercentless(house.staminaRegenBonus)}/min` : "Compre uma casa com Seu Zeca."}</p>
       </article>
       <article>
-        <span class="eyebrow">Carro</span>
-        <h3>${car?.name || "Sem carro"}</h3>
-        <p>${car ? `Furto +${formatPercent(car.furtoBonus)} | Renda ${money(car.passiveIncomePerMinute)}/min` : "Compre um carro com Seu Zeca."}</p>
+        <span class="eyebrow">Moto</span>
+        <h3>${motorcycle?.name || "Sem moto"}</h3>
+        <p>${motorcycle ? `Assalto ${motorcycle.speedMultiplier.toFixed(1)}x | Fuga ${formatPercent(motorcycle.policeEscapeChance * 100)}` : "Motos liberam no nivel 15 com Seu Zeca."}</p>
       </article>
       <article>
         <span class="eyebrow">Terreno</span>

@@ -8,10 +8,11 @@ export const HIDEOUT_ITEM_TYPES = [
   },
   {
     id: "vehicle",
-    name: "Veiculo",
+    name: "Moto",
     sheet: "hideoutVehicles",
     baseCost: 260,
-    height: 76
+    height: 68,
+    maxTier: 5
   }
 ];
 
@@ -30,15 +31,11 @@ export const HIDEOUT_ITEM_HEIGHTS = {
     9: 180
   },
   vehicle: {
-    1: 76,
-    2: 105,
-    3: 105,
-    4: 86,
-    5: 81,
-    6: 95,
-    7: 81,
-    8: 81,
-    9: 77
+    1: 68,
+    2: 68,
+    3: 68,
+    4: 68,
+    5: 68
   }
 };
 
@@ -80,14 +77,18 @@ export function hideoutItemType(id) {
 
 export function hideoutItemCost(typeId, tier) {
   const type = hideoutItemType(typeId);
-  const safeTier = Math.max(1, Math.min(9, tier));
+  const safeTier = Math.max(1, Math.min(hideoutItemMaxTier(type.id), tier));
   return Math.round(type.baseCost * safeTier ** 2.05);
 }
 
 export function hideoutItemHeight(typeId, tier) {
   const type = hideoutItemType(typeId);
-  const safeTier = Math.max(1, Math.min(9, tier));
+  const safeTier = Math.max(1, Math.min(hideoutItemMaxTier(type.id), tier));
   return HIDEOUT_ITEM_HEIGHTS[type.id]?.[safeTier] || type.height;
+}
+
+export function hideoutItemMaxTier(typeId) {
+  return hideoutItemType(typeId).maxTier || 9;
 }
 
 export function hideoutItemPlacementDefault(typeId, hideoutTier = 1) {

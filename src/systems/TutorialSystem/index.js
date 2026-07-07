@@ -1,4 +1,4 @@
-const TUTORIAL_VERSION = 4;
+const TUTORIAL_VERSION = 5;
 
 const FINAL_STEP = "tutorial_complete";
 
@@ -103,23 +103,6 @@ export const TUTORIAL_STEPS = [
     message: "Lar doce lar. Meio torto, meio suspeito, mas e teu.",
     buttonLabel: "Fechou",
     target: "house_t1",
-    allowSkip: true,
-    next: "zeca_buy_car"
-  },
-  {
-    id: "zeca_buy_car",
-    message: "Agora falta um possante. Nao e bonito, mas anda. As vezes.",
-    buttonLabel: "Comprar carro",
-    target: "car_t1",
-    actionRequired: "buy_car_1",
-    passiveButton: true,
-    allowSkip: true
-  },
-  {
-    id: "zeca_car_done",
-    message: "Terreno, casa e caranga. Ja da pra fingir que ta tudo sob controle.",
-    buttonLabel: "Partiu",
-    target: "car_t1",
     allowSkip: true,
     next: "hideout_portal_intro"
   },
@@ -306,9 +289,13 @@ export function normalizeTutorialState(state, options = {}) {
     "zeca_click",
     "zeca_dialog_2",
     "zeca_dialog_3",
-    "zeca_land_mode"
+    "zeca_land_mode",
+    "zeca_buy_car",
+    "zeca_car_done"
   ].includes(state.tutorial.step)) {
-    state.tutorial.step = "zeca_intro";
+    state.tutorial.step = state.tutorial.step === "zeca_buy_car" || state.tutorial.step === "zeca_car_done"
+      ? "hideout_portal_intro"
+      : "zeca_intro";
   }
   if ([
     "almeida_return_click",
@@ -504,7 +491,6 @@ export function expectedTutorialAssetPurchase(state) {
   const action = tutorialStep(state)?.actionRequired;
   if (action === "buy_land_1") return { type: "land", tier: 1 };
   if (action === "buy_house_1") return { type: "house", tier: 1 };
-  if (action === "buy_car_1") return { type: "car", tier: 1 };
   return null;
 }
 
@@ -527,6 +513,7 @@ export class TutorialOverlay {
     this.onBack = options.onBack;
     this.onSkip = options.onSkip;
     this.onPassive = options.onPassive;
+    this.onConfirmRequest = options.onConfirmRequest;
     this.node = null;
     this.highlight = null;
     this.arrow = null;
@@ -589,8 +576,20 @@ export class TutorialOverlay {
       this.onBack?.(this.currentStep);
     });
     this.skipButton.addEventListener("click", () => {
-      const confirmed = window.confirm("Vai pular a aula da malandragem?");
-      if (confirmed) this.onSkip?.(this.currentStep);
+      const skipCurrentStep = () => this.onSkip?.(this.currentStep);
+      if (this.onConfirmRequest) {
+        this.onConfirmRequest({
+          eyebrow: "Tutorial",
+          title: "Pular tutorial?",
+          message: "Vai pular a aula da malandragem?",
+          confirmLabel: "Pular",
+          cancelLabel: "Voltar",
+          danger: true,
+          onConfirm: skipCurrentStep
+        });
+        return;
+      }
+      skipCurrentStep();
     });
     this.root.append(this.node);
   }
@@ -690,9 +689,6 @@ function tutorialActionMatches(action, event) {
   if (action === "buy_house_1") {
     return event.type === "asset_bought" && event.assetType === "house" && Number(event.tier) === 1;
   }
-  if (action === "buy_car_1") {
-    return event.type === "asset_bought" && event.assetType === "car" && Number(event.tier) === 1;
-  }
   if (action === "click_city_hideout_portal") {
     return event.type === "scene_entered" && event.scene === "hideout";
   }
@@ -726,7 +722,6 @@ function expectedTargetForAction(action) {
     open_land_shop: { type: "shop_mode", id: "land" },
     buy_land_1: { type: "asset", id: "land:1" },
     buy_house_1: { type: "asset", id: "house:1" },
-    buy_car_1: { type: "asset", id: "car:1" },
     click_city_hideout_portal: { type: "city_portal", id: "hideout-door" },
     click_hideout_house: { type: "hideout_item", id: "house" },
     click_hideout_return_portal: { type: "hideout_portal", id: "city-return" },

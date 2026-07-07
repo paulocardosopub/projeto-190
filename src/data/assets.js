@@ -30,7 +30,7 @@ export const ASSETS = {
   hideouts: "./assets/esconderijos.png",
   pets: "./assets/pets.png",
   hideoutHouses: "./src/hideout/casas.png",
-  hideoutVehicles: "./src/hideout/veiculos.png?v=vehicle-alpha-3",
+  hideoutVehicles: "./src/hideout/motos.png?v=motorcycles-1",
   enemies: "./src/enemy/inimigos1.png",
   enemies2: "./src/enemy/inimigos2.png",
   enemies3: "./src/enemy/inimigos3.png",
@@ -194,23 +194,11 @@ export const SPRITES = {
     },
     vehicle: {
       sheet: "hideoutVehicles",
-      cols: 3,
-      rows: 3,
-      cellWidth: 418,
-      cellHeight: 418,
-      manualBounds: [
-        [],
-        [
-          null,
-          { x: 0, y: 151, width: 366, height: 194 },
-          { x: -16, y: 129, width: 379, height: 221 }
-        ],
-        [
-          null,
-          { x: 0, y: 117, width: 371, height: 182 },
-          { x: -16, y: 126, width: 392, height: 181 }
-        ]
-      ]
+      cols: 5,
+      rows: 1,
+      tiers: 5,
+      cellWidth: 325,
+      cellHeight: 274
     }
   }
 };

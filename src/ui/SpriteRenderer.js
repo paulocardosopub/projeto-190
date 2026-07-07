@@ -4,12 +4,32 @@ import { DEFAULT_PLAYER_ID, PLAYERS, PLAYER_POSES, getPlayerById } from "../data
 import { CITY_NPCS } from "../data/cityNpcs/index.js?v=zeca-actions-1";
 import { CITY_DECORATIVE_NPCS } from "../data/decorativeNpcs/index.js?v=idle-npcs-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "../data/cityPortals/index.js?v=petshop-portal-1";
-import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-7";
+import { HIDEOUT_ITEM_TYPES, hideoutItemHeight, hideoutItemPlacementDefault } from "../data/hideoutItems/index.js?v=hideout-items-8";
 import { PETS, PET_FRAME_BOUNDS, getEquippedPet, getPetById } from "../data/pets/index.js?v=pets-manual-1";
 
 const RARE_WEAPON_EFFECT_POSITION = { x: -0.125, y: 0.315, size: 1 };
 const RARE_WEAPON_PLUS_ALPHA = 0.5;
 const RARE_WEAPON_PULSE_SPEED = 5.6;
+const MOTORCYCLE_SPRITE_VERSION = "motorcycle-sprites-5";
+const MOTORCYCLE_HEIGHT_RATIO_BY_LEVEL = {
+  1: 1.42,
+  2: 1.48,
+  3: 1.54,
+  4: 1.6,
+  5: 1.66
+};
+const PLAYER_MOTORCYCLE_SHEETS = {
+  menino_gordinho_brasil: "01_menino_moto_sprites_transparente.png",
+  menina_loira_flamengo: "02_menina_loira_moto_sprites_transparente.png",
+  homem_forte_preto_branco: "03_homem_forte_pb_moto_sprites_transparente.png",
+  homem_magro_verde_branco: "04_homem_magro_verde_moto_sprites_transparente.png",
+  mulher_ruiva_brasil: "05_mulher_ruiva_moto_sprites_transparente.png",
+  mulher_gordinha_time_azul: "06_mulher_gordinha_azul_moto_sprites_transparente.png",
+  homem_velho_camisa_branca: "07_homem_velho_moto_sprites_transparente.png",
+  mulher_morena_camisa_aleatoria: "08_mulher_morena_roxo_moto_sprites_transparente.png",
+  homem_moreno_forte_camisa_aleatoria: "09_homem_moreno_roxo_moto_sprites_transparente.png",
+  mendigo_blusa_rasgada_time: "10_mendigo_moto_sprites_transparente.png"
+};
 
 export class SpriteRenderer {
   constructor(canvas) {
@@ -19,7 +39,9 @@ export class SpriteRenderer {
     this.actorBounds = {};
     this.hideoutItemBounds = {};
     this.lastHideoutItemBounds = [];
+    this.lastOnlinePlayerBounds = [];
     this.playerAnimations = {};
+    this.playerMotorcycleAnimations = {};
     this.playerAnimationState = {};
     this.petFrames = [];
     this.petAnimationState = {};
@@ -34,6 +56,7 @@ export class SpriteRenderer {
     this.actorBounds.enemies2 = buildActorBounds(this.images.enemies2, actorSheet("enemies2"));
     this.actorBounds.enemies3 = buildActorBounds(this.images.enemies3, actorSheet("enemies3"));
     this.playerAnimations = await loadPlayerAnimations();
+    this.playerMotorcycleAnimations = await loadPlayerMotorcycleAnimations();
     this.petFrames = buildPetFrames(this.images.pets);
     HIDEOUT_ITEM_TYPES.forEach((item) => {
       const config = SPRITES.hideoutItems[item.id];
@@ -93,12 +116,20 @@ export class SpriteRenderer {
 
     const playerScreenX = this.worldToScreen(state.run.playerX || 120, cameraWorld);
     const playerFeetY = visual.groundY + visual.playerYOffset;
-    this.drawPlayerPet(state, cameraWorld, visual, playerScreenX, playerFeetY);
-    const playerAnimation = this.playerAnimationFor(state.selectedPlayerId || state.player?.characterId);
-    if (playerAnimation) {
-      this.drawAnimatedPlayer(playerAnimation, state, playerScreenX, playerFeetY, visual.playerHeight, 1);
+    const motorcycleLevel = activeMotorcycleLevel(state);
+    const motorcycleAnimation = motorcycleLevel ? this.playerMotorcycleAnimationFor(state.selectedPlayerId || state.player?.characterId) : null;
+    const drewMotorcycle = Boolean(motorcycleLevel && motorcycleAnimation);
+    if (!drewMotorcycle) this.drawPlayerPet(state, cameraWorld, visual, playerScreenX, playerFeetY);
+    if (drewMotorcycle) {
+      this.drawMotorcyclePlayer(motorcycleAnimation, state, playerScreenX, playerFeetY, visual.playerHeight, motorcycleLevel);
+    } else {
+      const playerAnimation = this.playerAnimationFor(state.selectedPlayerId || state.player?.characterId);
+      if (playerAnimation) {
+        this.drawAnimatedPlayer(playerAnimation, state, playerScreenX, playerFeetY, visual.playerHeight, 1);
+      }
     }
-    this.drawWeaponHandEffect(state, playerScreenX, playerFeetY, visual.playerHeight);
+    if (drewMotorcycle) this.drawPlayerPet(state, cameraWorld, visual, playerScreenX, playerFeetY);
+    if (!drewMotorcycle) this.drawWeaponHandEffect(state, playerScreenX, playerFeetY, visual.playerHeight);
 
     if (state.run.mode === "stealing") {
       this.drawProgressBubble(playerScreenX + 34, Math.max(40, playerFeetY - visual.playerHeight - 44), Math.max(0, 1 - state.run.timer / 1.05));
@@ -218,9 +249,79 @@ export class SpriteRenderer {
     }
   }
 
+  drawMotorcyclePlayer(animation, state, x, feetY, playerHeight, level) {
+    const action = motorcyclePlayerAction(state);
+    const frameSet = animation[level] || animation[1];
+    const frame = frameSet?.[action] || frameSet?.move;
+    if (!frame) return;
+
+    const visualCalibration = motorcycleVisualCalibration(state, level);
+    const targetHeight = playerHeight * (MOTORCYCLE_HEIGHT_RATIO_BY_LEVEL[level] || MOTORCYCLE_HEIGHT_RATIO_BY_LEVEL[1]) * visualCalibration.scale;
+    const scale = targetHeight / Math.max(1, frame.referenceHeight || frame.bodyHeight || frame.height);
+    const drawWidth = frame.width * scale;
+    const drawHeight = frame.height * scale;
+    const mirrored = state.run.playerDirection === "left";
+    const time = performance.now() / 1000;
+    const engineShakeX = Math.sin(time * 14.5 + level) * 0.42 + Math.sin(time * 23.2) * 0.18;
+    const engineShakeY = Math.sin(time * 18.5 + level * 0.4) * 0.24;
+    const calibratedFeetY = feetY + visualCalibration.y;
+    const drawX = Math.round(x - (mirrored ? frame.width - frame.anchorX : frame.anchorX) * scale + engineShakeX);
+    const drawY = Math.round(calibratedFeetY - frame.anchorY * scale + engineShakeY);
+
+    this.drawContactShadow(x, calibratedFeetY, Math.max(36, frame.footWidth * scale * 0.74));
+    this.drawMotorcycleExhaustSmoke(drawX, drawY, drawWidth, drawHeight, mirrored, level, time);
+    if (mirrored) {
+      this.ctx.save();
+      this.ctx.translate(drawX + drawWidth, drawY);
+      this.ctx.scale(-1, 1);
+      this.ctx.drawImage(frame.image, frame.x, frame.y, frame.width, frame.height, 0, 0, drawWidth, drawHeight);
+      this.ctx.restore();
+      return;
+    }
+
+    this.ctx.drawImage(
+      frame.image,
+      frame.x,
+      frame.y,
+      frame.width,
+      frame.height,
+      drawX,
+      drawY,
+      drawWidth,
+      drawHeight
+    );
+  }
+
+  drawMotorcycleExhaustSmoke(drawX, drawY, width, height, mirrored, level, time) {
+    const ctx = this.ctx;
+    const driftDirection = mirrored ? 1 : -1;
+    const exhaustX = drawX + width * (mirrored ? 0.82 : 0.18);
+    const exhaustY = drawY + height * (level === 2 ? 0.68 : 0.72);
+
+    ctx.save();
+    for (let index = 0; index < 6; index += 1) {
+      const phase = (time * 0.72 + index * 0.18) % 1;
+      const wave = Math.sin(time * 2.2 + index * 1.75);
+      const x = exhaustX + driftDirection * (phase * 34 + wave * 2.4);
+      const y = exhaustY - phase * 15 + Math.cos(time * 1.8 + index) * 1.6;
+      const radius = (2.5 + phase * 6.8 + (index % 2) * 1.1) * Math.max(0.78, height / 168);
+      ctx.globalAlpha = 0.15 * (1 - phase);
+      ctx.fillStyle = index % 2 ? "#b7b7b2" : "#83837f";
+      ctx.beginPath();
+      ctx.ellipse(x, y, radius * 1.5, radius * 0.72, -0.22 + wave * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   playerAnimationFor(playerId) {
     const id = getPlayerById(playerId).id;
     return this.playerAnimations[id] || this.playerAnimations[DEFAULT_PLAYER_ID];
+  }
+
+  playerMotorcycleAnimationFor(playerId) {
+    const id = getPlayerById(playerId).id;
+    return this.playerMotorcycleAnimations[id] || this.playerMotorcycleAnimations[DEFAULT_PLAYER_ID];
   }
 
   drawPlayerPet(state, cameraWorld, visual, fallbackPlayerX, playerFeetY) {
@@ -384,6 +485,7 @@ export class SpriteRenderer {
 
   drawOnlinePlayers(state, cameraWorld, visual) {
     const areaId = onlineAreaId(state);
+    this.lastOnlinePlayerBounds = [];
     if (!areaId) return;
     const players = Array.isArray(state.onlineCityPlayers) ? state.onlineCityPlayers : [];
     if (!players.length) return;
@@ -395,6 +497,16 @@ export class SpriteRenderer {
       .forEach((player) => {
         const x = this.worldToScreen(Number(player.x || 120), cameraWorld);
         if (x < -110 || x > this.canvas.width + 110) return;
+        const playerHeight = visual.playerHeight * 0.98;
+        this.lastOnlinePlayerBounds.push({
+          player,
+          x: x - playerHeight * 0.34,
+          y: feetY - playerHeight - 10,
+          width: playerHeight * 0.68,
+          height: playerHeight + 28,
+          centerX: x,
+          feetY
+        });
         const animation = this.playerAnimationFor(player.characterId);
         const direction = player.direction === "left" ? "left" : "right";
         const fakeState = {
@@ -426,6 +538,20 @@ export class SpriteRenderer {
         this.drawNameplate(x, feetY - visual.playerHeight - 8, player.playerName || "Jogador");
         this.ctx.restore();
       });
+  }
+
+  hitTestOnlinePlayer(screenX, screenY) {
+    return [...(this.lastOnlinePlayerBounds || [])]
+      .filter((entry) => (
+        screenX >= entry.x &&
+        screenX <= entry.x + entry.width &&
+        screenY >= entry.y &&
+        screenY <= entry.y + entry.height
+      ))
+      .sort((a, b) => (
+        Math.hypot(screenX - a.centerX, screenY - a.feetY) -
+        Math.hypot(screenX - b.centerX, screenY - b.feetY)
+      ))[0]?.player || null;
   }
 
   drawOnlinePlayerPet(state, player, playerX, feetY, playerHeight) {
@@ -476,7 +602,7 @@ export class SpriteRenderer {
 
     const editor = state.settings?.hideoutEditor || {};
     HIDEOUT_ITEM_TYPES.forEach((item) => {
-      const ownedTier = state.player?.hideoutItems?.[item.id] || 0;
+      const ownedTier = hideoutItemOwnedTier(state, item.id);
       const previewTier = editor.previewTiers?.[item.id];
       const tier = state.settings?.visualPreview ? (previewTier || ownedTier || 1) : ownedTier;
       if (!tier) return;
@@ -850,7 +976,7 @@ export class SpriteRenderer {
     const image = this.images[config.sheet];
     if (!config || !image) return;
 
-    const safeTier = Math.max(1, Math.min(9, tier));
+    const safeTier = Math.max(1, Math.min(config.tiers || 9, tier));
     const row = Math.floor((safeTier - 1) / config.cols);
     const col = (safeTier - 1) % config.cols;
     const trim = this.hideoutItemBounds[typeId]?.[row]?.[col] || {
@@ -1001,10 +1127,12 @@ export class SpriteRenderer {
     if (!numbers.length) return;
     const ctx = this.ctx;
     const groundY = visual.groundY + visual.playerYOffset;
+    const hidePlayerDamage = Boolean(activeMotorcycleLevel(state));
     ctx.save();
     ctx.textAlign = "center";
     ctx.font = "bold 17px Arial";
     numbers.forEach((number) => {
+      if (hidePlayerDamage && (number.type === "player" || number.type === "blocked")) return;
       const progress = Math.min(1, number.lift || 0);
       const alpha = Math.max(0, 1 - progress);
       const x = this.worldToScreen(number.worldX || 0, cameraWorld);
@@ -1318,11 +1446,99 @@ async function loadPlayerAnimations() {
   const entries = await Promise.all(PLAYERS.map(async (player) => {
     const frames = {};
     await Promise.all(Object.values(PLAYER_POSES).map(async (pose) => {
-      frames[pose] = await loadImage(`${player.assetPath}/${pose}.png?v=players-16`);
+      frames[pose] = await loadImage(`${player.assetPath}/${pose}.png?v=players-17`);
     }));
     return [player.id, buildPlayerAnimationFromFrames(frames)];
   }));
   return Object.fromEntries(entries);
+}
+
+async function loadPlayerMotorcycleAnimations() {
+  const entries = await Promise.all(PLAYERS.map(async (player) => {
+    const sheetName = PLAYER_MOTORCYCLE_SHEETS[player.id];
+    const sheet = await loadImage(`./src/hideout/${sheetName}?v=${MOTORCYCLE_SPRITE_VERSION}`);
+    return [player.id, buildMotorcycleAnimationFromSheet(sheet)];
+  }));
+  return Object.fromEntries(entries);
+}
+
+function buildMotorcycleAnimationFromSheet(image) {
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width;
+  canvas.height = image.height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(image, 0, 0);
+  const pixels = ctx.getImageData(0, 0, image.width, image.height).data;
+  const cellWidth = Math.floor(image.width / 5);
+  const cellHeight = Math.floor(image.height / 2);
+  const animation = {};
+
+  for (let level = 1; level <= 5; level += 1) {
+    const col = level - 1;
+    const sourceX = col * cellWidth;
+    const sourceWidth = col === 4 ? image.width - sourceX : cellWidth;
+    const move = buildMotorcycleFrame(pixels, image, {
+      x: sourceX,
+      y: 0,
+      width: sourceWidth,
+      height: cellHeight
+    });
+    const attack = buildMotorcycleFrame(pixels, image, {
+      x: sourceX,
+      y: cellHeight,
+      width: sourceWidth,
+      height: image.height - cellHeight
+    });
+    const referenceHeight = median([move?.bodyHeight, attack?.bodyHeight]) || move?.bodyHeight || attack?.bodyHeight || 1;
+    if (move) move.referenceHeight = referenceHeight;
+    if (attack) attack.referenceHeight = referenceHeight;
+    animation[level] = { move, attack };
+  }
+
+  return animation;
+}
+
+function buildMotorcycleFrame(pixels, image, rect) {
+  const sourceX = Math.max(0, rect.x);
+  const sourceY = Math.max(0, rect.y);
+  const sourceRight = Math.min(image.width - 1, rect.x + rect.width - 1);
+  const sourceBottom = Math.min(image.height - 1, rect.y + rect.height - 1);
+  let minX = sourceRight;
+  let minY = sourceBottom;
+  let maxX = sourceX;
+  let maxY = sourceY;
+
+  for (let y = sourceY; y <= sourceBottom; y += 1) {
+    for (let x = sourceX; x <= sourceRight; x += 1) {
+      if (alphaAt(pixels, image.width, x, y) > 8) {
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+      }
+    }
+  }
+
+  if (maxX <= minX || maxY <= minY) return null;
+
+  const padding = 10;
+  minX = Math.max(sourceX, minX - padding);
+  minY = Math.max(sourceY, minY - padding);
+  maxX = Math.min(sourceRight, maxX + padding);
+  maxY = Math.min(sourceBottom, maxY + padding);
+  const foot = findFootAnchor(pixels, image.width, minX, maxX, minY, maxY);
+
+  return {
+    image,
+    x: minX,
+    y: minY,
+    width: maxX - minX + 1,
+    height: maxY - minY + 1,
+    anchorX: foot.x - minX,
+    anchorY: maxY + 1 - minY,
+    bodyHeight: maxY - minY + 1,
+    footWidth: foot.width
+  };
 }
 
 function buildPlayerAnimationFromFrames(frames) {
@@ -1704,7 +1920,17 @@ function weaponEffectConfig(rarity) {
 
 function currentSceneMap(state) {
   if (state.scene === "map") {
-    return MAPS.find((candidate) => candidate.id === state.currentMapId) || MAPS[0];
+    const map = MAPS.find((candidate) => candidate.id === state.currentMapId) || MAPS[0];
+    if (state.run?.afkRaid) {
+      return {
+        ...map,
+        code: "AFK",
+        name: "Roubo AFK",
+        backgroundSheet: state.run.afkBackgroundSheet || map.backgroundSheet,
+        backgroundRow: Number.isFinite(Number(state.run.afkBackgroundRow)) ? Number(state.run.afkBackgroundRow) : map.backgroundRow
+      };
+    }
+    return map;
   }
   if (state.scene === "idle") {
     return IDLE_MAPS.find((candidate) => candidate.id === state.currentMapId) || IDLE_MAPS[0];
@@ -1716,17 +1942,30 @@ function currentSceneMap(state) {
   return CITY;
 }
 
+function hideoutItemOwnedTier(state, typeId) {
+  if (typeId === "vehicle") {
+    const equipped = Number(state.player?.equippedMotorcycleLevel || state.player?.motoAtual || 0);
+    if (equipped > 0) return Math.max(1, Math.min(5, Math.floor(equipped)));
+  }
+  return Number(state.player?.hideoutItems?.[typeId] || 0);
+}
+
 function backgroundSheet(sheetKey) {
   return SPRITES.backgroundSheets?.[sheetKey] || SPRITES.background;
 }
 
 function playerAction(state) {
   const run = state.run || {};
-  if (run.mode === "stealing") return "steal";
+  if (run.mode === "stealing" || run.mode === "afk-stealing") return "steal";
   if (run.mode === "combat" && (run.playerAction === "attack" || run.playerAction === "hurt")) {
     return run.playerAction;
   }
   return isPlayerWalking(state) ? "walk" : "idle";
+}
+
+function motorcyclePlayerAction(state) {
+  const run = state.run || {};
+  return run.mode === "combat" && run.playerAction === "attack" ? "attack" : "move";
 }
 
 function petAction(state) {
@@ -1746,7 +1985,7 @@ function playerFrameIndex(action, length, state, animationState) {
     return Math.min(length - 1, Math.floor(progress * length));
   }
   if (action === "steal") {
-    const duration = 1.05;
+    const duration = state.run.mode === "afk-stealing" ? 0.85 : 1.05;
     const remaining = state.run.timer ?? duration;
     const progress = clamp((duration - remaining) / duration, 0, 0.999);
     return Math.min(length - 1, Math.floor(progress * length));
@@ -1822,7 +2061,35 @@ function isPlayerWalking(state) {
   if (state.scene === "city" || state.scene === "hideout" || state.scene === "idle") {
     return Number.isFinite(run.cityTargetX) && Math.abs(run.cityTargetX - (run.playerX || 0)) > 2;
   }
-  return run.mode === "approaching" || run.mode === "seeking" || run.mode === "collectingLoot" || run.mode === "fleeing";
+  return run.mode === "approaching" ||
+    run.mode === "seeking" ||
+    run.mode === "collectingLoot" ||
+    run.mode === "fleeing" ||
+    run.mode === "afk-seeking" ||
+    run.mode === "afk-approaching";
+}
+
+function activeMotorcycleLevel(state) {
+  if (state?.run?.afkRaid) return 0;
+  if (state?.scene !== "map") return 0;
+  const player = state.player || {};
+  const level = Number(player.equippedMotorcycleLevel || player.motoAtual || player.carroAtual || 0);
+  if (!player.hasMotorcycleEquipped && !level) return 0;
+  const owned = Array.isArray(player.ownedMotorcycles) ? player.ownedMotorcycles : player.ownedCars;
+  if (Array.isArray(owned) && owned.length && !owned.includes(level)) return 0;
+  return Math.max(1, Math.min(5, Math.floor(level)));
+}
+
+function motorcycleVisualCalibration(state, level) {
+  const playerId = getPlayerById(state.selectedPlayerId || state.player?.characterId || DEFAULT_PLAYER_ID).id;
+  const legacyEntry = state.settings?.visual?.motorcycles?.[playerId]?.[String(Math.max(1, Math.min(5, Math.floor(Number(level || 1)))))] || {};
+  const entry = state.settings?.visual?.motorcycleMount || legacyEntry;
+  const y = Number(entry.y || 0);
+  const scale = Number(entry.scale || 1);
+  return {
+    y: Math.max(-80, Math.min(80, Number.isFinite(y) ? y : 0)),
+    scale: Math.max(0.7, Math.min(1.35, Number.isFinite(scale) && scale > 0 ? scale : 1))
+  };
 }
 
 function alphaAt(pixels, imageWidth, x, y) {
@@ -1874,7 +2141,7 @@ function hideoutItemPlacement(state, typeId, tier) {
   return {
     ...defaults,
     ...(placement || {}),
-    height: placement?.heights?.[tier] || hideoutItemHeight(typeId, tier)
+    height: typeId === "vehicle" ? hideoutItemHeight(typeId, tier) : placement?.heights?.[tier] || hideoutItemHeight(typeId, tier)
   };
 }
 

@@ -98,6 +98,11 @@ wss.on("connection", (socket) => {
         shopId: sanitizeText(message.shopId, 40),
         at: Date.now()
       });
+      return;
+    }
+
+    if (message.type === "friend:request" || message.type === "friend:accepted") {
+      broadcastToOthers(id, sanitizeFriendMessage(message, client));
     }
   });
 
@@ -123,8 +128,10 @@ function joinCity(socketId, client, message) {
     scene: message.scene || "city",
     mapId: message.mapId || "",
     characterId: message.characterId || DEFAULT_PLAYER_ID,
+    level: message.level || client.level,
     equippedPetId: message.equippedPetId || null,
     weaponRarity: message.weaponRarity || null,
+    equipment: message.equipment || null,
     activeShop: message.activeShop || null,
     x: message.x,
     y: message.y,
@@ -140,6 +147,7 @@ function joinCity(socketId, client, message) {
   client.publicPlayerId = player.playerId;
   client.sessionToken = player.sessionToken;
   client.name = player.playerName;
+  client.level = player.level;
   client.area = player.areaId || "cidade";
   cityPlayers.set(socketId, {
     ...player,
@@ -179,8 +187,10 @@ function moveCityPlayer(socketId, client, message) {
   current.scene = sanitizeId(message.scene) || current.scene || "city";
   current.mapId = sanitizeId(message.mapId) || "";
   current.characterId = sanitizeId(message.characterId) || current.characterId;
+  current.level = clampNumber(message.level, 1, 999, current.level || client.level || 1);
   current.equippedPetId = sanitizeId(message.equippedPetId) || null;
   current.weaponRarity = sanitizeId(message.weaponRarity) || null;
+  current.equipment = sanitizeEquipmentSummary(message.equipment);
   current.activeShop = sanitizeActiveShop(message.activeShop);
   current.direction = message.direction === "left" ? "left" : "right";
   current.isMoving = Boolean(message.isMoving);
@@ -188,6 +198,7 @@ function moveCityPlayer(socketId, client, message) {
   current.lastMoveAt = now;
   current.lastSeen = now;
   client.area = current.areaId || client.area;
+  client.level = current.level || client.level;
 
   broadcastToOthers(socketId, {
     type: current.isMoving ? "city:player_moved" : "city:player_stopped",
@@ -243,8 +254,10 @@ function publicCityPlayer(player) {
     scene: player.scene,
     mapId: player.mapId,
     characterId: player.characterId,
+    level: player.level,
     equippedPetId: player.equippedPetId,
     weaponRarity: player.weaponRarity,
+    equipment: player.equipment,
     activeShop: player.activeShop,
     x: player.x,
     y: player.y,
@@ -282,8 +295,10 @@ function sanitizeCityPlayer(player) {
     scene: sanitizeId(player.scene) || "city",
     mapId: sanitizeId(player.mapId),
     characterId: sanitizeId(player.characterId) || DEFAULT_PLAYER_ID,
+    level: clampNumber(player.level, 1, 999, 1),
     equippedPetId: sanitizeId(player.equippedPetId) || null,
     weaponRarity: sanitizeId(player.weaponRarity) || null,
+    equipment: sanitizeEquipmentSummary(player.equipment),
     activeShop: sanitizeActiveShop(player.activeShop),
     x: clampNumber(player.x, 64, 1856, 120),
     y: clampNumber(player.y, -200, 400, 0),
@@ -337,6 +352,45 @@ function sanitizeActiveShop(shop) {
     grossSales: Math.max(0, Math.floor(Number(shop.grossSales || 0))),
     sellerRevenue: Math.max(0, Math.floor(Number(shop.sellerRevenue || 0))),
     salesCount: Math.max(0, Math.floor(Number(shop.salesCount || 0)))
+  };
+}
+
+function sanitizeEquipmentSummary(equipment) {
+  if (!equipment || typeof equipment !== "object") return {};
+  return Object.fromEntries(
+    ["weapon", "body", "hands"]
+      .map((slot) => [slot, sanitizeEquipmentItem(equipment[slot], slot)])
+      .filter(([, item]) => item)
+  );
+}
+
+function sanitizeEquipmentItem(item, fallbackSlot) {
+  if (!item || typeof item !== "object") return null;
+  const slot = sanitizeId(item.slot || fallbackSlot);
+  if (!["weapon", "body", "hands"].includes(slot)) return null;
+  return {
+    id: sanitizeId(item.id),
+    slot,
+    name: sanitizeText(item.name, 42) || "Item",
+    rarity: sanitizeId(item.rarity) || "comum",
+    tier: clampNumber(item.tier, 1, 9, 1),
+    power: clampNumber(item.power, 0, 999999, 0)
+  };
+}
+
+function sanitizeFriendMessage(message, client) {
+  return {
+    type: message.type,
+    requestId: sanitizeId(message.requestId) || `friend-${Date.now().toString(36)}`,
+    fromPlayerId: sanitizeId(message.fromPlayerId) || client.publicPlayerId || "",
+    fromClientId: sanitizeId(message.fromClientId) || client.id || "",
+    fromName: sanitizeText(message.fromName, 24) || client.name || "Jogador",
+    fromCharacterId: sanitizeId(message.fromCharacterId) || DEFAULT_PLAYER_ID,
+    fromLevel: clampNumber(message.fromLevel, 1, 999, client.level || 1),
+    toPlayerId: sanitizeId(message.toPlayerId),
+    toClientId: sanitizeId(message.toClientId),
+    toName: sanitizeText(message.toName, 24) || "Jogador",
+    at: Number(message.at || Date.now())
   };
 }
 

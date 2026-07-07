@@ -12,13 +12,18 @@ const LOOT_SLOT_WEIGHTS = Object.values(equipmentSlotsConfig).map((slot) => ({
   chance: slot.dropWeight
 }));
 
-export function rollLoot(map, stats, wonFight = false) {
+export function rollLoot(map, stats, wonFight = false, options = {}) {
+  const moneyMultiplier = numberOption(options.moneyMultiplier, 1);
+  const xpMultiplier = numberOption(options.xpMultiplier, 1);
+  const itemChanceMultiplier = numberOption(options.itemChanceMultiplier, 1);
+  const lootBonusMultiplier = numberOption(options.lootBonusMultiplier, 1);
   const moneyMin = map.money[0];
   const moneyMax = map.money[1];
   const moneyRoll = randomInt(moneyMin, moneyMax);
-  const money = clampDirectCashReward(moneyRoll, map, stats, wonFight);
-  const xp = Math.round(map.xp * (wonFight ? 1.35 : 1));
-  const itemChance = Math.min(0.95, (map.chanceDropEquipamento ?? map.equipmentDropChance ?? 0) / 100 + (stats.loot || 0));
+  const money = Math.max(0, Math.round(clampDirectCashReward(moneyRoll, map, stats, wonFight) * moneyMultiplier));
+  const xp = options.includeXp === false ? 0 : Math.round(map.xp * (wonFight ? 1.35 : 1) * xpMultiplier);
+  const baseItemChance = (map.chanceDropEquipamento ?? map.equipmentDropChance ?? 0) / 100 + (stats.loot || 0) * lootBonusMultiplier;
+  const itemChance = Math.min(0.95, Math.max(0, baseItemChance * itemChanceMultiplier));
   const equipmentId = Math.random() < itemChance ? rollEquipmentId(map) : null;
   const item = equipmentId ? createItem(equipmentId) : null;
 
@@ -67,4 +72,9 @@ function rollWeighted(entries) {
 
 function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function numberOption(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, number) : fallback;
 }

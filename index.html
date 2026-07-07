@@ -117,7 +117,7 @@
       return checkVersion();
     })();
   </script>
-  <link rel="stylesheet" href="./styles.css?v=auto-toast-1">
+  <link rel="stylesheet" href="./styles.css?v=social-friends-1">
   <title>Projeto 190</title>
   <script>
     const bootParams = new URLSearchParams(window.location.search);
@@ -198,7 +198,7 @@
             <div><span>Dinheiro</span><strong id="raid-summary-money">R$ 0</strong></div>
             <div><span>XP</span><strong id="raid-summary-xp">0</strong></div>
             <div><span>Alvos</span><strong id="raid-summary-targets">0 / 0</strong></div>
-            <div><span>Retorno</span><strong id="raid-summary-countdown">5s</strong></div>
+            <div><span id="raid-summary-countdown-label">Retorno</span><strong id="raid-summary-countdown">5s</strong></div>
           </div>
           <p id="raid-summary-items">Nenhum item obtido.</p>
           <div class="raid-summary-actions">
@@ -227,8 +227,23 @@
             </div>
           </section>
         </div>
+        <div class="modal-backdrop game-confirm-backdrop hidden" id="game-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="game-confirm-title">
+          <section class="modal game-confirm-modal">
+            <span class="eyebrow" id="game-confirm-eyebrow">Confirmacao</span>
+            <h2 id="game-confirm-title">Confirmar acao</h2>
+            <p id="game-confirm-text">Tem certeza?</p>
+            <p class="game-confirm-detail hidden" id="game-confirm-detail"></p>
+            <div class="modal-actions">
+              <button class="secondary-action" id="game-confirm-cancel" type="button">Cancelar</button>
+              <button class="primary-action" id="game-confirm-accept" type="button">Confirmar</button>
+            </div>
+          </section>
+        </div>
         <button class="master-toggle" id="master-toggle" aria-label="Abrir Equipamento e Mochila" aria-expanded="false">
           <span aria-hidden="true">v</span>
+        </button>
+        <button class="afk-raid-toggle hidden" id="afk-raid-toggle" type="button" aria-label="Roubar AFK" title="Roubar AFK">
+          AFK
         </button>
         <button class="auto-raid-toggle hidden" id="auto-raid-toggle" type="button" aria-label="Auto assalto" aria-expanded="false" title="Auto assalto">
           <span aria-hidden="true">A</span>
@@ -309,6 +324,6 @@
   <div class="death-flash hidden" id="death-flash" aria-hidden="true"></div>
 
   <script src="./src/config/publicOnlineConfig.js?v=cache-check-1"></script>
-  <script type="module" src="./src/main.js?v=shop-form-1"></script>
+  <script type="module" src="./src/main.js?v=social-friends-1"></script>
 </body>
 </html>

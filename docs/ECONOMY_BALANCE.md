@@ -14,11 +14,11 @@
 - Venda de itens: `src/systems/InventorySystem/index.js`. Usa `item.sellPrice`, calculado em `src/data/balance/index.js`.
 - Compra de itens do receptador: `src/systems/ShopSystem/index.js`. Compra remove dinheiro, refresh pago remove dinheiro.
 - Craft/fusao: `src/systems/InventorySystem/index.js`. Remove dinheiro pelo custo de fusao.
-- Casas, carros, terrenos, descanso e renda passiva: `src/systems/StaminaSystem/index.js`.
+- Casas, motos, terrenos, descanso e renda passiva: `src/systems/StaminaSystem/index.js`.
 - Hospital/prisao: `src/systems/PenaltySystem/index.js`. Remove dinheiro da carteira e cofre pessoal.
 - Drogas: `src/systems/DrugSystem/index.js`. Compra remove dinheiro, drogas nao podem ser revendidas no inventario normal.
 - Negocios/lojas de jogador: `src/systems/BusinessSystem/index.js` e `src/systems/PlayerShopSystem/index.js`. Producao gera estoque; loja transfere dinheiro entre jogadores com taxa.
-- Pets: `src/data/pets/index.js`. Compra remove dinheiro, preco escala com casa/carro.
+- Pets: `src/data/pets/index.js`. Compra remove dinheiro, preco escala com casa/moto.
 - Tutorial: `src/main.js`, `ensureTutorialAssetFunds`. Injeta dinheiro apenas para nao travar compra guiada inicial.
 
 ## Problemas principais
@@ -89,9 +89,9 @@ Pontos de aceite principais:
 
 ## Riscos de playtest
 
-- A economia ficou propositalmente mais apertada; precos altos de casas/carros/terrenos podem precisar de ajuste fino se a progressao ficar lenta demais.
+- A economia ficou propositalmente mais apertada; precos altos de casas/motos/terrenos podem precisar de ajuste fino se a progressao ficar lenta demais.
 - Drops raros ainda podem gerar picos quando vendidos, especialmente no T4, mas agora sao raros e pagam muito menos.
-- Renda passiva de casas/carros ainda deve ser observada no medio prazo, porque e um retorno de investimento grande, nao uma recompensa imediata.
+- Renda passiva de casas e o impacto indireto das motos ainda devem ser observados no medio prazo, porque sao retorno de investimento, nao recompensa imediata.
 - Hospital/prisao ainda tem taxas simples; pode valer transformar em taxa percentual/capada numa futura rodada.
 
 ## Sugestoes futuras
