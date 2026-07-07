@@ -817,7 +817,7 @@ function moneyForMap(index) {
 }
 
 function xpForMap(index, enemyHp) {
-  return Math.round(18 + index * 14 + Math.sqrt(enemyHp) * 2.2);
+  return Math.round((18 + index * 14 + Math.sqrt(enemyHp) * 2.2) * 0.5);
 }
 
 function staminaCostForMap(index) {

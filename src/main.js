@@ -1,11 +1,11 @@
 import { DEFAULT_PLAYER_ID, PLAYERS } from "./data/players/index.js?v=players-16";
 import { EQUIPMENT_SLOTS, SLOT_LABELS } from "./data/equipment/index.js?v=gloves-1";
-import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=spawn-height-1";
+import { HIDEOUTS, IDLE_MAPS, MAPS } from "./data/maps/index.js?v=afk-unlock-1";
 import { NPC_TYPES } from "./data/enemies/index.js?v=npc-crops-1";
 import { CITY_NPCS } from "./data/cityNpcs/index.js?v=zeca-actions-1";
 import { CITY_PORTALS, HIDEOUT_PORTALS, IDLE_PORTALS } from "./data/cityPortals/index.js?v=petshop-portal-1";
 import { HIDEOUT_ITEM_TIERS, HIDEOUT_ITEM_TYPES, hideoutItemCost, hideoutItemHeight, hideoutItemMaxTier, hideoutItemPlacementDefault, hideoutItemType } from "./data/hideoutItems/index.js?v=hideout-items-8";
-import { CombatSystem, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=afk-raid-1";
+import { CombatSystem, policePrisonChanceForFight } from "./systems/CombatSystem/index.js?v=afk-unlock-1";
 import { calculateStats, calculateStealChancePercent, itemPower } from "./systems/EquipmentSystem/index.js?v=equipment-2";
 import {
   buyDrugItem,
@@ -41,7 +41,7 @@ import {
   sellNonFavoriteInventoryItems,
   unequipToInventory
 } from "./systems/InventorySystem/index.js?v=stack-1";
-import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=social-friends-1";
+import { createNewGame, addLog } from "./systems/PlayerSystem/index.js?v=afk-unlock-1";
 import {
   applyProfileToState,
   createAccount,
@@ -322,6 +322,7 @@ const BACKGROUND_TICK_MS = 1000;
 const DETAILED_GAME_STEP_SECONDS = 0.05;
 const AFK_GAME_STEP_SECONDS = 1;
 const SIMPLE_GAME_STEP_SECONDS = 1;
+const AFK_UNLOCK_STAMINA_THRESHOLD = 10;
 const FRIEND_REQUEST_TTL_MS = 30 * 60 * 1000;
 const PET_TUTORIAL_FIRST_STEP = "pet_city";
 const PET_TUTORIAL_STEPS = [
@@ -446,6 +447,13 @@ const MOTORCYCLE_TUTORIAL_STEP = {
   target: "npc_zeca",
   actionRequired: "open_motorcycle_shop",
   passiveButton: true,
+  allowSkip: true
+};
+const AFK_RAID_TUTORIAL_STEP = {
+  id: "afk_raid_unlock",
+  message: "Sua stamina ficou abaixo de 10 e o roubo AFK foi liberado. Esse modo deixa o personagem farmando sozinho, sem gastar stamina e sem ganhar XP, com recompensas menores e limite de 8 horas.",
+  buttonLabel: "Entendi",
+  target: "afk_button",
   allowSkip: true
 };
 
@@ -971,6 +979,7 @@ function gameStepSeconds() {
 
 function advanceGameStep(dt) {
   combat.update(dt);
+  maybeUnlockAfkRaid({ render: false });
   updateMotorcycleAnimationTest(dt);
   online?.update(dt);
   updatePassiveIncome(state, dt);
@@ -1127,6 +1136,10 @@ function ensureTutorialOverlay() {
         completeMotorcycleTutorial();
         return;
       }
+      if (isAfkRaidTutorialStep(step)) {
+        completeAfkRaidTutorial();
+        return;
+      }
       advanceActiveTutorial();
     },
     onBack: (step) => {
@@ -1151,6 +1164,10 @@ function ensureTutorialOverlay() {
       }
       if (isMotorcycleTutorialStep(step)) {
         skipMotorcycleTutorial();
+        return;
+      }
+      if (isAfkRaidTutorialStep(step)) {
+        skipAfkRaidTutorial();
         return;
       }
       skipActiveTutorial();
@@ -1216,7 +1233,19 @@ function renderTutorial() {
 
   maybeStartMotorcycleTutorial();
   const motorcycleStep = activeMotorcycleTutorialStep();
-  ensureTutorialOverlay().render(motorcycleStep, { canGoBack: false });
+  if (motorcycleStep) {
+    ensureTutorialOverlay().render(motorcycleStep, { canGoBack: false });
+    return;
+  }
+
+  maybeStartAfkRaidTutorial();
+  const afkStep = activeAfkRaidTutorialStep();
+  if (afkStep) {
+    ensureTutorialOverlay().render(afkStep, { canGoBack: false });
+    return;
+  }
+
+  tutorialOverlay?.hide();
 }
 
 function advanceActiveTutorial() {
@@ -1644,6 +1673,55 @@ function performMotorcycleTutorialAction() {
   renderAll();
 }
 
+function isAfkRaidTutorialStep(step) {
+  return step?.id === AFK_RAID_TUTORIAL_STEP.id;
+}
+
+function maybeUnlockAfkRaid(options = {}) {
+  if (!state?.player || state.settings?.visualPreview) return false;
+  if (state.player.afkRaidUnlocked) return false;
+  if (Number(state.player.staminaAtual || 0) >= AFK_UNLOCK_STAMINA_THRESHOLD) return false;
+  state.player.afkRaidUnlocked = true;
+  state.player.afkRaidTutorialActive = true;
+  state.player.afkRaidTutorialCompleted = false;
+  state.player.afkRaidTutorialSkipped = false;
+  if (options.toast !== false) showToast("Roubo AFK liberado.");
+  return commitAfkRaidTutorialChange(options);
+}
+
+function maybeStartAfkRaidTutorial() {
+  if (!state?.player || blockingTutorialActiveForAfk()) return;
+  if (!state.player.afkRaidUnlocked) return;
+  if (state.player.afkRaidTutorialCompleted || state.player.afkRaidTutorialSkipped) return;
+  state.player.afkRaidTutorialActive = true;
+}
+
+function activeAfkRaidTutorialStep() {
+  if (!state?.player?.afkRaidTutorialActive) return null;
+  if (!state.player.afkRaidUnlocked) return null;
+  return AFK_RAID_TUTORIAL_STEP;
+}
+
+function skipAfkRaidTutorial(options = {}) {
+  if (!state?.player) return false;
+  state.player.afkRaidTutorialActive = false;
+  state.player.afkRaidTutorialSkipped = true;
+  return commitAfkRaidTutorialChange(options);
+}
+
+function completeAfkRaidTutorial(options = {}) {
+  if (!state?.player) return false;
+  state.player.afkRaidTutorialActive = false;
+  state.player.afkRaidTutorialCompleted = true;
+  return commitAfkRaidTutorialChange(options);
+}
+
+function commitAfkRaidTutorialChange(options = {}) {
+  if (!state?.settings?.visualPreview && options.persist !== false) persistGame();
+  if (options.render !== false) renderAll();
+  return true;
+}
+
 function applyTutorialSideEffects() {
   const step = tutorialStep(state);
   if (!step || state.settings?.visualPreview || lastTutorialSideEffectStep === step.id) return;
@@ -1877,6 +1955,7 @@ function resolveTutorialTargetRect(target) {
     first_assault: "#left-window .map-row, #left-window [data-enter-map]",
     first_assault_start: "#left-window [data-enter-map]",
     first_raid_return: "#raid-return-button",
+    afk_button: "#afk-raid-toggle",
     pet_shop_starter: `#city-shop-panel [data-buy-pet="${STARTER_PET_ID}"], #city-shop-panel [data-equip-pet="${STARTER_PET_ID}"]`,
     business_panel: "#right-window .business-window-body, #right-window [data-business-buy-farm]",
     player_shop_panel: "#left-window .player-shop-window-body, #city-shop-panel .player-shop-buy-list"
@@ -2148,7 +2227,8 @@ function isAfkRaidActive() {
 
 function canShowAfkRaidButton() {
   if (!state?.player || state.settings?.visualPreview) return false;
-  if (guidedTutorialActive()) return false;
+  if (!state.player.afkRaidUnlocked) return false;
+  if (blockingTutorialActiveForAfk()) return false;
   if (state.run?.mode === "temporary") return false;
   if (state.run?.mode === "summary" || state.run?.summary) return false;
   if (activeCenter && activeLeft === "assaults") return false;
@@ -7059,6 +7139,15 @@ function normalizeState() {
     !state.player.motorcycleTutorialSkipped &&
     motorcyclesUnlocked(state.player)
   );
+  state.player.afkRaidUnlocked = Boolean(state.player.afkRaidUnlocked);
+  state.player.afkRaidTutorialCompleted = Boolean(state.player.afkRaidTutorialCompleted);
+  state.player.afkRaidTutorialSkipped = Boolean(state.player.afkRaidTutorialSkipped);
+  state.player.afkRaidTutorialActive = Boolean(
+    state.player.afkRaidTutorialActive &&
+    state.player.afkRaidUnlocked &&
+    !state.player.afkRaidTutorialCompleted &&
+    !state.player.afkRaidTutorialSkipped
+  );
   applyOfflinePassiveIncome(state);
   state.run ||= createNewGame(state.selectedPlayerId || DEFAULT_PLAYER_ID).run;
   state.run.playerDirection ||= "right";
@@ -7219,6 +7308,13 @@ function businessLockedMessage() {
 }
 
 function guidedTutorialActive() {
+  return Boolean(
+    blockingTutorialActiveForAfk() ||
+    state?.player?.afkRaidTutorialActive
+  );
+}
+
+function blockingTutorialActiveForAfk() {
   return Boolean(
     characterTutorialVisible ||
     tutorialStep(state) ||
